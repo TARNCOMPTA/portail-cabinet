@@ -1,0 +1,31 @@
+# Portail Cabinet — déploiement (app + reverse proxy HTTPS automatique).
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      - PORT=3000
+      - NAV_TIMEOUT=60000
+      - UPDATE_DISABLED=1   # sur serveur, mise à jour par "git pull" + rebuild (voir DEPLOIEMENT.md)
+    volumes:
+      - ./data:/app/data            # base SQLite + clé de chiffrement (à conserver/sauvegarder)
+      - ./downloads:/app/downloads  # documents récupérés
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data            # certificats Let's Encrypt (persistés)
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:

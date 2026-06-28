@@ -1,0 +1,18 @@
+{
+  "name": "impots-scraper",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Recuperation des avis CFE/IFER et taxe fonciere - espace pro impots.gouv.fr (semi-auto)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server.js",
+    "postinstall": "playwright install chromium"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jszip": "^3.10.1",
+    "playwright": "^1.50.1"
+  }
+}

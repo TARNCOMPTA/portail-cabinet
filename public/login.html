@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Connexion — Portail Cabinet</title>
+  <script>
+    (function () {
+      var t = localStorage.getItem('theme');
+      if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .login-card { width: 100%; max-width: 380px; }
+    .login-card h1 { font-size: 1.3rem; margin: 0 0 4px; }
+    .login-card .sub { margin: 0 0 20px; opacity: .7; font-size: .9rem; }
+    .login-card label { display: block; margin-bottom: 14px; font-size: .9rem; }
+    .login-card input { width: 100%; margin-top: 4px; }
+    .login-err { color: #e5484d; font-size: .88rem; min-height: 1.1em; margin: 4px 0 12px; }
+    .login-card .logo-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--accent, #3b82f6); margin-right: 8px; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <form id="form-login" class="panel login-card">
+      <h1><span class="logo-dot"></span>Portail Cabinet</h1>
+      <p class="sub">Connecte-toi avec ton compte collaborateur.</p>
+      <label>E-mail
+        <input name="email" type="email" autocomplete="username" required autofocus />
+      </label>
+      <label>Mot de passe
+        <input name="password" type="password" autocomplete="current-password" required />
+      </label>
+      <p class="login-err" id="login-err"></p>
+      <button type="submit" class="btn primary" id="login-submit" style="width:100%">Se connecter</button>
+    </form>
+  </div>
+  <script src="login.js"></script>
+</body>
+</html>

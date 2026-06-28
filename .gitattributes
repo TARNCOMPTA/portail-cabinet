@@ -1,0 +1,4 @@
+# Fins de ligne déterministes : LF partout dans le dépôt (indispensable côté Linux/Docker),
+# CRLF uniquement pour les scripts Windows .bat.
+* text=auto eol=lf
+*.bat text eol=crlf

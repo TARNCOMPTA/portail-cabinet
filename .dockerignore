@@ -1,0 +1,9 @@
+node_modules
+data
+downloads
+app_update
+restart.flag
+.git
+.env
+*.log
+update

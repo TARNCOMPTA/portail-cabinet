@@ -1,0 +1,8 @@
+# HTTPS automatique (Let's Encrypt) pour le portail.
+{
+	email aymeric@tarncompta.fr
+}
+
+portail.tarncompta.fr {
+	reverse_proxy app:3000
+}
