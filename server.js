@@ -293,6 +293,8 @@ app.post('/api/update/apply', async (req, res) => {
 app.get('/api/runs', (req, res) => res.json(listRuns(500)));
 app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets: cabinetsConfigure() }));
 app.get('/api/progress', (req, res) => res.json(progression));
+// Indique a l'interface si la vue navigateur a distance (noVNC) est disponible (serveur).
+app.get('/api/config', (req, res) => res.json({ remoteBrowser: !!process.env.REMOTE_BROWSER }));
 
 const PORT = Number(process.env.PORT || 3003);
 

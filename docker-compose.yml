@@ -7,11 +7,13 @@ services:
       - PORT=3000
       - NAV_TIMEOUT=60000
       - UPDATE_DISABLED=1   # sur serveur, mise à jour par "git pull" + rebuild (voir DEPLOIEMENT.md)
+      - REMOTE_BROWSER=1    # active la vue navigateur à distance (noVNC) pour la captcha
     volumes:
       - ./data:/app/data            # base SQLite + clé de chiffrement (à conserver/sauvegarder)
       - ./downloads:/app/downloads  # documents récupérés
     expose:
       - "3000"
+      - "6080"
 
   caddy:
     image: caddy:2

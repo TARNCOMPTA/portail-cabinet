@@ -1,8 +1,11 @@
 # Image de l'application (Node 24 pour node:sqlite + Chromium via Playwright).
 FROM node:24-bookworm
 
-# Xvfb : écran virtuel pour que le navigateur (mode visible, captcha) puisse tourner côté serveur.
-RUN apt-get update && apt-get install -y --no-install-recommends xvfb \
+# Ecran virtuel (Xvfb) + serveur VNC (x11vnc) + pont noVNC (novnc/websockify) :
+# permet de VOIR et piloter a distance le navigateur du robot (saisie de la captcha).
+# xdpyinfo (paquet x11-utils) sert a attendre que l'ecran soit pret au demarrage.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    xvfb x11vnc x11-utils novnc websockify \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -16,11 +19,12 @@ RUN npx playwright install --with-deps chromium
 
 # Code de l'application.
 COPY . .
+RUN chmod +x start.sh
 
 ENV NODE_ENV=production
 ENV PORT=3000
 ENV DISPLAY=:99
-EXPOSE 3000
+EXPOSE 3000 6080
 
-# Démarre l'écran virtuel puis le serveur. Le navigateur lancé par le robot s'affichera dans cet écran.
-CMD ["sh", "-c", "Xvfb :99 -screen 0 1600x1000x24 -nolisten tcp >/dev/null 2>&1 & exec node --disable-warning=ExperimentalWarning server.js"]
+# Ecran virtuel + VNC + noVNC + serveur (voir start.sh).
+CMD ["./start.sh"]

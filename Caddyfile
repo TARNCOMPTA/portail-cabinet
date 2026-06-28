@@ -4,5 +4,14 @@
 }
 
 portail.tarncompta.fr {
+	# Vue du navigateur du serveur (noVNC) pour saisir la captcha — protégée par la session
+	# du portail : Caddy vérifie le cookie auprès de /api/me avant de laisser passer.
+	handle_path /vnc/* {
+		forward_auth app:3000 {
+			uri /api/me
+		}
+		reverse_proxy app:6080
+	}
+
 	reverse_proxy app:3000
 }

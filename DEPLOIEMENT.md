@@ -85,13 +85,16 @@ docker compose down             # tout arrêter
 
 ---
 
-## ⚠️ Important — étape actuelle
-Cette mise en ligne couvre **le portail + l'authentification équipe + la gestion clients/comptes**.
+## Récupération + captcha à distance (noVNC)
+La connexion impôts demande une **captcha**. Sur le serveur, le navigateur du robot tourne dans un
+**écran virtuel** ; pour saisir la captcha, le portail propose une **vue navigateur à distance** :
+- clique **« Récupérer »** (ou « Tout récupérer ») dans le portail ;
+- dans le panneau de progression, clique **« 🖥️ Voir le navigateur (captcha) »** ;
+- un onglet s'ouvre sur le navigateur du serveur : **saisis la captcha + connecte-toi** ;
+- le robot enchaîne ensuite tout seul. Tu peux fermer l'onglet de la vue.
 
-La **récupération des documents impôts nécessite la captcha** : sur un serveur, il faut pouvoir
-**voir et piloter le navigateur à distance** pour la saisir. C'est la **Phase 3** (affichage du
-navigateur du serveur dans ton onglet via noVNC). Tant qu'elle n'est pas en place, ne lance pas
-« Récupérer » depuis le serveur — on l'active juste après avoir validé la mise en ligne.
+Cette vue est **protégée par ta session** (Caddy vérifie le cookie via `/api/me` avant d'autoriser
+`/vnc`). Une seule récupération à la fois (le portail sérialise les sessions).
 
-Les sites **sans captcha** (URSSAF, CARPIMKO, CARMF), une fois intégrés au portail, pourront tourner
-en automatique côté serveur.
+Les sites **sans captcha** (URSSAF, CARPIMKO, CARMF), une fois intégrés, pourront tourner en
+automatique / planifié côté serveur.

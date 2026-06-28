@@ -609,8 +609,20 @@ if (formUser) formUser.addEventListener('submit', async (e) => {
   } catch (err) { toast(err.message, 'err'); }
 });
 
+// Vue navigateur a distance (noVNC) : revele le bouton si le serveur l'expose.
+async function chargerConfig() {
+  try {
+    const c = await api('/api/config');
+    if (c.remoteBrowser) {
+      const b = $('#btn-voir-navigateur'); if (b) b.hidden = false;
+      const a = $('#aide-captcha'); if (a) a.hidden = false;
+    }
+  } catch { /* ignore */ }
+}
+
 async function rafraichir() { await chargerCabinets(); await Promise.all([chargerClients(), chargerRuns(), chargerDocuments()]); }
 chargerMoi();
+chargerConfig();
 rafraichir();
 chargerReglages();
 suivreEtat();

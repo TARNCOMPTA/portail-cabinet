@@ -37,8 +37,12 @@
     <section class="panel progress-panel" id="panel-progress" hidden>
       <div class="panel-head">
         <h2 id="progress-titre">Récupération en cours…</h2>
-        <button type="button" class="btn small" id="progress-masquer" hidden>Masquer</button>
+        <span class="row-actions">
+          <a id="btn-voir-navigateur" class="btn small primary" href="/vnc/vnc.html?autoconnect=true&resize=scale&reconnect=true&path=vnc/websockify" target="_blank" rel="noopener" hidden>🖥️ Voir le navigateur (captcha)</a>
+          <button type="button" class="btn small" id="progress-masquer" hidden>Masquer</button>
+        </span>
       </div>
+      <p class="aide" id="aide-captcha" hidden>Une fenêtre impôts s'ouvre côté serveur. Clique sur « Voir le navigateur », <strong>saisis la captcha</strong> puis connecte-toi : le robot enchaîne ensuite tout seul.</p>
       <div class="progress-resume">
         <div class="progress-barre"><div class="progress-fill" id="progress-fill"></div></div>
         <span class="progress-compteur" id="progress-compteur">0 / 0</span>
