@@ -395,11 +395,12 @@
           </div>
         </div>
         <section class="panel flush">
-          <div style="padding: 18px 22px 0;">
-            <input type="search" id="search-docs" class="quick-search" placeholder="🔍 Rechercher (client, document, date)…" autocomplete="off" />
+          <div class="toolbar" style="padding: 18px 22px 0;">
+            <input type="search" id="search-docs" class="quick-search" style="margin-bottom:0; flex:1; min-width:200px;" placeholder="🔍 Rechercher (client, document, date)…" autocomplete="off" />
+            <select id="docs-filtre-annee" title="Filtrer par année du document"><option value="">Toutes les années</option></select>
           </div>
           <table id="table-docs">
-            <thead><tr><th>Date de récupération</th><th>Client</th><th>Source</th><th>Document</th><th></th></tr></thead>
+            <thead><tr><th>Année</th><th>Date de récupération</th><th>Client</th><th>Source</th><th>Document</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
           <div class="pagination" id="pagination-docs" style="padding-bottom:16px;" hidden>

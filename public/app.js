@@ -476,7 +476,26 @@ $('#progress-masquer').addEventListener('click', () => { progressMasque = true; 
 let tousDocs = [];
 let pageDocs = 1;
 let filtreDocs = '';
+let filtreAnnee = '';
 const DOCS_PAR_PAGE = 50;
+
+// Année d'un document : date du document (carpimko), sinon année (20xx) dans le
+// libellé / nom de fichier, sinon année de récupération.
+function anneeDoc(d) {
+  if (d.date_doc && /^\d{4}/.test(d.date_doc)) return d.date_doc.slice(0, 4);
+  const m = `${d.libelle || ''} ${d.fichier || ''}`.match(/\b(20\d{2})\b/);
+  if (m) return m[1];
+  if (d.recupere_le && /^\d{4}/.test(d.recupere_le)) return d.recupere_le.slice(0, 4);
+  return '—';
+}
+function remplirAnnees() {
+  const sel = $('#docs-filtre-annee');
+  if (!sel) return;
+  const annees = [...new Set(tousDocs.map((d) => d._annee).filter((a) => a && a !== '—'))].sort((a, b) => b.localeCompare(a));
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">Toutes les années</option>' + annees.map((a) => `<option value="${a}">${a}</option>`).join('');
+  sel.value = annees.includes(cur) ? cur : '';
+}
 
 function norm(s) { return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
@@ -491,14 +510,21 @@ async function chargerDocuments() {
       ...imp.map((d) => ({ ...d, source: 'Impôts', _href: `/api/documents/file?path=${encodeURIComponent(d.fichier)}` })),
       ...urs.map((d) => ({ ...d, source: 'URSSAF', _href: `/api/urssaf/documents/${d.id}/file` })),
       ...cp.map((d) => ({ ...d, source: 'CARPIMKO', _href: `/api/carpimko/documents/${d.id}/file` })),
-    ].sort((a, b) => String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+    ].map((d) => ({ ...d, _annee: anneeDoc(d) }));
+    // Classement par année (du plus récent au plus ancien), puis par date au sein de l'année.
+    tousDocs.sort((a, b) => b._annee.localeCompare(a._annee) || String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+    remplirAnnees();
   } catch { tousDocs = []; }
   afficherPageDocs();
 }
 function docsAffiches() {
-  if (!filtreDocs) return tousDocs;
-  const q = norm(filtreDocs);
-  return tousDocs.filter((d) => norm(`${d.client_nom || ''} ${d.libelle || ''} ${d.fichier || ''} ${d.recupere_le || ''} ${d.source || ''}`).includes(q));
+  let liste = tousDocs;
+  if (filtreAnnee) liste = liste.filter((d) => d._annee === filtreAnnee);
+  if (filtreDocs) {
+    const q = norm(filtreDocs);
+    liste = liste.filter((d) => norm(`${d.client_nom || ''} ${d.libelle || ''} ${d.fichier || ''} ${d.recupere_le || ''} ${d.source || ''} ${d._annee || ''}`).includes(q));
+  }
+  return liste;
 }
 function afficherPageDocs() {
   const liste = docsAffiches();
@@ -519,6 +545,7 @@ function afficherPageDocs() {
     const lib = d.libelle || (d.fichier ? d.fichier.split(/[\\/]/).pop() : '—');
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td><strong>${esc(d._annee || '—')}</strong></td>
       <td>${d.recupere_le ? new Date(d.recupere_le + 'Z').toLocaleString('fr-FR') : '—'}</td>
       <td>${esc(d.client_nom || '—')}</td>
       <td><span class="badge cab">${esc(d.source || '—')}</span></td>
@@ -538,6 +565,7 @@ function allerPageDocs(delta) { pageDocs += delta; afficherPageDocs(); }
 $('#pag-docs-prev').addEventListener('click', () => allerPageDocs(-1));
 $('#pag-docs-next').addEventListener('click', () => allerPageDocs(1));
 $('#search-docs').addEventListener('input', (e) => { filtreDocs = e.target.value.trim(); pageDocs = 1; afficherPageDocs(); });
+$('#docs-filtre-annee')?.addEventListener('change', (e) => { filtreAnnee = e.target.value; pageDocs = 1; afficherPageDocs(); });
 
 // ---- Onglets --------------------------------------------------------------
 function activerOnglet(nom) {
