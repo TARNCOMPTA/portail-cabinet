@@ -71,21 +71,26 @@ function dossierClient(client, baseFolder) {
 // Page d'actualites affichee a la connexion (mon.urssaf.fr/actualites?mode=new) :
 // bouton « Continuer » (onclick="backToHome();"). On la passe pour atteindre le tableau de bord.
 async function passerActualites(page, log) {
-  for (let i = 0; i < 3; i++) {
-    const btn = page.locator('button:has-text("Continuer"), [alt="Continuer"]').first();
-    if (await btn.isVisible().catch(() => false)) {
+  for (let i = 0; i < 4; i++) {
+    if (!/\/actualites/i.test(page.url())) return; // deja sorti des actualites
+    const btn = page.locator('button:has-text("Continuer"), [alt="Continuer"], button.btn-primary-urssaf').first();
+    // Le bouton peut apparaitre apres un court delai : on l'attend (jusqu'a 6 s).
+    const visible = await btn.waitFor({ state: 'visible', timeout: 6000 }).then(() => true).catch(() => false);
+    if (visible) {
       log?.('Page d\'actualites — clic sur « Continuer ».');
       await Promise.all([page.waitForLoadState('domcontentloaded').catch(() => {}), btn.click().catch(() => {})]);
-      await page.waitForLoadState('networkidle').catch(() => {});
-      await page.waitForTimeout(300);
-    } else if (/\/actualites/i.test(page.url())) {
+    } else {
       // Repli : appeler directement la fonction backToHome() de la page.
       await page.evaluate(() => { try { if (typeof backToHome === 'function') backToHome(); } catch {} }).catch(() => {});
-      await page.waitForLoadState('networkidle').catch(() => {});
-      await page.waitForTimeout(300);
-    } else {
-      break;
     }
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await page.waitForTimeout(600);
+  }
+  // Toujours bloque sur les actualites -> on force la sortie vers le tableau de bord.
+  if (/\/actualites/i.test(page.url())) {
+    log?.('Actualites toujours affichees — navigation forcee vers le tableau de bord.');
+    await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForLoadState('networkidle').catch(() => {});
   }
 }
 
