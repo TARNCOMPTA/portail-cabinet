@@ -68,7 +68,26 @@ function dossierClient(client, baseFolder) {
   return resolve(DOWNLOADS_DIR, sanitize(`${client.id}_${client.nom}`));
 }
 
-// Connexion au compte cabinet (tiers mandate) -> arrive sur tdbec.urssaf.fr.
+// Page d'actualites affichee a la connexion (mon.urssaf.fr/actualites?mode=new) :
+// bouton « Continuer » (onclick="backToHome();"). On la passe pour atteindre le tableau de bord.
+async function passerActualites(page, log) {
+  for (let i = 0; i < 3; i++) {
+    const btn = page.locator('button:has-text("Continuer"), [alt="Continuer"]').first();
+    if (await btn.isVisible().catch(() => false)) {
+      log?.('Page d\'actualites — clic sur « Continuer ».');
+      await Promise.all([page.waitForLoadState('domcontentloaded').catch(() => {}), btn.click().catch(() => {})]);
+      await page.waitForTimeout(1500);
+    } else if (/\/actualites/i.test(page.url())) {
+      // Repli : appeler directement la fonction backToHome() de la page.
+      await page.evaluate(() => { try { if (typeof backToHome === 'function') backToHome(); } catch {} }).catch(() => {});
+      await page.waitForTimeout(1500);
+    } else {
+      break;
+    }
+  }
+}
+
+// Connexion au compte cabinet (tiers mandate) -> portail mon.urssaf.fr / tableau de bord.
 async function connecterCabinet(page, cabinet, navTimeout, log) {
   log('Connexion au compte cabinet (tiers mandate)');
   await page.goto('https://www.urssaf.fr/accueil/se-connecter.html', { waitUntil: 'domcontentloaded' });
@@ -118,27 +137,31 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
     e.kind = 'mdp'; throw e;
   }
 
-  // Connexion OK. Depuis la migration du portail URSSAF (« Mes services en ligne »),
-  // on n'est plus redirige automatiquement vers le tableau de bord tiers declarant :
-  // on y accede explicitement (la session reste valide sur tdbec.urssaf.fr).
-  if (!/tdbec\.urssaf\.fr/.test(page.url())) {
-    log('Connexion OK — ouverture du tableau de bord tiers declarant (tdbec)...');
+  // Connexion OK. Le portail URSSAF a migre (mon.urssaf.fr) : une page d'actualites
+  // s'affiche a la connexion. On la passe, puis on s'assure d'etre sur le tableau de
+  // bord tiers declarant (champ de recherche present), quel que soit le domaine.
+  await passerActualites(page, log);
+  await fermerCookies(page);
+  let pret = await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
+  if (!pret) {
+    log('Ouverture du tableau de bord tiers declarant...');
     await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForLoadState('networkidle').catch(() => {});
     await fermerCookies(page);
+    await passerActualites(page, log);
+    await page.waitForSelector('#recherche, input.input-search', { timeout: 20000 }).catch(() => {});
+    pret = await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
   }
-  // On attend que le champ de recherche soit pret (au lieu d'un delai fixe).
-  await page.waitForSelector('#recherche, input.input-search', { timeout: 20000 }).catch(() => {});
-  await page.waitForTimeout(800);
-  if (!/tdbec\.urssaf\.fr/.test(page.url())) {
+  await page.waitForTimeout(600);
+  if (!pret) {
     try {
       const dbg = resolve(DOWNLOADS_DIR, '_debug');
       mkdirSync(dbg, { recursive: true });
-      const shot = resolve(dbg, `tdbec_${Date.now()}.png`);
+      const shot = resolve(dbg, `dashboard_${Date.now()}.png`);
       await page.screenshot({ path: shot, fullPage: true });
-      log(`Tableau de bord inaccessible — capture : ${shot}`);
+      log(`Tableau de bord introuvable (${page.url()}) — capture : ${shot}`);
     } catch { /* ignore */ }
-    throw new Error('Tableau de bord tiers declarant (tdbec.urssaf.fr) inaccessible apres connexion.');
+    throw new Error(`Tableau de bord tiers declarant introuvable apres connexion (${page.url()}).`);
   }
   log('Connecte au tableau de bord cabinet.');
 }
@@ -417,6 +440,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
 async function retourTableauBord(context, page, navTimeout) {
   for (const p of context.pages()) { if (p !== page) await p.close().catch(() => {}); }
   await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await passerActualites(page);
   // On attend le champ de recherche (tableau de bord pret) au lieu d'un delai fixe.
   await page.waitForSelector('#recherche, input.input-search', { timeout: 15000 }).catch(() => {});
   await page.waitForTimeout(600);
