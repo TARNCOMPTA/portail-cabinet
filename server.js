@@ -14,6 +14,8 @@ import {
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
 import * as carpimko from './src/carpimko-db.js';
 import { scrapeClient as scrapeClientCarpimko } from './src/scraper-carpimko.js';
+import * as urssafDb from './src/urssaf-db.js';
+import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
 import { installAuthRoutes, requireAuth, requireAdmin, hashPassword } from './src/auth.js';
 
@@ -414,6 +416,121 @@ app.post('/api/carpimko/scrape-all', async (req, res) => {
     terminerSuivi();
     progLog('Récupération CARPIMKO terminée.');
   }
+});
+
+// ===========================================================================
+//  SOURCE URSSAF (module autonome : base urssaf.db, tiers declarant par SIRET)
+//  Connexion login/mot de passe, sans captcha (navigateur invisible). Suivi de
+//  progression partage avec les autres sources.
+// ===========================================================================
+app.get('/api/urssaf/cabinets', (req, res) => res.json(urssafDb.listCabinets()));
+app.post('/api/urssaf/cabinets', (req, res) => {
+  const { libelle, login, password } = req.body || {};
+  if (!login) return res.status(400).json({ error: 'Identifiant du compte URSSAF (e-mail) requis.' });
+  if (urssafDb.getCabinetByLogin(login)) return res.status(409).json({ error: 'Un compte avec cet e-mail existe déjà.' });
+  res.status(201).json(urssafDb.createCabinet({ libelle, login, password }));
+});
+app.put('/api/urssaf/cabinets/:id', (req, res) => {
+  const c = urssafDb.updateCabinet(Number(req.params.id), req.body || {});
+  if (!c) return res.status(404).json({ error: 'Compte introuvable.' });
+  res.json(c);
+});
+app.delete('/api/urssaf/cabinets/:id', (req, res) => { urssafDb.deleteCabinet(Number(req.params.id)); res.json({ ok: true }); });
+
+// Synchronise le portefeuille d'UN compte cabinet (importe ses clients par SIRET).
+app.post('/api/urssaf/cabinets/:id/sync', async (req, res) => {
+  const id = Number(req.params.id);
+  const cab = urssafDb.getCabinetFull(id);
+  if (!cab) return res.status(404).json({ error: 'Compte introuvable.' });
+  const key = 'urssaf:sync:' + id;
+  if (enCours.has(key)) return res.status(409).json({ error: 'Synchronisation déjà en cours pour ce compte.' });
+  enCours.add(key);
+  try {
+    const rows = await listerClientsUrssaf(cab, { onLog: progLog });
+    const bilan = urssafDb.importClients(rows, id);
+    res.json({ ...bilan, total: rows.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+  finally { enCours.delete(key); }
+});
+
+app.get('/api/urssaf/clients', (req, res) => res.json(urssafDb.listClients()));
+app.post('/api/urssaf/clients', (req, res) => {
+  const { nom, siret, dossier, cabinet_id } = req.body || {};
+  if (!nom || !siret) return res.status(400).json({ error: 'Nom et SIRET sont requis.' });
+  if (urssafDb.getClientBySiret(siret)) return res.status(409).json({ error: 'Un client avec ce SIRET existe déjà.' });
+  res.status(201).json(urssafDb.createClient({ nom, siret, dossier, cabinet_id: cabinet_id || null }));
+});
+app.post('/api/urssaf/clients/import', (req, res) => {
+  const clients = req.body?.clients;
+  if (!Array.isArray(clients) || clients.length === 0) return res.status(400).json({ error: 'Aucune ligne à importer.' });
+  if (clients.length > 5000) return res.status(400).json({ error: 'Trop de lignes (max 5000).' });
+  res.json(urssafDb.importClients(clients, req.body?.cabinet_id || null));
+});
+app.put('/api/urssaf/clients/:id', (req, res) => {
+  const c = urssafDb.updateClient(Number(req.params.id), req.body || {});
+  if (!c) return res.status(404).json({ error: 'Client introuvable.' });
+  res.json(c);
+});
+app.delete('/api/urssaf/clients/:id', (req, res) => { urssafDb.deleteClient(Number(req.params.id)); res.json({ ok: true }); });
+app.get('/api/urssaf/clients/:id/documents', (req, res) => {
+  if (!urssafDb.getClient(Number(req.params.id))) return res.status(404).json({ error: 'Client introuvable.' });
+  res.json(urssafDb.listDocuments(Number(req.params.id)));
+});
+app.get('/api/urssaf/documents', (req, res) => res.json(urssafDb.listAllDocuments()));
+app.get('/api/urssaf/documents/:id/file', (req, res) => {
+  const doc = urssafDb.listAllDocuments().find((d) => d.id === Number(req.params.id));
+  if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
+  res.download(doc.fichier, basename(doc.fichier));
+});
+app.get('/api/urssaf/runs', (req, res) => res.json(urssafDb.listRuns(300)));
+
+app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
+  const id = Number(req.params.id);
+  const client = urssafDb.getClient(id);
+  if (!client) return res.status(404).json({ error: 'Client introuvable.' });
+  const cab = urssafDb.getCabinetFullByClient(id);
+  if (!cab) return res.status(400).json({ error: 'Ce client n\'est rattaché à aucun compte URSSAF.' });
+  const key = 'urssaf:' + id;
+  if (enCours.has(key)) return res.status(409).json({ error: 'Une récupération est déjà en cours pour ce client.' });
+  enCours.add(key);
+  res.json({ started: true, client: client.nom });
+  const suiviLocal = !progression.actif;
+  if (suiviLocal) { demarrerSuivi(1); progression.courant = client.nom; }
+  try {
+    const r = await scrapeClientUrssaf(client, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog });
+    if (suiviLocal) progression.resultats.push({ nom: client.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+  } catch (e) {
+    progLog(`ERREUR : ${e.message}`);
+    if (suiviLocal) progression.resultats.push({ nom: client.nom, ok: false, message: e.message, nb_docs: 0 });
+  } finally {
+    enCours.delete(key);
+    if (suiviLocal) { progression.fait = 1; terminerSuivi(); }
+  }
+});
+
+app.post('/api/urssaf/scrape-all', async (req, res) => {
+  if (!urssafDb.cabinetsConfigure()) return res.status(400).json({ error: 'Configure d\'abord au moins un compte URSSAF.' });
+  if (enCours.has('urssaf:all')) return res.status(409).json({ error: 'Une récupération URSSAF globale est déjà en cours.' });
+  const clients = urssafDb.listClients();
+  const parCabinet = new Map();
+  for (const c of clients) { if (!c.cabinet_id) continue; if (!parCabinet.has(c.cabinet_id)) parCabinet.set(c.cabinet_id, []); parCabinet.get(c.cabinet_id).push(c); }
+  const total = [...parCabinet.values()].reduce((n, arr) => n + arr.length, 0);
+  enCours.add('urssaf:all');
+  stopAll = false;
+  demarrerSuivi(total);
+  res.json({ started: true, total });
+  try {
+    for (const [cabinetId, sousClients] of parCabinet) {
+      if (stopAll) break;
+      const cab = urssafDb.getCabinetFull(cabinetId);
+      if (!cab) continue;
+      await scrapeAllUrssaf(sousClients, {
+        cabinet: cab, baseFolder: getSetting('destination_folder'), shouldStop: () => stopAll, onLog: progLog,
+        onClient: (nom) => { progression.courant = nom; },
+        onResult: (r) => { progression.resultats.push(r); progression.fait++; },
+      });
+    }
+  } finally { enCours.delete('urssaf:all'); terminerSuivi(); progLog('Récupération URSSAF terminée.'); }
 });
 
 const PORT = Number(process.env.PORT || 3003);

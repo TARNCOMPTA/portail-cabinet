@@ -482,12 +482,14 @@ function norm(s) { return String(s ?? '').toLowerCase().normalize('NFD').replace
 
 async function chargerDocuments() {
   try {
-    const [imp, cp] = await Promise.all([
+    const [imp, urs, cp] = await Promise.all([
       api('/api/documents').catch(() => []),
+      api('/api/urssaf/documents').catch(() => []),
       api('/api/carpimko/documents').catch(() => []),
     ]);
     tousDocs = [
       ...imp.map((d) => ({ ...d, source: 'Impôts', _href: `/api/documents/file?path=${encodeURIComponent(d.fichier)}` })),
+      ...urs.map((d) => ({ ...d, source: 'URSSAF', _href: `/api/urssaf/documents/${d.id}/file` })),
       ...cp.map((d) => ({ ...d, source: 'CARPIMKO', _href: `/api/carpimko/documents/${d.id}/file` })),
     ].sort((a, b) => String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
   } catch { tousDocs = []; }
@@ -548,22 +550,26 @@ activerOnglet('dashboard');
 // ---- Tableau de bord (indicateurs) ----------------------------------------
 async function chargerDashboard() {
   try {
-    const [clients, documents, runs, cabinets, cpClients, cpDocs, cpRuns] = await Promise.all([
+    const [clients, documents, runs, cabinets, uClients, uDocs, uRuns, uCab, cpClients, cpDocs, cpRuns] = await Promise.all([
       api('/api/clients').catch(() => []),
       api('/api/documents').catch(() => []),
       api('/api/runs').catch(() => []),
       api('/api/cabinets').catch(() => []),
+      api('/api/urssaf/clients').catch(() => []),
+      api('/api/urssaf/documents').catch(() => []),
+      api('/api/urssaf/runs').catch(() => []),
+      api('/api/urssaf/cabinets').catch(() => []),
       api('/api/carpimko/clients').catch(() => []),
       api('/api/carpimko/documents').catch(() => []),
       api('/api/carpimko/runs').catch(() => []),
     ]);
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    // Indicateurs agreges sur toutes les sources (Impots + CARPIMKO).
-    set('kpi-clients', clients.length + cpClients.length);
-    set('kpi-documents', documents.length + cpDocs.length);
-    set('kpi-runs', runs.length + cpRuns.length);
-    set('kpi-comptes', cabinets.length);
-    const totalDocs = documents.length + cpDocs.length;
+    // Indicateurs agreges sur toutes les sources (Impots + URSSAF + CARPIMKO).
+    set('kpi-clients', clients.length + uClients.length + cpClients.length);
+    set('kpi-documents', documents.length + uDocs.length + cpDocs.length);
+    set('kpi-runs', runs.length + uRuns.length + cpRuns.length);
+    set('kpi-comptes', cabinets.length + uCab.length);
+    const totalDocs = documents.length + uDocs.length + cpDocs.length;
     const nav = document.getElementById('nav-docs-count'); if (nav) nav.textContent = totalDocs || '';
     const d = document.getElementById('dash-date');
     if (d) d.textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
