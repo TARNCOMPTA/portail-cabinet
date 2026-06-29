@@ -91,21 +91,35 @@ export async function scrapeClient(client, opts = {}) {
 
     if (!client.password) { const e = new Error('Mot de passe vide pour ce client — re-saisis-le.'); e.kind = 'mdp'; throw e; }
     log('Saisie du numero de dossier et du mot de passe');
-    const champUser = page.locator('#Login');
-    const champPwd = page.locator('#MotDePasse');
+    const champUser = page.locator('#Login').first();
+    const champPwd = page.locator('#MotDePasse').first();
     await champUser.waitFor({ state: 'visible', timeout: navTimeout });
     await champUser.click().catch(() => {});
-    await champUser.fill(client.login);
+    await champUser.fill(client.login).catch(() => {});
     await champPwd.waitFor({ state: 'visible', timeout: navTimeout });
+    // Remplissage robuste, avec verification : 1) fill, 2) frappe clavier, 3) injection JS.
+    const pwdRempli = async () => ((await champPwd.inputValue().catch(() => '')) || '').length > 0;
     await champPwd.click().catch(() => {});
-    await champPwd.fill(client.password);
-    // Certains champs ignorent le remplissage programmatique « instantane » :
-    // on verifie la valeur et on retape au clavier (touche par touche) si besoin.
-    if (!(await champPwd.inputValue().catch(() => ''))) {
+    await champPwd.fill(client.password).catch(() => {});
+    if (!(await pwdRempli())) {
       await champPwd.click().catch(() => {});
-      await champPwd.pressSequentially(client.password, { delay: 25 }).catch(() => {});
+      await champPwd.pressSequentially(client.password, { delay: 30 }).catch(() => {});
     }
-    if (!(await champPwd.inputValue().catch(() => ''))) log('Attention : le champ mot de passe reste vide apres saisie (page CARPIMKO modifiee ?).');
+    if (!(await pwdRempli())) {
+      await champPwd.evaluate((el, val) => {
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, client.password).catch(() => {});
+    }
+    // Capture AVANT envoi (diagnostic : montre si le mot de passe est bien saisi).
+    try { await page.screenshot({ path: resolve(clientDir, `_avant_envoi_${Date.now()}.png`), fullPage: true }); } catch { /* ignore */ }
+    // Securite anti-blocage : si le champ est toujours vide, on N'ENVOIE PAS
+    // (eviter de consommer une tentative CARPIMKO pour rien).
+    if (!(await pwdRempli())) {
+      const e = new Error('Impossible de saisir le mot de passe dans le champ CARPIMKO (champ special ?). Envoi annule pour ne pas consommer de tentative.');
+      e.kind = 'mdp'; throw e;
+    }
     await Promise.all([page.waitForLoadState('domcontentloaded'), page.locator('#connexionForm button[type="submit"]').click()]);
     await page.waitForTimeout(2000);
 
