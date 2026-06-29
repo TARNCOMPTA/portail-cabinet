@@ -477,7 +477,7 @@ let tousDocs = [];
 let pageDocs = 1;
 let filtreDocs = '';
 let filtreAnnee = '';
-const DOCS_PAR_PAGE = 50;
+const DOCS_PAR_PAGE = 20;
 
 // Année d'un document : date du document (carpimko), sinon année (20xx) dans le
 // libellé / nom de fichier, sinon année de récupération.

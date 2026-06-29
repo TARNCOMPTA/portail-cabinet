@@ -3,6 +3,8 @@
 (() => {
   let clients = [];
   let filtre = '';
+  let page = 1;
+  const PAR_PAGE = 20;
 
   const fmtDate = (s) => {
     if (!s) return '—';
@@ -29,8 +31,11 @@
   function rendre() {
     const q = filtre.toLowerCase();
     const liste = q ? clients.filter((c) => `${c.nom} ${c.login} ${c.notes || ''}`.toLowerCase().includes(q)) : clients;
+    const totalPages = Math.max(1, Math.ceil(liste.length / PAR_PAGE));
+    if (page > totalPages) page = totalPages;
+    if (page < 1) page = 1;
     const tb = $('#table-carpimko-clients tbody');
-    tb.innerHTML = liste.map((c) => `
+    tb.innerHTML = liste.slice((page - 1) * PAR_PAGE, page * PAR_PAGE).map((c) => `
       <tr${c.verrouille ? ' style="background:var(--err-bg);"' : ''}>
         <td>${c.verrouille ? '🔒 ' : ''}${esc(c.nom)}</td>
         <td class="siret">${esc(c.login)}</td>
@@ -44,6 +49,8 @@
         </span></td>
       </tr>`).join('');
     $('#cp-vide').hidden = liste.length !== 0;
+    const pag = document.getElementById('cp-pagination');
+    if (pag && typeof renderPagination === 'function') renderPagination(pag, page, totalPages, (p) => { page = p; rendre(); }, liste.length);
   }
 
   async function chargerRuns() {
@@ -211,7 +218,7 @@
   });
 
   // ---- Recherche ----
-  $('#cp-recherche').addEventListener('input', (e) => { filtre = e.target.value.trim(); rendre(); });
+  $('#cp-recherche').addEventListener('input', (e) => { filtre = e.target.value.trim(); page = 1; rendre(); });
 
   // ---- Cartes "source" du tableau de bord -> navigation ----
   document.addEventListener('click', (e) => {
