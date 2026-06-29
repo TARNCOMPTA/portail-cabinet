@@ -94,6 +94,22 @@ async function passerActualites(page, log) {
   }
 }
 
+// Attend le champ de recherche du tableau de bord tdbec. La page reste parfois
+// bloquee en chargement (« la roue tourne ») apres une navigation automatique :
+// un rafraichissement la debloque (constate manuellement).
+async function attendreTableauBord(page, log) {
+  for (let essai = 0; essai < 4; essai++) {
+    const champ = page.locator('#recherche, input.input-search').first();
+    if (await champ.waitFor({ state: 'visible', timeout: 12000 }).then(() => true).catch(() => false)) return true;
+    log?.(`Tableau de bord pas encore pret — rafraichissement (essai ${essai + 1}/4)...`);
+    await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
+    await fermerCookies(page);
+    await passerActualites(page, log);
+    await page.waitForLoadState('networkidle').catch(() => {});
+  }
+  return await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
+}
+
 // Connexion au compte cabinet (tiers mandate) -> portail mon.urssaf.fr / tableau de bord.
 async function connecterCabinet(page, cabinet, navTimeout, log) {
   log('Connexion au compte cabinet (tiers mandate)');
@@ -166,8 +182,7 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
     await page.waitForLoadState('networkidle').catch(() => {});
     await fermerCookies(page);
     await passerActualites(page, log);
-    await page.waitForSelector('#recherche, input.input-search', { timeout: 30000 }).catch(() => {});
-    pret = await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
+    pret = await attendreTableauBord(page, log); // attend la recherche, avec rafraichissements si bloque
   }
   await page.waitForTimeout(600);
   if (!pret) {
@@ -469,9 +484,9 @@ async function retourTableauBord(context, page, navTimeout) {
   for (const p of context.pages()) { if (p !== page) await p.close().catch(() => {}); }
   await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
   await passerActualites(page);
-  // On attend le champ de recherche (tableau de bord pret) au lieu d'un delai fixe.
-  await page.waitForSelector('#recherche, input.input-search', { timeout: 15000 }).catch(() => {});
-  await page.waitForTimeout(600);
+  // Attend le champ de recherche, avec rafraichissement si la page reste bloquee.
+  await attendreTableauBord(page);
+  await page.waitForTimeout(400);
 }
 
 // La session cabinet URSSAF expire apres ~1h. On la considere vivante si on est
