@@ -97,6 +97,22 @@ export async function scrapeClient(client, opts = {}) {
     await champUser.click().catch(() => {});
     await champUser.fill(client.login).catch(() => {});
     await champPwd.waitFor({ state: 'visible', timeout: navTimeout });
+    // Diagnostic : structure reelle du champ mot de passe (pour comprendre pourquoi il ne se remplit pas).
+    try {
+      const diag = await page.evaluate(() => {
+        const f = document.querySelector('#MotDePasse');
+        const cand = [...document.querySelectorAll('input[type="password"]')];
+        return {
+          nbMotDePasse: document.querySelectorAll('#MotDePasse').length,
+          nbInputsPassword: cand.length,
+          iframes: document.querySelectorAll('iframe').length,
+          motDePasse: f ? { type: f.type, name: f.name, disabled: f.disabled, readOnly: f.readOnly, visible: !!f.offsetParent, outer: f.outerHTML.slice(0, 250) } : null,
+          inputsPassword: cand.slice(0, 4).map((e) => ({ id: e.id, name: e.name, disabled: e.disabled, readOnly: e.readOnly, visible: !!e.offsetParent })),
+        };
+      });
+      writeFileSync(resolve(clientDir, '_diag_mdp.json'), JSON.stringify(diag, null, 2), 'utf8');
+      log(`Diag champ mdp : ${JSON.stringify(diag).slice(0, 500)}`);
+    } catch (e) { log(`(diag champ mdp : ${e.message})`); }
     // Remplissage robuste, avec verification : 1) fill, 2) frappe clavier, 3) injection JS.
     const pwdRempli = async () => ((await champPwd.inputValue().catch(() => '')) || '').length > 0;
     await champPwd.click().catch(() => {});

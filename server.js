@@ -340,8 +340,8 @@ app.get('/api/debug/file', (req, res) => {
   // Sert une capture par chemin, en verrouillant l'acces au dossier downloads/.
   const p = resolve(String(req.query.path || ''));
   const racine = resolve(__dirname, 'downloads');
-  if (!p.startsWith(racine) || !/\.png$/i.test(p) || !existsSync(p)) return res.status(404).end();
-  res.sendFile(p);
+  if (!p.startsWith(racine) || !/\.(png|json|txt)$/i.test(p) || !existsSync(p)) return res.status(404).end();
+  res.type(/\.png$/i.test(p) ? 'image/png' : 'text/plain').sendFile(p);
 });
 
 // ===========================================================================
