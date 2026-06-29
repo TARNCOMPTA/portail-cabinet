@@ -63,20 +63,24 @@ function remplirSelectCabinets() {
 const formCab = $('#form-cabinet');
 formCab.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const btn = $('#cab-submit');
+  if (btn.disabled) return; // anti double-soumission (double-clic / Entrée repete)
   const payload = { libelle: formCab.libelle.value.trim(), login: formCab.login.value.trim(), password: formCab.password.value };
   const id = formCab.id.value;
+  if (!id && !payload.login) return toast('Identifiant (e-mail) du compte requis.', 'err');
+  btn.disabled = true;
   try {
     if (id) {
       await api(`/api/cabinets/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
       toast('Cabinet mis à jour.', 'ok');
     } else {
-      if (!payload.login) return toast('Identifiant (e-mail) du compte requis.', 'err');
       await api('/api/cabinets', { method: 'POST', body: JSON.stringify(payload) });
       toast('Compte ajouté.', 'ok');
     }
     resetCab();
     chargerCabinets();
   } catch (err) { toast(err.message, 'err'); }
+  finally { btn.disabled = false; }
 });
 function resetCab() {
   formCab.reset(); formCab.id.value = '';

@@ -7,7 +7,7 @@ import { spawn } from 'node:child_process';
 import {
   listClients, getClient, createClient, updateClient, deleteClient, getClientBySiret,
   listClientsByCabinet, importClients, listDocuments, listAllDocuments, listRuns, getSetting, setSetting,
-  listCabinets, getCabinetFull, createCabinet, updateCabinet, deleteCabinet, cabinetsConfigure,
+  listCabinets, getCabinetFull, createCabinet, getCabinetByLogin, updateCabinet, deleteCabinet, cabinetsConfigure,
   countUsers, listUsers, getUserByEmail, getUserById, createUser, updateUserPassword,
   setUserActif, setUserRole, deleteUser, deleteUserSessions, purgerSessionsExpirees,
 } from './src/db.js';
@@ -115,6 +115,7 @@ app.post('/api/cabinets', (req, res) => {
   const { libelle, login, password } = req.body || {};
   // Connexion manuelle (captcha) : le mot de passe est facultatif (juste pour mémo).
   if (!login) return res.status(400).json({ error: 'Identifiant du cabinet (e-mail) requis.' });
+  if (getCabinetByLogin(login)) return res.status(409).json({ error: 'Un compte avec cet e-mail existe déjà.' });
   res.status(201).json(createCabinet({ libelle, login, password }));
 });
 
