@@ -425,10 +425,12 @@
         </div>
         <section class="panel flush">
           <div class="toolbar" style="padding:18px 22px 0;">
-            <input type="search" id="pc-recherche" class="quick-search" style="margin-bottom:0;" placeholder="🔍 Rechercher un client (nom, SIREN, n° dossier)…" autocomplete="off" />
+            <input type="search" id="pc-recherche" class="quick-search" style="margin-bottom:0; flex:1; min-width:200px;" placeholder="🔍 Rechercher un client (nom, SIREN, n° dossier)…" autocomplete="off" />
+            <button type="button" class="btn primary" id="pc-fusionner" disabled title="Coche au moins 2 clients qui sont en réalité le même, puis fusionne-les">Fusionner la sélection (0)</button>
           </div>
+          <p class="aide" style="padding:8px 22px 0;">Coche les fiches qui correspondent au <strong>même client</strong> (ex. « EURL TARN COMPTA » et « SARL TARN COMPTA ») puis clique <strong>Fusionner</strong> : leurs documents seront regroupés.</p>
           <table id="table-par-client">
-            <thead><tr><th>Client</th><th>Sources</th><th>Documents</th><th></th></tr></thead>
+            <thead><tr><th class="col-check"></th><th>Client</th><th>Sources</th><th>Documents</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
           <p class="vide" id="pc-vide" style="padding:0 22px 16px;" hidden>Aucun client.</p>

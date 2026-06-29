@@ -571,6 +571,7 @@ $('#docs-filtre-annee')?.addEventListener('change', (e) => { filtreAnnee = e.tar
 let pcClients = [];
 let pcFiltre = '';
 let pcPage = 1;
+const pcSelection = new Set();
 const PC_PAR_PAGE = 20;
 const PC_ENDPOINTS = { 'Impôts': '/api/clients', 'URSSAF': '/api/urssaf/clients', 'CARPIMKO': '/api/carpimko/clients' };
 function hrefDoc(source, d) {
@@ -579,34 +580,44 @@ function hrefDoc(source, d) {
   return `/api/carpimko/documents/${d.id}/file`;
 }
 async function chargerParClient() {
+  let imp = [], urs = [], cp = [], fus = [];
   try {
-    const [imp, urs, cp] = await Promise.all([
+    [imp, urs, cp, fus] = await Promise.all([
       api('/api/clients').catch(() => []),
       api('/api/urssaf/clients').catch(() => []),
       api('/api/carpimko/clients').catch(() => []),
+      api('/api/fusions').catch(() => []),
     ]);
-    const map = new Map();
-    // Regroupement par nom (normalisé) : un même client présent dans plusieurs sources est fusionné.
-    const add = (c, source, ident) => {
-      const key = norm(c.nom);
-      if (!key) return;
-      if (!map.has(key)) map.set(key, { nom: c.nom, key, refs: [], nbDocs: 0, sources: new Set() });
-      const g = map.get(key);
-      g.refs.push({ source, id: c.id, ident: ident || '' });
-      g.nbDocs += (c.nb_docs || 0);
-      g.sources.add(source);
-    };
-    imp.forEach((c) => add(c, 'Impôts', c.siret));
-    urs.forEach((c) => add(c, 'URSSAF', c.siret));
-    cp.forEach((c) => add(c, 'CARPIMKO', c.login));
-    pcClients = [...map.values()].sort((a, b) => a.nom.localeCompare(b.nom));
-  } catch { pcClients = []; }
+  } catch { /* ignore */ }
+  const units = [];
+  imp.forEach((c) => units.push({ source: 'Impôts', id: c.id, nom: c.nom, ident: c.siret || '', nb: c.nb_docs || 0 }));
+  urs.forEach((c) => units.push({ source: 'URSSAF', id: c.id, nom: c.nom, ident: c.siret || '', nb: c.nb_docs || 0 }));
+  cp.forEach((c) => units.push({ source: 'CARPIMKO', id: c.id, nom: c.nom, ident: c.login || '', nb: c.nb_docs || 0 }));
+  // Une fusion manuelle prime sur le regroupement par nom.
+  const fusionDe = new Map();
+  for (const f of fus) for (const m of f.membres) fusionDe.set(`${m.source}:${m.client_id}`, f);
+  const groups = new Map();
+  for (const u of units) {
+    const f = fusionDe.get(`${u.source}:${u.id}`);
+    const key = f ? `fusion:${f.id}` : `nom:${norm(u.nom)}`;
+    if (!groups.has(key)) groups.set(key, { nom: f ? f.nom : u.nom, key, fusionId: f ? f.id : null, refs: [], nbDocs: 0, sources: new Set() });
+    const g = groups.get(key);
+    g.refs.push({ source: u.source, id: u.id, ident: u.ident, nom: u.nom });
+    g.nbDocs += u.nb;
+    g.sources.add(u.source);
+  }
+  pcClients = [...groups.values()].sort((a, b) => a.nom.localeCompare(b.nom));
+  for (const k of [...pcSelection]) if (!groups.has(k)) pcSelection.delete(k);
   rendreParClient();
 }
 function pcAffiches() {
   if (!pcFiltre) return pcClients;
   const q = norm(pcFiltre);
   return pcClients.filter((c) => norm(c.nom).includes(q) || c.refs.some((r) => String(r.ident || '').includes(pcFiltre)));
+}
+function majBoutonFusion() {
+  const b = $('#pc-fusionner');
+  if (b) { b.disabled = pcSelection.size < 2; b.textContent = `Fusionner la sélection (${pcSelection.size})`; }
 }
 function rendreParClient() {
   const liste = pcAffiches();
@@ -617,12 +628,17 @@ function rendreParClient() {
   if (pcPage < 1) pcPage = 1;
   tb.innerHTML = liste.slice((pcPage - 1) * PC_PAR_PAGE, pcPage * PC_PAR_PAGE).map((c) => `
     <tr>
-      <td><strong>${esc(c.nom)}</strong></td>
+      <td class="col-check"><input type="checkbox" class="pc-check" data-key="${esc(c.key)}" ${pcSelection.has(c.key) ? 'checked' : ''}></td>
+      <td><strong>${esc(c.nom)}</strong>${c.fusionId ? ' <span class="badge ok">fusionné</span>' : ''}${c.refs.length > 1 ? `<div class="aide" style="margin:2px 0 0;">${c.refs.map((r) => esc(r.nom)).join(' · ')}</div>` : ''}</td>
       <td>${[...c.sources].map((s) => `<span class="badge cab">${esc(s)}</span>`).join(' ')}</td>
       <td>${c.nbDocs}</td>
-      <td><button class="btn small primary" data-pc="${esc(c.key)}">Voir documents</button></td>
+      <td><span class="row-actions">
+        <button class="btn small primary" data-pc="${esc(c.key)}">Documents</button>
+        ${c.fusionId ? `<button class="btn small" data-pc-sep="${c.fusionId}">Séparer</button>` : ''}
+      </span></td>
     </tr>`).join('');
   $('#pc-vide').hidden = liste.length !== 0;
+  majBoutonFusion();
   const pag = document.getElementById('pc-pagination');
   if (pag) renderPagination(pag, pcPage, totalPages, (p) => { pcPage = p; rendreParClient(); }, liste.length);
 }
@@ -650,7 +666,37 @@ async function voirDocsClient(key) {
   $('#pc-docs-vide').hidden = docs.length !== 0;
   $('#pc-docs-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
-$('#table-par-client')?.addEventListener('click', (e) => { const b = e.target.closest('button[data-pc]'); if (b) voirDocsClient(b.dataset.pc); });
+$('#table-par-client')?.addEventListener('click', (e) => {
+  const doc = e.target.closest('button[data-pc]');
+  if (doc) return voirDocsClient(doc.dataset.pc);
+  const sep = e.target.closest('button[data-pc-sep]');
+  if (sep) {
+    if (!confirm('Séparer ce client fusionné en fiches distinctes ?')) return;
+    api(`/api/fusions/${sep.dataset.pcSep}`, { method: 'DELETE' })
+      .then(() => { toast('Fusion annulée.', 'ok'); chargerParClient(); })
+      .catch((err) => toast(err.message, 'err'));
+  }
+});
+$('#table-par-client')?.addEventListener('change', (e) => {
+  const cb = e.target.closest('.pc-check');
+  if (!cb) return;
+  if (cb.checked) pcSelection.add(cb.dataset.key); else pcSelection.delete(cb.dataset.key);
+  majBoutonFusion();
+});
+$('#pc-fusionner')?.addEventListener('click', async () => {
+  const groupes = pcClients.filter((c) => pcSelection.has(c.key));
+  if (groupes.length < 2) return;
+  const membres = groupes.flatMap((g) => g.refs.map((r) => ({ source: r.source, id: r.id })));
+  const nomDefaut = groupes.map((g) => g.nom).sort((a, b) => b.length - a.length)[0];
+  const nom = prompt('Nom du client fusionné :', nomDefaut);
+  if (nom === null) return;
+  try {
+    await api('/api/fusions', { method: 'POST', body: JSON.stringify({ nom: nom.trim() || nomDefaut, membres }) });
+    pcSelection.clear();
+    toast('Clients fusionnés.', 'ok');
+    chargerParClient();
+  } catch (err) { toast(err.message, 'err'); }
+});
 $('#pc-recherche')?.addEventListener('input', (e) => { pcFiltre = e.target.value.trim(); pcPage = 1; rendreParClient(); });
 
 // ---- Onglets --------------------------------------------------------------

@@ -16,6 +16,7 @@ import * as carpimko from './src/carpimko-db.js';
 import { scrapeClient as scrapeClientCarpimko } from './src/scraper-carpimko.js';
 import * as urssafDb from './src/urssaf-db.js';
 import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
+import * as fusions from './src/fusions-db.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
 import { installAuthRoutes, requireAuth, requireAdmin, hashPassword } from './src/auth.js';
 
@@ -303,6 +304,14 @@ app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets:
 app.get('/api/progress', (req, res) => res.json(progression));
 // Indique a l'interface si la vue navigateur a distance (noVNC) est disponible (serveur).
 app.get('/api/config', (req, res) => res.json({ remoteBrowser: !!process.env.REMOTE_BROWSER }));
+
+// ---- Fusions de clients (vue « Clients » transverse) ----------------------
+app.get('/api/fusions', (req, res) => res.json(fusions.listFusions()));
+app.post('/api/fusions', (req, res) => {
+  try { res.status(201).json(fusions.createFusion(req.body?.nom, req.body?.membres)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.delete('/api/fusions/:id', (req, res) => { fusions.deleteFusion(Number(req.params.id)); res.json({ ok: true }); });
 
 // ---- Captures de debug (diagnostic scraping) ------------------------------
 // Sert la capture .png la plus recente d'une source, pour la consulter dans le
