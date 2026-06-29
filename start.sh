@@ -11,7 +11,10 @@ for i in $(seq 1 20); do
 done
 
 # 2) Serveur VNC sur l'ecran :99 (accessible uniquement en local, expose via noVNC/Caddy)
-x11vnc -display :99 -nopw -forever -shared -rfbport 5900 -localhost -bg -o /tmp/x11vnc.log
+# -noxdamage : sous Xvfb l'extension XDAMAGE ne remonte pas les changements -> x11vnc
+#   resterait bloque sur l'image grise initiale (fenetre Chromium jamais affichee dans noVNC).
+#   On force donc le balayage periodique du framebuffer.
+x11vnc -display :99 -nopw -forever -shared -noxdamage -rfbport 5900 -localhost -bg -o /tmp/x11vnc.log
 
 # 3) Pont noVNC (websocket) + fichiers web noVNC sur le port 6080
 websockify --web=/usr/share/novnc 6080 localhost:5900 >/tmp/websockify.log 2>&1 &

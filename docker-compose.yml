@@ -3,6 +3,7 @@ services:
   app:
     build: .
     restart: unless-stopped
+    init: true   # tini comme PID 1 : reape les process Chromium fermes (sinon zombies <defunct>)
     environment:
       - PORT=3000
       - NAV_TIMEOUT=60000
