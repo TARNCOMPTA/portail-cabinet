@@ -419,43 +419,52 @@ app.post('/api/carpimko/clients/:id/scrape', (req, res) => {
   lancerCarpimko(id, res, { tousDocuments: !!req.body?.tousDocuments });
 });
 
-app.post('/api/carpimko/scrape-all', async (req, res) => {
-  if (enCours.has('carpimko:all')) return res.status(409).json({ error: 'Une récupération CARPIMKO globale est déjà en cours.' });
-  const tousDocuments = !!req.body?.tousDocuments;
+// Recuperation CARPIMKO de TOUS les clients (utilisee par la route ET la planification).
+// Lance la boucle en arriere-plan et renvoie aussitot { started, total, ignores }.
+function lancerCarpimkoTous(tousDocuments = false) {
+  if (enCours.has('carpimko:all')) return { started: false };
   const clients = carpimko.listClients();
   const aTraiter = clients.filter((c) => !c.verrouille);
   const ignores = clients.filter((c) => c.verrouille).map((c) => c.nom);
   enCours.add('carpimko:all');
   stopAll = false;
   demarrerSuivi(aTraiter.length);
-  res.json({ started: true, total: aTraiter.length, ignores });
   if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
-  try {
-    for (const c of aTraiter) {
-      if (stopAll) { progLog('Arrêt demandé.'); break; }
-      const key = 'carpimko:' + c.id;
-      if (enCours.has(key)) { progression.fait++; continue; }
-      enCours.add(key);
-      progression.courant = c.nom;
-      try {
-        const creds = carpimko.getClientCredentials(c.id);
-        if (creds) {
-          const r = await scrapeClientCarpimko(creds, { tousDocuments, onLog: progLog });
-          progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+  (async () => {
+    try {
+      for (const c of aTraiter) {
+        if (stopAll) { progLog('Arrêt demandé.'); break; }
+        const key = 'carpimko:' + c.id;
+        if (enCours.has(key)) { progression.fait++; continue; }
+        enCours.add(key);
+        progression.courant = c.nom;
+        try {
+          const creds = carpimko.getClientCredentials(c.id);
+          if (creds) {
+            const r = await scrapeClientCarpimko(creds, { tousDocuments, onLog: progLog });
+            progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+          }
+        } catch (e) {
+          progLog(`[${c.nom}] ERREUR : ${e.message}`);
+          progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 });
+        } finally {
+          enCours.delete(key);
+          progression.fait++;
         }
-      } catch (e) {
-        progLog(`[${c.nom}] ERREUR : ${e.message}`);
-        progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 });
-      } finally {
-        enCours.delete(key);
-        progression.fait++;
       }
+    } finally {
+      enCours.delete('carpimko:all');
+      terminerSuivi();
+      progLog('Récupération CARPIMKO terminée.');
     }
-  } finally {
-    enCours.delete('carpimko:all');
-    terminerSuivi();
-    progLog('Récupération CARPIMKO terminée.');
-  }
+  })();
+  return { started: true, total: aTraiter.length, ignores };
+}
+
+app.post('/api/carpimko/scrape-all', (req, res) => {
+  const r = lancerCarpimkoTous(!!req.body?.tousDocuments);
+  if (!r.started) return res.status(409).json({ error: 'Une récupération CARPIMKO globale est déjà en cours.' });
+  res.json(r);
 });
 
 // ===========================================================================
@@ -572,6 +581,31 @@ app.post('/api/urssaf/scrape-all', async (req, res) => {
     }
   } finally { enCours.delete('urssaf:all'); terminerSuivi(); progLog('Récupération URSSAF terminée.'); }
 });
+
+// ---- Planification : recuperation CARPIMKO automatique (mardi 02:00, Europe/Paris) ----
+// Activee par l'env SCHEDULE_CARPIMKO (definie dans docker-compose sur le serveur).
+if (process.env.SCHEDULE_CARPIMKO) {
+  let dernierLancement = '';
+  const verifierPlanif = () => {
+    try {
+      const p = Object.fromEntries(
+        new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'long', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false })
+          .formatToParts(new Date()).map((x) => [x.type, x.value]),
+      );
+      if (p.weekday === 'Tuesday' && p.hour === '02') {
+        const jour = `${p.year}-${p.month}-${p.day}`;
+        if (dernierLancement !== jour) {
+          dernierLancement = jour; // une seule fois par jour
+          console.log(`\n  [planif] Recuperation CARPIMKO automatique (mardi 02h) — ${jour}`);
+          progLog('Récupération CARPIMKO automatique planifiée (mardi 02h).');
+          lancerCarpimkoTous(false);
+        }
+      }
+    } catch (e) { console.warn('[planif] ' + e.message); }
+  };
+  setInterval(verifierPlanif, 60000);
+  console.log('  Planification CARPIMKO active : chaque mardi a 02:00 (Europe/Paris).');
+}
 
 const PORT = Number(process.env.PORT || 3003);
 
