@@ -25,6 +25,9 @@ app.use(express.json());
 for (const f of ['login.html', 'login.js', 'style.css', 'favicon.ico']) {
   app.get('/' + f, (req, res) => res.sendFile(resolve(PUBLIC_DIR, f), (e) => { if (e) res.status(404).end(); }));
 }
+// Polices + icônes hébergées localement : non sensibles, accessibles sans session
+// (la page de login en a besoin elle aussi). Cache long (les fichiers sont versionnés).
+app.use('/vendor', express.static(resolve(PUBLIC_DIR, 'vendor'), { maxAge: '30d', immutable: true }));
 installAuthRoutes(app);
 
 // --- Porte d'authentification : tout le reste exige une session valide ---
