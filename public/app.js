@@ -567,10 +567,97 @@ $('#pag-docs-next').addEventListener('click', () => allerPageDocs(1));
 $('#search-docs').addEventListener('input', (e) => { filtreDocs = e.target.value.trim(); pageDocs = 1; afficherPageDocs(); });
 $('#docs-filtre-annee')?.addEventListener('change', (e) => { filtreAnnee = e.target.value; pageDocs = 1; afficherPageDocs(); });
 
+// ---- Vue « Clients » transverse : tous les documents d'un client, toutes sources -----
+let pcClients = [];
+let pcFiltre = '';
+let pcPage = 1;
+const PC_PAR_PAGE = 20;
+const PC_ENDPOINTS = { 'Impôts': '/api/clients', 'URSSAF': '/api/urssaf/clients', 'CARPIMKO': '/api/carpimko/clients' };
+function hrefDoc(source, d) {
+  if (source === 'Impôts') return `/api/documents/file?path=${encodeURIComponent(d.fichier)}`;
+  if (source === 'URSSAF') return `/api/urssaf/documents/${d.id}/file`;
+  return `/api/carpimko/documents/${d.id}/file`;
+}
+async function chargerParClient() {
+  try {
+    const [imp, urs, cp] = await Promise.all([
+      api('/api/clients').catch(() => []),
+      api('/api/urssaf/clients').catch(() => []),
+      api('/api/carpimko/clients').catch(() => []),
+    ]);
+    const map = new Map();
+    // Regroupement par nom (normalisé) : un même client présent dans plusieurs sources est fusionné.
+    const add = (c, source, ident) => {
+      const key = norm(c.nom);
+      if (!key) return;
+      if (!map.has(key)) map.set(key, { nom: c.nom, key, refs: [], nbDocs: 0, sources: new Set() });
+      const g = map.get(key);
+      g.refs.push({ source, id: c.id, ident: ident || '' });
+      g.nbDocs += (c.nb_docs || 0);
+      g.sources.add(source);
+    };
+    imp.forEach((c) => add(c, 'Impôts', c.siret));
+    urs.forEach((c) => add(c, 'URSSAF', c.siret));
+    cp.forEach((c) => add(c, 'CARPIMKO', c.login));
+    pcClients = [...map.values()].sort((a, b) => a.nom.localeCompare(b.nom));
+  } catch { pcClients = []; }
+  rendreParClient();
+}
+function pcAffiches() {
+  if (!pcFiltre) return pcClients;
+  const q = norm(pcFiltre);
+  return pcClients.filter((c) => norm(c.nom).includes(q) || c.refs.some((r) => String(r.ident || '').includes(pcFiltre)));
+}
+function rendreParClient() {
+  const liste = pcAffiches();
+  const tb = $('#table-par-client tbody');
+  if (!tb) return;
+  const totalPages = Math.max(1, Math.ceil(liste.length / PC_PAR_PAGE));
+  if (pcPage > totalPages) pcPage = totalPages;
+  if (pcPage < 1) pcPage = 1;
+  tb.innerHTML = liste.slice((pcPage - 1) * PC_PAR_PAGE, pcPage * PC_PAR_PAGE).map((c) => `
+    <tr>
+      <td><strong>${esc(c.nom)}</strong></td>
+      <td>${[...c.sources].map((s) => `<span class="badge cab">${esc(s)}</span>`).join(' ')}</td>
+      <td>${c.nbDocs}</td>
+      <td><button class="btn small primary" data-pc="${esc(c.key)}">Voir documents</button></td>
+    </tr>`).join('');
+  $('#pc-vide').hidden = liste.length !== 0;
+  const pag = document.getElementById('pc-pagination');
+  if (pag) renderPagination(pag, pcPage, totalPages, (p) => { pcPage = p; rendreParClient(); }, liste.length);
+}
+async function voirDocsClient(key) {
+  const c = pcClients.find((x) => x.key === key);
+  if (!c) return;
+  $('#pc-docs-titre').textContent = `Documents — ${c.nom}`;
+  $('#pc-docs-panel').hidden = false;
+  const tb = $('#table-pc-docs tbody');
+  tb.innerHTML = '<tr><td colspan="5" class="aide" style="margin:0;padding:12px 22px;">Chargement…</td></tr>';
+  const docs = [];
+  for (const r of c.refs) {
+    const ds = await api(`${PC_ENDPOINTS[r.source]}/${r.id}/documents`).catch(() => []);
+    docs.push(...ds.map((d) => ({ ...d, source: r.source, _annee: anneeDoc(d), _href: hrefDoc(r.source, d) })));
+  }
+  docs.sort((a, b) => String(b._annee).localeCompare(String(a._annee)) || String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+  tb.innerHTML = docs.map((d) => `
+    <tr>
+      <td><strong>${esc(d._annee || '—')}</strong></td>
+      <td><span class="badge cab">${esc(d.source)}</span></td>
+      <td>${esc(d.libelle || (d.fichier ? d.fichier.split(/[\\/]/).pop() : '—'))}</td>
+      <td>${d.recupere_le ? new Date(d.recupere_le + 'Z').toLocaleDateString('fr-FR') : '—'}</td>
+      <td><a class="btn small primary" href="${d._href}" target="_blank">Ouvrir</a></td>
+    </tr>`).join('');
+  $('#pc-docs-vide').hidden = docs.length !== 0;
+  $('#pc-docs-panel').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+$('#table-par-client')?.addEventListener('click', (e) => { const b = e.target.closest('button[data-pc]'); if (b) voirDocsClient(b.dataset.pc); });
+$('#pc-recherche')?.addEventListener('input', (e) => { pcFiltre = e.target.value.trim(); pcPage = 1; rendreParClient(); });
+
 // ---- Onglets --------------------------------------------------------------
 function activerOnglet(nom) {
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === nom));
   document.querySelectorAll('.tab-pane').forEach((p) => { p.hidden = p.id !== `tab-${nom}`; });
+  if (nom === 'par-client') chargerParClient();
 }
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
 activerOnglet('dashboard');
