@@ -176,7 +176,8 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
  */
 export async function listerClients(cabinet, opts = {}) {
   const log = (m) => { const line = `[sync] ${m}`; console.log(line); opts.onLog?.(line); };
-  const headless = String(process.env.HEADLESS ?? 'true').toLowerCase() !== 'false';
+  // Visible par defaut (sur serveur : ecran :99 -> noVNC). HEADLESS=true pour forcer l'invisible.
+  const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
   if (!cabinet?.login || !cabinet?.password) throw new Error('Compte cabinet URSSAF non configure.');
 
@@ -465,7 +466,8 @@ async function sessionVivante(page) {
  */
 export async function scrapeClient(client, opts = {}) {
   const log = (m) => { const line = `[${client.nom}] ${m}`; console.log(line); opts.onLog?.(line); };
-  const headless = String(process.env.HEADLESS ?? 'true').toLowerCase() !== 'false';
+  // Visible par defaut (sur serveur : ecran :99 -> noVNC). HEADLESS=true pour forcer l'invisible.
+  const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
   const cabinet = opts.cabinet;
   if (!cabinet?.login || !cabinet?.password) {
@@ -497,7 +499,8 @@ export async function scrapeClient(client, opts = {}) {
  */
 export async function scrapeAll(clients, opts = {}) {
   const log = (m) => { const line = `[lot] ${m}`; console.log(line); opts.onLog?.(line); };
-  const headless = String(process.env.HEADLESS ?? 'true').toLowerCase() !== 'false';
+  // Visible par defaut (sur serveur : ecran :99 -> noVNC). HEADLESS=true pour forcer l'invisible.
+  const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
   const cabinet = opts.cabinet;
   const resume = { total: clients.length, traites: 0, avecDocs: 0, docs: 0, echecs: 0 };
