@@ -89,9 +89,23 @@ export async function scrapeClient(client, opts = {}) {
       if (id) await page.locator(`label[for="${id}"]`).click();
     });
 
+    if (!client.password) { const e = new Error('Mot de passe vide pour ce client — re-saisis-le.'); e.kind = 'mdp'; throw e; }
     log('Saisie du numero de dossier et du mot de passe');
-    await page.locator('#Login').fill(client.login);
-    await page.locator('#MotDePasse').fill(client.password);
+    const champUser = page.locator('#Login');
+    const champPwd = page.locator('#MotDePasse');
+    await champUser.waitFor({ state: 'visible', timeout: navTimeout });
+    await champUser.click().catch(() => {});
+    await champUser.fill(client.login);
+    await champPwd.waitFor({ state: 'visible', timeout: navTimeout });
+    await champPwd.click().catch(() => {});
+    await champPwd.fill(client.password);
+    // Certains champs ignorent le remplissage programmatique « instantane » :
+    // on verifie la valeur et on retape au clavier (touche par touche) si besoin.
+    if (!(await champPwd.inputValue().catch(() => ''))) {
+      await champPwd.click().catch(() => {});
+      await champPwd.pressSequentially(client.password, { delay: 25 }).catch(() => {});
+    }
+    if (!(await champPwd.inputValue().catch(() => ''))) log('Attention : le champ mot de passe reste vide apres saisie (page CARPIMKO modifiee ?).');
     await Promise.all([page.waitForLoadState('domcontentloaded'), page.locator('#connexionForm button[type="submit"]').click()]);
     await page.waitForTimeout(2000);
 
