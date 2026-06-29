@@ -90,10 +90,13 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
     page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator('#login-tiers-declarant-tiers-mandate-password').press('Enter'),
   ]);
-  await page.waitForURL(/tdbec\.urssaf\.fr/, { timeout: navTimeout }).catch(() => {});
-  if (!/tdbec\.urssaf\.fr/.test(page.url())) {
-    // Diagnostic : message d'erreur affiche par URSSAF + capture d'ecran (l'echec
-    // de connexion ne laissait aucune trace visuelle jusqu'ici).
+  // Laisser la redirection post-login s'effectuer.
+  await page.waitForLoadState('networkidle').catch(() => {});
+  await page.waitForTimeout(2500);
+  await fermerCookies(page);
+
+  // Echec d'authentification : on est reste sur la page de connexion.
+  if (/se-connecter|Comptes\/Connexion/i.test(page.url())) {
     let urssafErr = '';
     try {
       urssafErr = await page.evaluate(() => {
@@ -109,16 +112,34 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
       shot = resolve(dbg, `login_${Date.now()}.png`);
       await page.screenshot({ path: shot, fullPage: true });
     } catch { /* ignore */ }
-    log(`Echec de connexion sur ${page.url()}`);
     if (urssafErr) log(`URSSAF affiche : ${urssafErr.replace(/\s+/g, ' ').slice(0, 300)}`);
     if (shot) log(`Capture de la page de connexion : ${shot}`);
     const e = new Error('Connexion cabinet refusee (identifiants cabinet ?)' + (urssafErr ? ` — URSSAF: ${urssafErr.replace(/\s+/g, ' ').slice(0, 160)}` : ''));
     e.kind = 'mdp'; throw e;
   }
-  await page.waitForLoadState('networkidle').catch(() => {});
+
+  // Connexion OK. Depuis la migration du portail URSSAF (« Mes services en ligne »),
+  // on n'est plus redirige automatiquement vers le tableau de bord tiers declarant :
+  // on y accede explicitement (la session reste valide sur tdbec.urssaf.fr).
+  if (!/tdbec\.urssaf\.fr/.test(page.url())) {
+    log('Connexion OK — ouverture du tableau de bord tiers declarant (tdbec)...');
+    await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForLoadState('networkidle').catch(() => {});
+    await fermerCookies(page);
+  }
   // On attend que le champ de recherche soit pret (au lieu d'un delai fixe).
-  await page.waitForSelector('#recherche, input.input-search', { timeout: 15000 }).catch(() => {});
+  await page.waitForSelector('#recherche, input.input-search', { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(800);
+  if (!/tdbec\.urssaf\.fr/.test(page.url())) {
+    try {
+      const dbg = resolve(DOWNLOADS_DIR, '_debug');
+      mkdirSync(dbg, { recursive: true });
+      const shot = resolve(dbg, `tdbec_${Date.now()}.png`);
+      await page.screenshot({ path: shot, fullPage: true });
+      log(`Tableau de bord inaccessible — capture : ${shot}`);
+    } catch { /* ignore */ }
+    throw new Error('Tableau de bord tiers declarant (tdbec.urssaf.fr) inaccessible apres connexion.');
+  }
   log('Connecte au tableau de bord cabinet.');
 }
 
