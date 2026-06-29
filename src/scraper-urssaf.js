@@ -76,11 +76,13 @@ async function passerActualites(page, log) {
     if (await btn.isVisible().catch(() => false)) {
       log?.('Page d\'actualites — clic sur « Continuer ».');
       await Promise.all([page.waitForLoadState('domcontentloaded').catch(() => {}), btn.click().catch(() => {})]);
-      await page.waitForTimeout(1500);
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForTimeout(300);
     } else if (/\/actualites/i.test(page.url())) {
       // Repli : appeler directement la fonction backToHome() de la page.
       await page.evaluate(() => { try { if (typeof backToHome === 'function') backToHome(); } catch {} }).catch(() => {});
-      await page.waitForTimeout(1500);
+      await page.waitForLoadState('networkidle').catch(() => {});
+      await page.waitForTimeout(300);
     } else {
       break;
     }
@@ -91,27 +93,28 @@ async function passerActualites(page, log) {
 async function connecterCabinet(page, cabinet, navTimeout, log) {
   log('Connexion au compte cabinet (tiers mandate)');
   await page.goto('https://www.urssaf.fr/accueil/se-connecter.html', { waitUntil: 'domcontentloaded' });
-  await page.waitForTimeout(2500);
+  await page.locator('#public-combo-search').waitFor({ state: 'visible', timeout: navTimeout }).catch(() => {});
   await fermerCookies(page);
   await page.locator('#public-combo-search').click().catch(() => {});
-  await page.waitForTimeout(700);
+  // Attendre l'apparition de l'option « Tiers mandate » (au lieu d'un delai fixe).
+  await page.waitForFunction(() => !!document.querySelector('[role="option"][data-value="login-tiers-declarant-tiers-mandate"]'), null, { timeout: 8000 }).catch(() => {});
   const ok = await page.evaluate(() => {
     const o = document.querySelector('[role="option"][data-value="login-tiers-declarant-tiers-mandate"]');
     if (o) { o.scrollIntoView(); o.click(); return true; }
     return false;
   });
   if (!ok) throw new Error("Option 'Tiers mandate' introuvable (page URSSAF modifiee ?).");
-  await page.waitForTimeout(1800);
   await fermerCookies(page);
+  // Attendre le champ identifiant (formulaire tiers mandate affiche).
+  await page.locator('#login-tiers-declarant-tiers-mandate-identifiant').waitFor({ state: 'visible', timeout: 10000 });
   await page.locator('#login-tiers-declarant-tiers-mandate-identifiant').fill(cabinet.login);
   await page.locator('#login-tiers-declarant-tiers-mandate-password').fill(cabinet.password);
   await Promise.all([
     page.waitForLoadState('domcontentloaded').catch(() => {}),
     page.locator('#login-tiers-declarant-tiers-mandate-password').press('Enter'),
   ]);
-  // Laisser la redirection post-login s'effectuer.
+  // Laisser la redirection post-login s'effectuer (attente conditionnelle).
   await page.waitForLoadState('networkidle').catch(() => {});
-  await page.waitForTimeout(2500);
   await fermerCookies(page);
 
   // Echec d'authentification : on est reste sur la page de connexion.
@@ -266,7 +269,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     // 3. Messagerie
     const popup2P = cli.waitForEvent('popup', { timeout: 12000 }).catch(() => null);
     await lienMsg.click().catch(() => {});
-    await cli.waitForTimeout(800);
+    await cli.waitForTimeout(400);
     const msg = (await popup2P) || cli;
     log('Ouverture de la messagerie...');
     await msg.waitForURL(/dcl\.urssaf\.fr\/messagerie|Rico\.action/, { timeout: navTimeout }).catch(() => {});
@@ -274,7 +277,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     await msg
       .waitForFunction(() => document.querySelectorAll('[onclick*="apercuMsg"]').length > 0, null, { timeout: 30000 })
       .catch(() => log('Avertissement : liste des messages non detectee (delai).'));
-    await msg.waitForTimeout(500);
+    await msg.waitForTimeout(300);
 
     // 4. Tous les documents de la messagerie -> PDF.
     // Les liens de pieces jointes (showAttachement.action) sont DEJA presents
@@ -475,7 +478,7 @@ export async function scrapeClient(client, opts = {}) {
   page.setDefaultTimeout(navTimeout);
   try {
     await connecterCabinet(page, cabinet, navTimeout, log);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(200);
     return await recupererAppelsClient(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log });
   } catch (err) {
     addRunSafe(client.id, { statut: err.kind === 'mdp' ? 'echec_mdp' : 'echec', message: err.message, nb_docs: 0 });
@@ -508,7 +511,7 @@ export async function scrapeAll(clients, opts = {}) {
   try {
     await connecterCabinet(page, cabinet, navTimeout, log);
     log(`Traitement de ${clients.length} client(s) sur une seule session...`);
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(200);
 
     let echecsConsecutifs = 0;
     for (let i = 0; i < clients.length; i++) {
@@ -522,7 +525,7 @@ export async function scrapeAll(clients, opts = {}) {
         log(echecsConsecutifs >= 3 ? 'Plusieurs echecs d\'affilee -> reconnexion du compte cabinet...' : 'Session cabinet expiree -> reconnexion...');
         try {
           await connecterCabinet(page, cabinet, navTimeout, log);
-          await page.waitForTimeout(1500);
+          await page.waitForTimeout(300);
           echecsConsecutifs = 0;
         } catch (e) {
           log(`Echec de la reconnexion (${e.message}). Arret du lot.`);
