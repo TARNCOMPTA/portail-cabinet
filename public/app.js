@@ -27,6 +27,7 @@ $('#btn-theme').addEventListener('click', () => {
 
 // ---- Comptes cabinet ------------------------------------------------------
 let cabinetsCache = [];
+let remoteBrowser = false; // serveur en mode navigateur distant (captcha via noVNC)
 
 async function chargerCabinets() {
   cabinetsCache = await api('/api/cabinets');
@@ -97,6 +98,7 @@ $('#table-cabinets').addEventListener('click', async (e) => {
   const cab = cabinetsCache.find((c) => c.id === id);
   if (act === 'sync') {
     btn.disabled = true; btn.textContent = '↻ Sync…';
+    if (remoteBrowser) toast('Fenêtre impôts ouverte côté serveur : clique sur « 🖥️ Captcha » (en haut) pour saisir la captcha.', 'ok');
     try {
       const r = await api(`/api/cabinets/${id}/sync`, { method: 'POST' });
       let msg = `${r.total} client(s) : ${r.crees} ajouté(s), ${r.maj} mis à jour`;
@@ -617,9 +619,11 @@ if (formUser) formUser.addEventListener('submit', async (e) => {
 async function chargerConfig() {
   try {
     const c = await api('/api/config');
-    if (c.remoteBrowser) {
-      const b = $('#btn-voir-navigateur'); if (b) b.hidden = false;
-      const a = $('#aide-captcha'); if (a) a.hidden = false;
+    remoteBrowser = !!c.remoteBrowser;
+    if (remoteBrowser) {
+      for (const sel of ['#btn-voir-navigateur', '#aide-captcha', '#btn-captcha-global']) {
+        const el = $(sel); if (el) el.hidden = false;
+      }
     }
   } catch { /* ignore */ }
 }
