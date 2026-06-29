@@ -92,7 +92,28 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
   ]);
   await page.waitForURL(/tdbec\.urssaf\.fr/, { timeout: navTimeout }).catch(() => {});
   if (!/tdbec\.urssaf\.fr/.test(page.url())) {
-    const e = new Error('Connexion cabinet refusee (identifiants cabinet ?)'); e.kind = 'mdp'; throw e;
+    // Diagnostic : message d'erreur affiche par URSSAF + capture d'ecran (l'echec
+    // de connexion ne laissait aucune trace visuelle jusqu'ici).
+    let urssafErr = '';
+    try {
+      urssafErr = await page.evaluate(() => {
+        const sels = ['.error', '.alert', '[class*="erreur"]', '[class*="error"]', '.notification', '[role="alert"]'];
+        for (const s of sels) { for (const e of document.querySelectorAll(s)) { const t = (e.innerText || '').trim(); if (t) return t; } }
+        return '';
+      });
+    } catch { /* ignore */ }
+    let shot = '';
+    try {
+      const dbg = resolve(DOWNLOADS_DIR, '_debug');
+      mkdirSync(dbg, { recursive: true });
+      shot = resolve(dbg, `login_${Date.now()}.png`);
+      await page.screenshot({ path: shot, fullPage: true });
+    } catch { /* ignore */ }
+    log(`Echec de connexion sur ${page.url()}`);
+    if (urssafErr) log(`URSSAF affiche : ${urssafErr.replace(/\s+/g, ' ').slice(0, 300)}`);
+    if (shot) log(`Capture de la page de connexion : ${shot}`);
+    const e = new Error('Connexion cabinet refusee (identifiants cabinet ?)' + (urssafErr ? ` — URSSAF: ${urssafErr.replace(/\s+/g, ' ').slice(0, 160)}` : ''));
+    e.kind = 'mdp'; throw e;
   }
   await page.waitForLoadState('networkidle').catch(() => {});
   // On attend que le champ de recherche soit pret (au lieu d'un delai fixe).
