@@ -533,7 +533,27 @@ function activerOnglet(nom) {
   document.querySelectorAll('.tab-pane').forEach((p) => { p.hidden = p.id !== `tab-${nom}`; });
 }
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
-activerOnglet('clients');
+activerOnglet('dashboard');
+
+// ---- Tableau de bord (indicateurs) ----------------------------------------
+async function chargerDashboard() {
+  try {
+    const [clients, documents, runs, cabinets] = await Promise.all([
+      api('/api/clients').catch(() => []),
+      api('/api/documents').catch(() => []),
+      api('/api/runs').catch(() => []),
+      api('/api/cabinets').catch(() => []),
+    ]);
+    const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+    set('kpi-clients', clients.length);
+    set('kpi-documents', documents.length);
+    set('kpi-runs', runs.length);
+    set('kpi-comptes', cabinets.length);
+    const nav = document.getElementById('nav-docs-count'); if (nav) nav.textContent = documents.length || '';
+    const d = document.getElementById('dash-date');
+    if (d) d.textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  } catch { /* ignore */ }
+}
 
 // ---- Version (pied de page) -----------------------------------------------
 // La mise a jour est desormais installee AUTOMATIQUEMENT au demarrage du serveur
@@ -547,6 +567,8 @@ let moi = null;
 async function chargerMoi() {
   try { const r = await api('/api/me'); moi = r.user; } catch { return; }
   $('#user-email').textContent = moi.email;
+  const av = $('#user-avatar');
+  if (av) av.textContent = (moi.email || '?').replace(/@.*/, '').slice(0, 2).toUpperCase();
   $('#user-chip').hidden = false;
   if (moi.role === 'admin') { $('#panel-users').hidden = false; chargerUsers(); }
 }
@@ -632,6 +654,7 @@ async function rafraichir() { await chargerCabinets(); await Promise.all([charge
 chargerMoi();
 chargerConfig();
 rafraichir();
+chargerDashboard();
 chargerReglages();
 suivreEtat();
 afficherVersion();
