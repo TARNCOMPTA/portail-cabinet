@@ -157,7 +157,7 @@ export async function scrapeClient(client, opts = {}) {
     const vus = new Set();
     for (let p = 0; p < 30; p++) {
       const lot = await extraireDocuments(page);
-      for (const d of lot) { const cle = d.fileName || `${d.date}|${d.nom}`; if (!vus.has(cle)) { vus.add(cle); tous.push(d); } }
+      for (const d of lot) { const cle = d.fileName || d.downloadHref || `${d.date}|${d.nom}`; if (!vus.has(cle)) { vus.add(cle); tous.push(d); } }
       const suivant = page.locator('a[aria-label="Next"], a:has-text("›"), li:not(.disabled) > a[rel="next"]').first();
       if (await suivant.isVisible().catch(() => false)) {
         const avant = page.url() + (await page.locator('table').first().innerText().catch(() => ''));
@@ -176,10 +176,20 @@ export async function scrapeClient(client, opts = {}) {
     } else {
       const motDoc = tousDocuments ? 'document(s)' : 'appel(s) de cotisations';
       log(`${cibles.length} ${motDoc} detecte(s).`);
+      const utilises = new Set();
       for (const d of cibles) {
         if (!d.downloadHref) continue;
-        const base = `${dateIso(d.date)}_${sanitize(d.nom || 'document')}`;
-        const dest = resolve(clientDir, `${base}.pdf`);
+        // Nom : prefere le vrai nom de fichier du document (unique) ; sinon date + libelle.
+        const nomDoc = d.fileName ? d.fileName.replace(/\.[a-z0-9]+$/i, '') : (d.nom || 'document');
+        const baseNom = `${dateIso(d.date)}_${sanitize(nomDoc)}`;
+        let dest = resolve(clientDir, `${baseNom}.pdf`);
+        // Collision dans CE run (2 documents distincts -> meme nom) : on suffixe (2), (3)...
+        if (utilises.has(dest.toLowerCase())) {
+          let i = 2;
+          do { dest = resolve(clientDir, `${baseNom} (${i++}).pdf`); } while (utilises.has(dest.toLowerCase()) && i < 100);
+        }
+        utilises.add(dest.toLowerCase());
+        // Deja telecharge lors d'un run precedent (fichier present sur le disque).
         if (existsSync(dest) && statSync(dest).size > 100) {
           addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date) });
           dejaPresents++;
@@ -193,7 +203,7 @@ export async function scrapeClient(client, opts = {}) {
           writeFileSync(dest, buf);
           addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date) });
           docsRecuperes.push({ libelle: d.nom, fichier: dest });
-          log(`OK : ${base}.pdf (${Math.round(buf.length / 1024)} Ko)`);
+          log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
         } catch (e) { log(`Echec "${d.nom}" (${d.date}) : ${e.message}`); }
       }
     }
