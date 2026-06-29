@@ -256,27 +256,7 @@
           </div>
         </div>
 
-        <section class="panel" id="panel-urssaf-cabinets">
-          <h2>Comptes URSSAF (tiers déclarant)</h2>
-          <p class="aide">Renseigne l'identifiant (e-mail) et le mot de passe du compte tiers déclarant. ⚠️ L'URSSAF <strong>bloque un compte après plusieurs mots de passe erronés</strong> — vérifie bien les identifiants. Pas de captcha : la récupération est automatique.</p>
-          <table id="table-urssaf-cabinets">
-            <thead><tr><th>Libellé</th><th>Identifiant</th><th>Clients</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide-cab" id="u-cab-vide" hidden>Aucun compte URSSAF. Ajoutes-en un ci-dessous.</p>
-          <form id="form-urssaf-cabinet" class="sous-form">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Libellé (optionnel)<input name="libelle" placeholder="ex : Cabinet principal" /></label>
-              <label>Identifiant (e-mail)<input name="login" placeholder="ex : contact@cabinet.fr" /></label>
-              <label>Mot de passe<input name="password" type="password" placeholder="mot de passe du compte tiers déclarant" /></label>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="ucab-submit">Ajouter le compte</button>
-              <button type="button" class="btn" id="ucab-cancel" hidden>Annuler</button>
-            </div>
-          </form>
-        </section>
+        <p class="aide">Le <strong>compte URSSAF</strong> (identifiants tiers déclarant) et la <strong>synchronisation</strong> du portefeuille se gèrent dans <strong>Paramètres ▸ Comptes URSSAF</strong>.</p>
 
         <section class="panel flush">
           <div class="panel-head"><h2>Clients URSSAF <span id="u-compte" class="compteur"></span></h2></div>
@@ -435,10 +415,19 @@
         <div class="page-head">
           <div>
             <h1>Paramètres</h1>
-            <p>Comptes espace pro, dossier d'enregistrement, compte et collaborateurs.</p>
+            <p>Identifiants des sources, équipe, dossier d'enregistrement et compte.</p>
           </div>
         </div>
 
+        <nav class="subtabs">
+          <button type="button" class="subtab-btn active" data-subtab="impots"><i class="ph ph-bank"></i> Comptes Impôts</button>
+          <button type="button" class="subtab-btn" data-subtab="urssaf"><i class="ph ph-buildings"></i> Comptes URSSAF</button>
+          <button type="button" class="subtab-btn" data-subtab="users" id="subtab-btn-users" hidden><i class="ph ph-users-three"></i> Collaborateurs</button>
+          <button type="button" class="subtab-btn" data-subtab="dossier"><i class="ph ph-folder"></i> Dossier</button>
+          <button type="button" class="subtab-btn" data-subtab="moncompte"><i class="ph ph-user"></i> Mon compte</button>
+        </nav>
+
+        <div class="subtab-pane" id="sp-impots">
         <section class="panel" id="panel-cabinets">
           <h2>Comptes espace pro impôts</h2>
           <p class="aide">
@@ -473,7 +462,33 @@
             </div>
           </form>
         </section>
+        </div>
 
+        <div class="subtab-pane" id="sp-urssaf" hidden>
+        <section class="panel" id="panel-urssaf-cabinets">
+          <h2>Comptes URSSAF (tiers déclarant)</h2>
+          <p class="aide">Renseigne l'identifiant (e-mail) et le mot de passe du compte tiers déclarant. ⚠️ L'URSSAF <strong>bloque un compte après plusieurs mots de passe erronés</strong> — vérifie bien les identifiants. Pas de captcha : la récupération est automatique. Le « ↻ Synchroniser » importe tout le portefeuille du compte.</p>
+          <table id="table-urssaf-cabinets">
+            <thead><tr><th>Libellé</th><th>Identifiant</th><th>Clients</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="vide-cab" id="u-cab-vide" hidden>Aucun compte URSSAF. Ajoutes-en un ci-dessous.</p>
+          <form id="form-urssaf-cabinet" class="sous-form">
+            <input type="hidden" name="id" />
+            <div class="form-grid">
+              <label>Libellé (optionnel)<input name="libelle" placeholder="ex : Cabinet principal" /></label>
+              <label>Identifiant (e-mail)<input name="login" placeholder="ex : contact@cabinet.fr" /></label>
+              <label>Mot de passe<input name="password" type="password" placeholder="mot de passe du compte tiers déclarant" /></label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn primary" id="ucab-submit">Ajouter le compte</button>
+              <button type="button" class="btn" id="ucab-cancel" hidden>Annuler</button>
+            </div>
+          </form>
+        </section>
+        </div>
+
+        <div class="subtab-pane" id="sp-dossier" hidden>
         <section class="panel">
           <h2>Dossier d'enregistrement</h2>
           <p class="aide">Où ranger les avis (CFE, taxe foncière). Un sous-dossier par client y est créé. Vide = dossier interne.</p>
@@ -483,7 +498,9 @@
             <button type="button" class="btn primary" id="save-global">Enregistrer</button>
           </div>
         </section>
+        </div>
 
+        <div class="subtab-pane" id="sp-moncompte" hidden>
         <section class="panel" id="panel-moncompte">
           <h2>Mon compte</h2>
           <form id="form-moncompte" class="sous-form" style="margin-top:0;border-top:none;padding-top:0;">
@@ -497,7 +514,10 @@
             </div>
           </form>
         </section>
+        <p class="aide" style="text-align:right;">Version <span id="pied-version">v1.0.0</span></p>
+        </div>
 
+        <div class="subtab-pane" id="sp-users" hidden>
         <section class="panel" id="panel-users" hidden>
           <h2>Collaborateurs <span class="compteur">admin</span></h2>
           <p class="aide">Gère les accès de l'équipe. Chaque collaborateur se connecte avec son e-mail et son mot de passe.</p>
@@ -525,8 +545,7 @@
             </div>
           </form>
         </section>
-
-        <p class="aide" style="text-align:right;">Version <span id="pied-version">v1.0.0</span></p>
+        </div>
       </div>
 
     </div>

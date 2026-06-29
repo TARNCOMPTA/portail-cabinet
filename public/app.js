@@ -547,6 +547,13 @@ function activerOnglet(nom) {
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
 activerOnglet('dashboard');
 
+// Sous-onglets (page Paramètres)
+function activerSousOnglet(nom) {
+  document.querySelectorAll('.subtab-btn').forEach((b) => b.classList.toggle('active', b.dataset.subtab === nom));
+  document.querySelectorAll('.subtab-pane').forEach((p) => { p.hidden = p.id !== `sp-${nom}`; });
+}
+document.querySelectorAll('.subtab-btn').forEach((b) => b.addEventListener('click', () => activerSousOnglet(b.dataset.subtab)));
+
 // ---- Tableau de bord (indicateurs) ----------------------------------------
 async function chargerDashboard() {
   try {
@@ -591,7 +598,7 @@ async function chargerMoi() {
   const av = $('#user-avatar');
   if (av) av.textContent = (moi.email || '?').replace(/@.*/, '').slice(0, 2).toUpperCase();
   $('#user-chip').hidden = false;
-  if (moi.role === 'admin') { $('#panel-users').hidden = false; chargerUsers(); }
+  if (moi.role === 'admin') { $('#panel-users').hidden = false; const sb = $('#subtab-btn-users'); if (sb) sb.hidden = false; chargerUsers(); }
 }
 $('#btn-logout').addEventListener('click', async () => {
   try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
