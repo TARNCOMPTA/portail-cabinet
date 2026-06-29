@@ -34,7 +34,7 @@
 
       <div class="nav-group">Sources de récupération</div>
       <div class="nav-item"><i class="ph-fill ph-bank"></i> Impôts — CFE / TF <span class="nav-tag dot" title="Source active"></span></div>
-      <div class="nav-item disabled"><i class="ph ph-heartbeat"></i> CARPIMKO <span class="nav-tag soon">Bientôt</span></div>
+      <button type="button" class="tab-btn nav-item" data-tab="carpimko"><i class="ph ph-heartbeat"></i> CARPIMKO <span class="nav-tag count" id="nav-carpimko-count"></span></button>
       <div class="nav-item disabled"><i class="ph ph-stethoscope"></i> CARMF <span class="nav-tag soon">Bientôt</span></div>
     </nav>
 
@@ -137,13 +137,13 @@
               <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">Impôts — CFE / IFER & taxe foncière</div>
               <div class="kpi-label">cfspro.impots.gouv.fr · connexion manuelle (captcha)</div>
             </div>
-            <div class="kpi">
+            <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor:pointer;" data-goto="carpimko">
               <div class="kpi-top">
-                <div class="kpi-ico tone-neutral"><i class="ph ph-heartbeat"></i></div>
-                <span class="kpi-sub tone-neutral">Bientôt</span>
+                <div class="kpi-ico tone-accent"><i class="ph-fill ph-heartbeat"></i></div>
+                <span class="kpi-sub tone-success">Actif</span>
               </div>
               <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">CARPIMKO</div>
-              <div class="kpi-label">Retraite des auxiliaires médicaux</div>
+              <div class="kpi-label">Retraite des auxiliaires médicaux · appels de cotisations</div>
             </div>
             <div class="kpi">
               <div class="kpi-top">
@@ -228,6 +228,88 @@
           <div class="panel-head"><h2>Historique des récupérations</h2></div>
           <div class="pagination" id="runs-pagination"></div>
           <table id="table-runs">
+            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+      </div>
+
+      <!-- ===================== CARPIMKO ===================== -->
+      <div class="tab-pane" id="tab-carpimko" hidden>
+        <div class="page-head">
+          <div>
+            <h1>CARPIMKO</h1>
+            <p>Récupération des appels de cotisations (espace adhérent — un identifiant par client).</p>
+          </div>
+          <div class="row-actions">
+            <label class="page-size" title="Récupérer aussi les attestations et autres documents, pas seulement les appels de cotisations">
+              <input type="checkbox" id="cp-tous-docs" style="width:16px;height:16px;accent-color:var(--accent);" /> Tous les documents
+            </label>
+            <button type="button" class="btn danger" id="cp-stop" hidden>■ Arrêter</button>
+            <button type="button" class="btn primary" id="cp-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
+          </div>
+        </div>
+
+        <p class="aide" style="background:var(--warn-bg);color:var(--warn);padding:10px 14px;border-radius:var(--radius-sm);">
+          ⚠️ CARPIMKO <strong>verrouille un compte après plusieurs mots de passe erronés</strong>. Les clients dont la
+          dernière connexion a échoué pour mot de passe sont marqués <strong>🔒</strong> et ignorés par « Tout récupérer ».
+          Le verrou se lève dès que tu corriges le client (Modifier).
+        </p>
+
+        <section class="panel">
+          <h2 id="cp-form-titre">Ajouter un client CARPIMKO</h2>
+          <form id="form-carpimko">
+            <input type="hidden" name="id" />
+            <div class="form-grid">
+              <label>Nom du client
+                <input name="nom" required placeholder="Ex : DUPONT Marie" />
+              </label>
+              <label>Numéro de dossier (7 chiffres)
+                <input name="login" required placeholder="Ex : 1234567" inputmode="numeric" />
+              </label>
+              <label>Mot de passe
+                <input name="password" type="password" placeholder="mot de passe espace CARPIMKO" />
+              </label>
+              <label>Notes (optionnel)
+                <input name="notes" placeholder="ex : kiné, Albi" />
+              </label>
+              <label class="full">Dossier d'enregistrement de ce client (optionnel)
+                <span class="champ-dossier">
+                  <input name="dossier" placeholder="Vide = dossier interne (downloads/carpimko)" />
+                </span>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn primary" id="cp-submit">Enregistrer</button>
+              <button type="button" class="btn" id="cp-cancel" hidden>Annuler</button>
+            </div>
+          </form>
+          <details class="sous-form">
+            <summary style="cursor:pointer;font-weight:600;color:var(--ink-soft);">Import en masse (CSV / copier-coller Excel)</summary>
+            <p class="aide" style="margin-top:12px;">Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>numéro de dossier</strong>, <strong>mot de passe</strong>, notes. Avec en-tête de préférence ; sinon ordre : nom, n° dossier, mot de passe, notes.</p>
+            <textarea id="cp-import-texte" rows="6" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--mono);font-size:12.5px;background:var(--bg);color:var(--ink);" placeholder="nom;numéro de dossier;mot de passe;notes&#10;DUPONT Marie;1234567;motdepasse;kiné"></textarea>
+            <div class="form-actions">
+              <button type="button" class="btn primary" id="cp-import-btn">Importer</button>
+              <span class="aide" id="cp-import-bilan" style="margin:0;"></span>
+            </div>
+          </details>
+        </section>
+
+        <section class="panel flush">
+          <div class="panel-head"><h2>Clients CARPIMKO <span id="cp-compte" class="compteur"></span></h2></div>
+          <div class="toolbar" style="padding:0 22px;">
+            <input type="search" id="cp-recherche" placeholder="🔍 Rechercher (nom, n° dossier, notes)…" />
+          </div>
+          <table id="table-carpimko-clients">
+            <thead><tr><th>Nom</th><th>N° dossier</th><th>Notes</th><th>Docs</th><th>Dernier run</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="vide" id="cp-vide" style="padding:0 22px 16px;" hidden>Aucun client CARPIMKO. Ajoute-en un ci-dessus ou importe une liste.</p>
+        </section>
+
+        <section class="panel flush">
+          <div class="panel-head"><h2>Historique des récupérations</h2></div>
+          <table id="table-carpimko-runs">
             <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
             <tbody></tbody>
           </table>
@@ -369,5 +451,6 @@
 
   <div id="toast"></div>
   <script src="app.js"></script>
+  <script src="carpimko.js"></script>
 </body>
 </html>

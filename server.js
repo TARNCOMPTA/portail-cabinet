@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
-import { dirname, resolve } from 'node:path';
+import { dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -12,6 +12,8 @@ import {
   setUserActif, setUserRole, deleteUser, deleteUserSessions, purgerSessionsExpirees,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
+import * as carpimko from './src/carpimko-db.js';
+import { scrapeClient as scrapeClientCarpimko } from './src/scraper-carpimko.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
 import { installAuthRoutes, requireAuth, requireAdmin, hashPassword } from './src/auth.js';
 
@@ -299,6 +301,120 @@ app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets:
 app.get('/api/progress', (req, res) => res.json(progression));
 // Indique a l'interface si la vue navigateur a distance (noVNC) est disponible (serveur).
 app.get('/api/config', (req, res) => res.json({ remoteBrowser: !!process.env.REMOTE_BROWSER }));
+
+// ===========================================================================
+//  SOURCE CARPIMKO (module autonome : base carpimko.db, connexion par client)
+//  Reutilise le suivi de progression + le panneau noVNC partages (une seule
+//  recuperation a la fois sur l'ensemble du portail).
+// ===========================================================================
+app.get('/api/carpimko/clients', (req, res) => res.json(carpimko.listClients()));
+
+app.post('/api/carpimko/clients', (req, res) => {
+  const { nom, login, password, notes, dossier } = req.body || {};
+  if (!nom || !login || !password) return res.status(400).json({ error: 'Nom, numéro de dossier et mot de passe sont requis.' });
+  if (carpimko.getClientByLogin(login)) return res.status(409).json({ error: 'Un client avec ce numéro de dossier existe déjà.' });
+  res.status(201).json(carpimko.createClient({ nom, login, password, notes, dossier }));
+});
+
+app.post('/api/carpimko/clients/import', (req, res) => {
+  const clients = req.body?.clients;
+  if (!Array.isArray(clients) || clients.length === 0) return res.status(400).json({ error: 'Aucune ligne à importer.' });
+  if (clients.length > 5000) return res.status(400).json({ error: 'Trop de lignes (max 5000).' });
+  res.json(carpimko.importClients(clients));
+});
+
+app.put('/api/carpimko/clients/:id', (req, res) => {
+  const c = carpimko.updateClient(Number(req.params.id), req.body || {});
+  if (!c) return res.status(404).json({ error: 'Client introuvable.' });
+  res.json(c);
+});
+
+app.delete('/api/carpimko/clients/:id', (req, res) => { carpimko.deleteClient(Number(req.params.id)); res.json({ ok: true }); });
+
+app.get('/api/carpimko/clients/:id/documents', (req, res) => {
+  if (!carpimko.getClient(Number(req.params.id))) return res.status(404).json({ error: 'Client introuvable.' });
+  res.json(carpimko.listDocuments(Number(req.params.id)));
+});
+
+app.get('/api/carpimko/documents', (req, res) => res.json(carpimko.listAllDocuments()));
+
+app.get('/api/carpimko/documents/:id/file', (req, res) => {
+  const doc = carpimko.listAllDocuments().find((d) => d.id === Number(req.params.id));
+  if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
+  res.download(doc.fichier, basename(doc.fichier));
+});
+
+app.get('/api/carpimko/runs', (req, res) => res.json(carpimko.listRuns(300)));
+
+async function lancerCarpimko(clientId, res, opts = {}) {
+  const creds = carpimko.getClientCredentials(clientId);
+  if (!creds) return res?.status(404).json({ error: 'Client introuvable.' });
+  const key = 'carpimko:' + clientId;
+  if (enCours.has(key)) return res?.status(409).json({ error: 'Une récupération est déjà en cours pour ce client.' });
+  enCours.add(key);
+  res?.json({ started: true, client: creds.nom });
+  const suiviLocal = !progression.actif;
+  if (suiviLocal) demarrerSuivi(1);
+  progression.courant = creds.nom;
+  try {
+    const r = await scrapeClientCarpimko(creds, { ...opts, onLog: progLog });
+    if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+  } catch (e) {
+    progLog(`ERREUR : ${e.message}`);
+    if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: false, message: e.message, nb_docs: 0 });
+  } finally {
+    enCours.delete(key);
+    if (suiviLocal) { progression.fait = 1; terminerSuivi(); }
+  }
+}
+
+app.post('/api/carpimko/clients/:id/scrape', (req, res) => {
+  const id = Number(req.params.id);
+  const verrou = carpimko.clientVerrouille(id);
+  if (verrou.verrouille && !req.body?.force) {
+    return res.status(423).json({ error: 'verrou_mdp', message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige le mot de passe du client, ou force la tentative en connaissance de cause.', detail: verrou.message });
+  }
+  lancerCarpimko(id, res, { tousDocuments: !!req.body?.tousDocuments });
+});
+
+app.post('/api/carpimko/scrape-all', async (req, res) => {
+  if (enCours.has('carpimko:all')) return res.status(409).json({ error: 'Une récupération CARPIMKO globale est déjà en cours.' });
+  const tousDocuments = !!req.body?.tousDocuments;
+  const clients = carpimko.listClients();
+  const aTraiter = clients.filter((c) => !c.verrouille);
+  const ignores = clients.filter((c) => c.verrouille).map((c) => c.nom);
+  enCours.add('carpimko:all');
+  stopAll = false;
+  demarrerSuivi(aTraiter.length);
+  res.json({ started: true, total: aTraiter.length, ignores });
+  if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
+  try {
+    for (const c of aTraiter) {
+      if (stopAll) { progLog('Arrêt demandé.'); break; }
+      const key = 'carpimko:' + c.id;
+      if (enCours.has(key)) { progression.fait++; continue; }
+      enCours.add(key);
+      progression.courant = c.nom;
+      try {
+        const creds = carpimko.getClientCredentials(c.id);
+        if (creds) {
+          const r = await scrapeClientCarpimko(creds, { tousDocuments, onLog: progLog });
+          progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+        }
+      } catch (e) {
+        progLog(`[${c.nom}] ERREUR : ${e.message}`);
+        progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 });
+      } finally {
+        enCours.delete(key);
+        progression.fait++;
+      }
+    }
+  } finally {
+    enCours.delete('carpimko:all');
+    terminerSuivi();
+    progLog('Récupération CARPIMKO terminée.');
+  }
+});
 
 const PORT = Number(process.env.PORT || 3003);
 
