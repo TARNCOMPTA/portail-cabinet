@@ -99,7 +99,7 @@ async function passerActualites(page, log) {
 // un rafraichissement la debloque (constate manuellement).
 async function attendreTableauBord(page, log) {
   for (let essai = 0; essai < 4; essai++) {
-    const champ = page.locator('#recherche, input.input-search').first();
+    const champ = page.locator('#search, input[placeholder="Rechercher"], input.input-search').first();
     if (await champ.waitFor({ state: 'visible', timeout: 12000 }).then(() => true).catch(() => false)) return true;
     log?.(`Tableau de bord pas encore pret — rafraichissement (essai ${essai + 1}/4)...`);
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -107,7 +107,7 @@ async function attendreTableauBord(page, log) {
     await passerActualites(page, log);
     await page.waitForLoadState('networkidle').catch(() => {});
   }
-  return await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
+  return await page.locator('#search, input[placeholder="Rechercher"], input.input-search').first().isVisible().catch(() => false);
 }
 
 // Connexion au compte cabinet (tiers mandate) -> portail mon.urssaf.fr / tableau de bord.
@@ -166,7 +166,7 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
   // bord tiers declarant (champ de recherche present), quel que soit le domaine.
   await passerActualites(page, log);
   await fermerCookies(page);
-  let pret = await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
+  let pret = await page.locator('#search, input[placeholder="Rechercher"], input.input-search').first().isVisible().catch(() => false);
   if (!pret) {
     // Acces au tableau de bord tiers declarant. On PRIVILEGIE le lien « Tableau de
     // bord » du portail mon.urssaf.fr (qui etablit la session SSO vers tdbec) ; la
@@ -276,7 +276,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
   try {
     // 1. Recherche (par identifiant, repli sur le nom)
     async function rechercher(terme) {
-      const champ = page.locator('#recherche, input.input-search').first();
+      const champ = page.locator('#search, input[placeholder="Rechercher"], input.input-search').first();
       await champ.fill('');
       await champ.fill(terme);
       await page.locator('button:has-text("Rechercher")').first().click().catch(() => {});
@@ -494,7 +494,7 @@ async function retourTableauBord(context, page, navTimeout) {
 // (sans quoi toutes les recherches suivantes echouent en « Aucun client trouve »).
 async function sessionVivante(page) {
   if (!/tdbec\.urssaf\.fr/.test(page.url())) return false;
-  const champ = page.locator('#recherche, input.input-search').first();
+  const champ = page.locator('#search, input[placeholder="Rechercher"], input.input-search').first();
   return await champ.isVisible().catch(() => false);
 }
 
