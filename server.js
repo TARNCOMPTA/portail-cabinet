@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync, statSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import {
   listClients, getClient, createClient, updateClient, deleteClient, getClientBySiret,
@@ -303,6 +303,46 @@ app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets:
 app.get('/api/progress', (req, res) => res.json(progression));
 // Indique a l'interface si la vue navigateur a distance (noVNC) est disponible (serveur).
 app.get('/api/config', (req, res) => res.json({ remoteBrowser: !!process.env.REMOTE_BROWSER }));
+
+// ---- Captures de debug (diagnostic scraping) ------------------------------
+// Sert la capture .png la plus recente d'une source, pour la consulter dans le
+// navigateur sans scp. ?source=carpimko|urssaf|impots ; ?list=1 pour la liste.
+const DEBUG_DIRS = {
+  carpimko: resolve(__dirname, 'downloads', 'carpimko'),
+  urssaf: resolve(__dirname, 'downloads', 'urssaf'),
+  impots: resolve(__dirname, 'downloads'),
+};
+function listerCaptures(base) {
+  const out = [];
+  const walk = (d) => {
+    let entrees = [];
+    try { entrees = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    for (const e of entrees) {
+      const p = resolve(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (/\.png$/i.test(e.name)) { try { out.push({ path: p, mtime: statSync(p).mtimeMs }); } catch { /* ignore */ } }
+    }
+  };
+  walk(base);
+  return out.sort((a, b) => b.mtime - a.mtime);
+}
+app.get('/api/debug/captures', (req, res) => {
+  const base = DEBUG_DIRS[String(req.query.source || '').toLowerCase()] || DEBUG_DIRS.carpimko;
+  res.json(listerCaptures(base).slice(0, 50).map((c) => ({ fichier: c.path.split(/[\\/]/).pop(), date: new Date(c.mtime).toISOString(), path: c.path })));
+});
+app.get('/api/debug/last', (req, res) => {
+  const base = DEBUG_DIRS[String(req.query.source || '').toLowerCase()] || DEBUG_DIRS.carpimko;
+  const caps = listerCaptures(base);
+  if (!caps.length) return res.status(404).send('Aucune capture de debug pour cette source.');
+  res.sendFile(caps[0].path);
+});
+app.get('/api/debug/file', (req, res) => {
+  // Sert une capture par chemin, en verrouillant l'acces au dossier downloads/.
+  const p = resolve(String(req.query.path || ''));
+  const racine = resolve(__dirname, 'downloads');
+  if (!p.startsWith(racine) || !/\.png$/i.test(p) || !existsSync(p)) return res.status(404).end();
+  res.sendFile(p);
+});
 
 // ===========================================================================
 //  SOURCE CARPIMKO (module autonome : base carpimko.db, connexion par client)
