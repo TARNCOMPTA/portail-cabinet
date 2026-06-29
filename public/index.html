@@ -29,11 +29,10 @@
     <nav class="nav">
       <div class="nav-group">Pilotage</div>
       <button type="button" class="tab-btn nav-item" data-tab="dashboard"><i class="ph-fill ph-squares-four"></i> Tableau de bord</button>
-      <button type="button" class="tab-btn nav-item" data-tab="clients"><i class="ph ph-users"></i> Clients</button>
       <button type="button" class="tab-btn nav-item" data-tab="documents"><i class="ph ph-folders"></i> Documents <span class="nav-tag count" id="nav-docs-count"></span></button>
 
       <div class="nav-group">Sources de récupération</div>
-      <div class="nav-item"><i class="ph-fill ph-bank"></i> Impôts — CFE / TF <span class="nav-tag dot" title="Source active"></span></div>
+      <button type="button" class="tab-btn nav-item" data-tab="impots"><i class="ph-fill ph-bank"></i> Impôts — CFE / TF</button>
       <button type="button" class="tab-btn nav-item" data-tab="urssaf"><i class="ph ph-buildings"></i> URSSAF <span class="nav-tag count" id="nav-urssaf-count"></span></button>
       <button type="button" class="tab-btn nav-item" data-tab="carpimko"><i class="ph ph-heartbeat"></i> CARPIMKO <span class="nav-tag count" id="nav-carpimko-count"></span></button>
       <div class="nav-item disabled"><i class="ph ph-stethoscope"></i> CARMF <span class="nav-tag soon">Bientôt</span></div>
@@ -65,8 +64,6 @@
           <svg class="ico-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
         </button>
         <a id="btn-captcha-global" class="btn" href="/vnc/vnc_lite.html?path=vnc/websockify" target="_blank" rel="noopener" title="Ouvre le navigateur du serveur pour saisir la captcha (récupération OU synchronisation)" hidden><i class="ph ph-monitor"></i> Captcha</a>
-        <button id="btn-stop-all" class="btn danger" hidden>■ Arrêter</button>
-        <button id="btn-scrape-all" class="btn primary"><i class="ph ph-download-simple"></i> Tout récupérer</button>
       </div>
     </header>
 
@@ -130,12 +127,12 @@
         <section class="panel">
           <h2>Sources de récupération</h2>
           <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
-            <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border));">
+            <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor:pointer;" data-goto="impots">
               <div class="kpi-top">
                 <div class="kpi-ico tone-accent"><i class="ph-fill ph-bank"></i></div>
                 <span class="kpi-sub tone-success">Actif</span>
               </div>
-              <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">Impôts — CFE / IFER & taxe foncière</div>
+              <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">Impôts — CFE / IFER &amp; taxe foncière</div>
               <div class="kpi-label">cfspro.impots.gouv.fr · connexion manuelle (captcha)</div>
             </div>
             <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor:pointer;" data-goto="urssaf">
@@ -166,12 +163,16 @@
         </section>
       </div>
 
-      <!-- ===================== Clients ===================== -->
-      <div class="tab-pane" id="tab-clients" hidden>
+      <!-- ===================== Impôts ===================== -->
+      <div class="tab-pane" id="tab-impots" hidden>
         <div class="page-head">
           <div>
-            <h1>Clients</h1>
-            <p>Chaque client est identifié par son SIREN et rattaché à un compte espace pro.</p>
+            <h1>Impôts — CFE / IFER &amp; taxe foncière</h1>
+            <p>Clients (par SIREN) rattachés à un compte espace pro. Récupération des avis sur impots.gouv.fr.</p>
+          </div>
+          <div class="row-actions">
+            <button type="button" class="btn danger" id="btn-stop-all" hidden>■ Arrêter</button>
+            <button type="button" class="btn primary" id="btn-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
           </div>
         </div>
 
