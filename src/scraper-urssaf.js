@@ -169,6 +169,16 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
     try {
       const dbg = resolve(DOWNLOADS_DIR, '_debug');
       mkdirSync(dbg, { recursive: true });
+      // Diagnostic : champs/boutons visibles de la page (pour trouver le bon selecteur de recherche).
+      try {
+        const diag = await page.evaluate(() => ({
+          url: location.href,
+          inputs: [...document.querySelectorAll('input')].filter((e) => e.offsetParent).slice(0, 12).map((e) => ({ id: e.id, name: e.name, type: e.type, placeholder: e.placeholder, cls: e.className })),
+          boutons: [...document.querySelectorAll('button, a.btn')].filter((e) => e.offsetParent).slice(0, 12).map((e) => (e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 30)),
+        }));
+        writeFileSync(resolve(dbg, 'dashboard_diag.json'), JSON.stringify(diag, null, 2), 'utf8');
+        log(`Diag tableau de bord : ${JSON.stringify(diag).slice(0, 600)}`);
+      } catch (e) { log(`(diag tableau de bord : ${e.message})`); }
       const shot = resolve(dbg, `dashboard_${Date.now()}.png`);
       await page.screenshot({ path: shot, fullPage: true });
       log(`Tableau de bord introuvable (${page.url()}) — capture : ${shot}`);
