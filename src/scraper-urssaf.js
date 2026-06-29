@@ -306,18 +306,31 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     await lienMsg.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
     log('Acces au dossier client.');
 
-    // 3. Messagerie
+    // 3. Messagerie : s'ouvre dans un nouvel onglet via une redirection a token
+    // (RedirectionFromTeledep.action -> Rico.action). La reference du popup est parfois
+    // ephemere -> on retrouve l'onglet messagerie OUVERT parmi les onglets (sans recharger,
+    // ce qui casserait la page a token), avec protection contre les pages fermees.
     const popup2P = cli.waitForEvent('popup', { timeout: 12000 }).catch(() => null);
-    await lienMsg.click().catch(() => {});
-    await cli.waitForTimeout(400);
-    const msg = (await popup2P) || cli;
     log('Ouverture de la messagerie...');
-    await msg.waitForURL(/dcl\.urssaf\.fr\/messagerie|Rico\.action/, { timeout: navTimeout }).catch(() => {});
+    await lienMsg.click().catch(() => {});
+    let msg = (await popup2P) || cli;
     await msg.waitForLoadState('networkidle').catch(() => {});
-    await msg
-      .waitForFunction(() => document.querySelectorAll('[onclick*="apercuMsg"]').length > 0, null, { timeout: 30000 })
-      .catch(() => log('Avertissement : liste des messages non detectee (delai).'));
-    await msg.waitForTimeout(300);
+    await msg.waitForTimeout(3000).catch(() => {});
+    // Repli : si l'onglet est ferme ou n'est pas la messagerie, on la retrouve parmi les onglets.
+    if (msg.isClosed() || !/dcl\.urssaf\.fr\/messagerie|Rico\.action/.test(msg.url())) {
+      const alt = context.pages().find((p) => !p.isClosed() && /dcl\.urssaf\.fr\/messagerie|Rico\.action/.test(p.url()));
+      if (alt) { msg = alt; await msg.waitForLoadState('networkidle').catch(() => {}); await msg.waitForTimeout(1500).catch(() => {}); }
+    }
+    // On attend les messages (apercuMsg) OU les pieces jointes (showAttachement).
+    let pretMsg = await msg
+      .waitForFunction(() => document.querySelectorAll('[onclick*="apercuMsg"], a[href*="showAttachement"]').length > 0, null, { timeout: 20000 })
+      .then(() => true).catch(() => false);
+    if (!pretMsg) {
+      await msg.waitForTimeout(3000).catch(() => {});
+      pretMsg = await msg.evaluate(() => document.querySelectorAll('[onclick*="apercuMsg"], a[href*="showAttachement"]').length > 0).catch(() => false);
+    }
+    if (!pretMsg) log('Avertissement : liste des messages non detectee.');
+    await msg.waitForTimeout(500).catch(() => {});
 
     // 4. Tous les documents de la messagerie -> PDF.
     // Les liens de pieces jointes (showAttachement.action) sont DEJA presents
