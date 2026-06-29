@@ -481,13 +481,22 @@ const DOCS_PAR_PAGE = 50;
 function norm(s) { return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
 async function chargerDocuments() {
-  try { tousDocs = await api('/api/documents'); } catch { tousDocs = []; }
+  try {
+    const [imp, cp] = await Promise.all([
+      api('/api/documents').catch(() => []),
+      api('/api/carpimko/documents').catch(() => []),
+    ]);
+    tousDocs = [
+      ...imp.map((d) => ({ ...d, source: 'Impôts', _href: `/api/documents/file?path=${encodeURIComponent(d.fichier)}` })),
+      ...cp.map((d) => ({ ...d, source: 'CARPIMKO', _href: `/api/carpimko/documents/${d.id}/file` })),
+    ].sort((a, b) => String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+  } catch { tousDocs = []; }
   afficherPageDocs();
 }
 function docsAffiches() {
   if (!filtreDocs) return tousDocs;
   const q = norm(filtreDocs);
-  return tousDocs.filter((d) => norm(`${d.client_nom || ''} ${d.libelle || ''} ${d.fichier || ''} ${d.recupere_le || ''}`).includes(q));
+  return tousDocs.filter((d) => norm(`${d.client_nom || ''} ${d.libelle || ''} ${d.fichier || ''} ${d.recupere_le || ''} ${d.source || ''}`).includes(q));
 }
 function afficherPageDocs() {
   const liste = docsAffiches();
@@ -510,8 +519,9 @@ function afficherPageDocs() {
     tr.innerHTML = `
       <td>${d.recupere_le ? new Date(d.recupere_le + 'Z').toLocaleString('fr-FR') : '—'}</td>
       <td>${esc(d.client_nom || '—')}</td>
+      <td><span class="badge cab">${esc(d.source || '—')}</span></td>
       <td>${esc(lib)}</td>
-      <td><a class="btn small primary" href="/api/documents/file?path=${encodeURIComponent(d.fichier)}" target="_blank">Ouvrir</a></td>`;
+      <td><a class="btn small primary" href="${d._href}" target="_blank">Ouvrir</a></td>`;
     tbody.appendChild(tr);
   }
   const pag = $('#pagination-docs');
@@ -538,18 +548,23 @@ activerOnglet('dashboard');
 // ---- Tableau de bord (indicateurs) ----------------------------------------
 async function chargerDashboard() {
   try {
-    const [clients, documents, runs, cabinets] = await Promise.all([
+    const [clients, documents, runs, cabinets, cpClients, cpDocs, cpRuns] = await Promise.all([
       api('/api/clients').catch(() => []),
       api('/api/documents').catch(() => []),
       api('/api/runs').catch(() => []),
       api('/api/cabinets').catch(() => []),
+      api('/api/carpimko/clients').catch(() => []),
+      api('/api/carpimko/documents').catch(() => []),
+      api('/api/carpimko/runs').catch(() => []),
     ]);
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    set('kpi-clients', clients.length);
-    set('kpi-documents', documents.length);
-    set('kpi-runs', runs.length);
+    // Indicateurs agreges sur toutes les sources (Impots + CARPIMKO).
+    set('kpi-clients', clients.length + cpClients.length);
+    set('kpi-documents', documents.length + cpDocs.length);
+    set('kpi-runs', runs.length + cpRuns.length);
     set('kpi-comptes', cabinets.length);
-    const nav = document.getElementById('nav-docs-count'); if (nav) nav.textContent = documents.length || '';
+    const totalDocs = documents.length + cpDocs.length;
+    const nav = document.getElementById('nav-docs-count'); if (nav) nav.textContent = totalDocs || '';
     const d = document.getElementById('dash-date');
     if (d) d.textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   } catch { /* ignore */ }
@@ -661,4 +676,5 @@ afficherVersion();
 suivreProgression();
 setInterval(chargerRuns, 5000);
 setInterval(chargerDocuments, 8000);
+setInterval(chargerDashboard, 10000);
 setInterval(suivreProgression, 2000);
