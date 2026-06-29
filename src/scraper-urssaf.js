@@ -147,12 +147,21 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
   await fermerCookies(page);
   let pret = await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
   if (!pret) {
-    log('Ouverture du tableau de bord tiers declarant...');
-    await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    // Acces au tableau de bord tiers declarant. On PRIVILEGIE le lien « Tableau de
+    // bord » du portail mon.urssaf.fr (qui etablit la session SSO vers tdbec) ; la
+    // navigation directe vers tdbec peut tourner dans le vide (SSO non propage).
+    const lienTdb = page.locator('a:has-text("Tableau de bord"), a[href*="tdbec"]').first();
+    if (await lienTdb.isVisible().catch(() => false)) {
+      log('Ouverture du tableau de bord via le lien du portail...');
+      await Promise.all([page.waitForLoadState('domcontentloaded').catch(() => {}), lienTdb.click().catch(() => {})]);
+    } else {
+      log('Ouverture du tableau de bord tiers declarant (navigation directe)...');
+      await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    }
     await page.waitForLoadState('networkidle').catch(() => {});
     await fermerCookies(page);
     await passerActualites(page, log);
-    await page.waitForSelector('#recherche, input.input-search', { timeout: 20000 }).catch(() => {});
+    await page.waitForSelector('#recherche, input.input-search', { timeout: 30000 }).catch(() => {});
     pret = await page.locator('#recherche, input.input-search').first().isVisible().catch(() => false);
   }
   await page.waitForTimeout(600);
