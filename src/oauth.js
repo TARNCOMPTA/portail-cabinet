@@ -37,7 +37,10 @@ function ensureStatic(req) {
 
 // ---- Page de consentement (login portail) ---------------------------------
 function pageAutorisation(req, params, erreur = '') {
+  // On ne re-injecte JAMAIS email/password en champ cache (sinon doublon avec les
+  // champs visibles -> valeurs en tableau -> echec garanti des tentatives suivantes).
   const champs = Object.entries(params)
+    .filter(([k]) => k !== 'email' && k !== 'password')
     .map(([k, v]) => `<input type="hidden" name="${k}" value="${String(v ?? '').replace(/"/g, '&quot;')}">`).join('');
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
