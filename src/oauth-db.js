@@ -39,6 +39,12 @@ db.exec(`
     scope         TEXT,
     expires_at    INTEGER          -- epoch ms (jeton d'acces)
   );
+  CREATE TABLE IF NOT EXISTS download_tokens (
+    token      TEXT PRIMARY KEY,
+    path       TEXT,
+    filename   TEXT,
+    expires_at INTEGER             -- epoch ms (usage unique)
+  );
 `);
 
 const rnd = (n = 32) => crypto.randomBytes(n).toString('base64url');
@@ -98,9 +104,21 @@ export function getByAccess(token) { return db.prepare('SELECT * FROM tokens WHE
 export function getByRefresh(token) { return db.prepare('SELECT * FROM tokens WHERE refresh_token = ?').get(token) || null; }
 export function deleteByRefresh(token) { db.prepare('DELETE FROM tokens WHERE refresh_token = ?').run(token); }
 
+// ---- Jetons de telechargement (lien direct, usage unique) -----------------
+export function saveDl(o) {
+  db.prepare('INSERT INTO download_tokens (token, path, filename, expires_at) VALUES (?, ?, ?, ?)')
+    .run(o.token, o.path, o.filename, o.expires_at);
+}
+export function takeDl(token) { // recupere puis supprime (usage unique)
+  const r = db.prepare('SELECT * FROM download_tokens WHERE token = ?').get(token);
+  if (r) db.prepare('DELETE FROM download_tokens WHERE token = ?').run(token);
+  return r || null;
+}
+
 export function purge() {
   const now = Date.now();
   db.prepare('DELETE FROM codes WHERE expires_at < ?').run(now);
+  db.prepare('DELETE FROM download_tokens WHERE expires_at < ?').run(now);
   // jetons d'acces expires depuis > 60 j (on garde le refresh associe tant qu'il sert)
   db.prepare('DELETE FROM tokens WHERE expires_at < ?').run(now - 60 * 24 * 3600 * 1000);
 }

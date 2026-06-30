@@ -41,11 +41,12 @@ async function apiFetch(path, opts = {}, retry = true) {
 }
 
 const SOURCES = {
-  impots: { clients: '/api/clients', add: '/api/clients', scrape: (id) => `/api/clients/${id}/scrape`, cle: 'siret' },
-  urssaf: { clients: '/api/urssaf/clients', add: '/api/urssaf/clients', scrape: (id) => `/api/urssaf/clients/${id}/scrape`, cle: 'siret' },
-  carpimko: { clients: '/api/carpimko/clients', add: '/api/carpimko/clients', scrape: (id) => `/api/carpimko/clients/${id}/scrape`, cle: 'login' },
-  carmf: { clients: '/api/carmf/clients', add: '/api/carmf/clients', scrape: (id) => `/api/carmf/clients/${id}/scrape`, cle: 'login' },
+  impots: { clients: '/api/clients', add: '/api/clients', scrape: (id) => `/api/clients/${id}/scrape`, docs: (id) => `/api/clients/${id}/documents`, cle: 'siret' },
+  urssaf: { clients: '/api/urssaf/clients', add: '/api/urssaf/clients', scrape: (id) => `/api/urssaf/clients/${id}/scrape`, docs: (id) => `/api/urssaf/clients/${id}/documents`, cle: 'siret' },
+  carpimko: { clients: '/api/carpimko/clients', add: '/api/carpimko/clients', scrape: (id) => `/api/carpimko/clients/${id}/scrape`, docs: (id) => `/api/carpimko/clients/${id}/documents`, cle: 'login' },
+  carmf: { clients: '/api/carmf/clients', add: '/api/carmf/clients', scrape: (id) => `/api/carmf/clients/${id}/scrape`, docs: (id) => `/api/carmf/clients/${id}/documents`, cle: 'login' },
 };
+const nomFichier = (p) => (p || '').split(/[\\/]/).pop() || '';
 const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf']);
 const txt = (o) => ({ content: [{ type: 'text', text: typeof o === 'string' ? o : JSON.stringify(o, null, 2) }] });
 const erreur = (e) => ({ isError: true, content: [{ type: 'text', text: `Erreur : ${e.message}` }] });
@@ -93,6 +94,30 @@ server.tool(
     try {
       const r = await apiFetch(SOURCES[source].scrape(client_id), { method: 'POST', body: JSON.stringify({}) });
       return txt({ ok: true, message: 'Récupération lancée.', ...r });
+    } catch (e) { return erreur(e); }
+  },
+);
+
+server.tool(
+  'lister_documents',
+  "Liste les documents déjà récupérés d'un client (id, nom, date). L'id sert ensuite à telecharger_document.",
+  { source: SRC, client_id: z.number() },
+  async ({ source, client_id }) => {
+    try {
+      const ds = await apiFetch(SOURCES[source].docs(client_id));
+      return txt(ds.map((d) => ({ id: d.id, nom: d.libelle || nomFichier(d.fichier) || `document ${d.id}`, fichier: nomFichier(d.fichier), date: d.recupere_le || d.date || null })));
+    } catch (e) { return erreur(e); }
+  },
+);
+
+server.tool(
+  'telecharger_document',
+  "Génère un lien de téléchargement direct (usage unique, valable 10 min) pour un document, par son id et son organisme. Renvoie l'URL et le nom du fichier.",
+  { source: SRC, document_id: z.number() },
+  async ({ source, document_id }) => {
+    try {
+      const r = await apiFetch('/api/documents/lien', { method: 'POST', body: JSON.stringify({ source, document_id }) });
+      return txt({ ok: true, filename: r.filename, url: r.url, note: 'Lien valable 10 minutes, usage unique.' });
     } catch (e) { return erreur(e); }
   },
 );

@@ -47,6 +47,14 @@ installOAuth(app);
 installMcp(app, requireBearer);
 oauthDb.purge();
 
+// --- Telechargement direct d'un document via jeton a usage unique (PUBLIC, gate
+//     par le jeton genere cote authentifie ; 10 min, supprime apres usage). ---
+app.get('/dl/:token', (req, res) => {
+  const r = oauthDb.takeDl(String(req.params.token));
+  if (!r || r.expires_at < Date.now() || !existsSync(r.path)) return res.status(404).send('Lien invalide ou expiré.');
+  res.download(r.path, r.filename);
+});
+
 // --- Porte d'authentification : tout le reste exige une session valide ---
 purgerSessionsExpirees();
 app.use(requireAuth);
@@ -223,6 +231,23 @@ app.get('/api/documents/file', (req, res) => {
   const f = String(req.query.path || '');
   if (!f || !existsSync(f)) return res.status(404).end();
   res.sendFile(f);
+});
+
+// Genere un lien de telechargement direct (usage unique, 10 min) pour un document
+// d'une source donnee. Resolu cote serveur via l'id (pas de chemin arbitraire).
+app.post('/api/documents/lien', (req, res) => {
+  const sources = {
+    impots: listAllDocuments, carpimko: carpimko.listAllDocuments,
+    carmf: carmf.listAllDocuments, urssaf: urssafDb.listAllDocuments,
+  };
+  const fn = sources[String(req.body?.source || '')];
+  if (!fn) return res.status(400).json({ error: 'Source inconnue.' });
+  const doc = fn().find((d) => d.id === Number(req.body?.document_id));
+  if (!doc || !doc.fichier || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Document introuvable.' });
+  const token = oauthDb.rnd(24);
+  const filename = basename(doc.fichier);
+  oauthDb.saveDl({ token, path: doc.fichier, filename, expires_at: Date.now() + 10 * 60 * 1000 });
+  res.json({ url: `${baseUrl(req)}/dl/${token}`, filename });
 });
 
 // ---- Reglages -------------------------------------------------------------
