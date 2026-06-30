@@ -524,6 +524,7 @@
           <button type="button" class="subtab-btn" data-subtab="urssaf"><i class="ph ph-buildings"></i> Comptes URSSAF</button>
           <button type="button" class="subtab-btn" data-subtab="users" id="subtab-btn-users" hidden><i class="ph ph-users-three"></i> Collaborateurs</button>
           <button type="button" class="subtab-btn" data-subtab="dossier"><i class="ph ph-folder"></i> Dossier</button>
+          <button type="button" class="subtab-btn" data-subtab="planif"><i class="ph ph-clock"></i> Planification</button>
           <button type="button" class="subtab-btn" data-subtab="moncompte"><i class="ph ph-user"></i> Mon compte</button>
         </nav>
 
@@ -596,6 +597,21 @@
             <input id="dest-global" placeholder="Ex : D:\Clients\Impots" />
             <button type="button" class="btn" id="pick-global">Parcourir…</button>
             <button type="button" class="btn primary" id="save-global">Enregistrer</button>
+          </div>
+        </section>
+        </div>
+
+        <div class="subtab-pane" id="sp-planif" hidden>
+        <section class="panel">
+          <h2>Planification des récupérations automatiques</h2>
+          <p class="aide">Programme une récupération automatique par organisme : le <strong>serveur l'exécute tout seul</strong> (PC éteint ou non), au jour et à l'heure choisis (fuseau Europe/Paris). Les <strong>Impôts</strong> ne sont pas automatisables (captcha manuel à chaque session).</p>
+          <table id="table-planif">
+            <thead><tr><th>Organisme</th><th>Automatique</th><th>Jour</th><th>Heure</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="form-actions">
+            <button type="button" class="btn primary" id="planif-save">Enregistrer la planification</button>
+            <span class="aide" id="planif-info" style="margin:0;"></span>
           </div>
         </section>
         </div>

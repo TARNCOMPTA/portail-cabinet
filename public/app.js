@@ -717,8 +717,47 @@ activerOnglet('dashboard');
 function activerSousOnglet(nom) {
   document.querySelectorAll('.subtab-btn').forEach((b) => b.classList.toggle('active', b.dataset.subtab === nom));
   document.querySelectorAll('.subtab-pane').forEach((p) => { p.hidden = p.id !== `sp-${nom}`; });
+  if (nom === 'planif') chargerPlanifs();
 }
 document.querySelectorAll('.subtab-btn').forEach((b) => b.addEventListener('click', () => activerSousOnglet(b.dataset.subtab)));
+
+// ---- Planification des récupérations (Paramètres ▸ Planification) ----
+const PLANIF_LBL = { urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF' };
+const PLANIF_JOURS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
+const PLANIF_ORDRE = ['urssaf', 'carpimko', 'carmf'];
+async function chargerPlanifs() {
+  let pls = [];
+  try { pls = await api('/api/planifications'); } catch { return; }
+  const tb = $('#table-planif tbody');
+  if (!tb) return;
+  pls.sort((a, b) => PLANIF_ORDRE.indexOf(a.source) - PLANIF_ORDRE.indexOf(b.source));
+  tb.innerHTML = pls.map((p) => `
+    <tr data-source="${p.source}">
+      <td><strong>${PLANIF_LBL[p.source] || p.source}</strong></td>
+      <td><input type="checkbox" class="planif-actif" ${p.actif ? 'checked' : ''} style="width:16px;height:16px;accent-color:var(--accent);"></td>
+      <td><select class="planif-jour">${PLANIF_JOURS.slice(1).map((j, i) => `<option value="${i + 1}" ${p.jour === i + 1 ? 'selected' : ''}>${j}</option>`).join('')}</select></td>
+      <td><select class="planif-heure">${Array.from({ length: 24 }, (_, h) => `<option value="${h}" ${p.heure === h ? 'selected' : ''}>${String(h).padStart(2, '0')}h00</option>`).join('')}</select></td>
+    </tr>`).join('');
+}
+$('#planif-save')?.addEventListener('click', async () => {
+  const btn = $('#planif-save');
+  btn.disabled = true;
+  try {
+    for (const tr of document.querySelectorAll('#table-planif tbody tr')) {
+      await api(`/api/planifications/${tr.dataset.source}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          actif: tr.querySelector('.planif-actif').checked,
+          jour: Number(tr.querySelector('.planif-jour').value),
+          heure: Number(tr.querySelector('.planif-heure').value),
+        }),
+      });
+    }
+    toast('Planification enregistrée.', 'ok');
+    $('#planif-info').textContent = 'Enregistré — le serveur applique ces horaires (Europe/Paris).';
+  } catch (err) { toast(err.message, 'err'); }
+  finally { btn.disabled = false; }
+});
 
 // ---- Tableau de bord (indicateurs) ----------------------------------------
 async function chargerDashboard() {

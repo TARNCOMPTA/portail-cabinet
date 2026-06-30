@@ -19,6 +19,7 @@ import { scrapeClient as scrapeClientCarmf } from './src/scraper-carmf.js';
 import * as urssafDb from './src/urssaf-db.js';
 import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
 import * as fusions from './src/fusions-db.js';
+import * as planif from './src/planif-db.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
 import { installAuthRoutes, requireAuth, requireAdmin, hashPassword } from './src/auth.js';
 
@@ -314,6 +315,13 @@ app.post('/api/fusions', (req, res) => {
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 app.delete('/api/fusions/:id', (req, res) => { fusions.deleteFusion(Number(req.params.id)); res.json({ ok: true }); });
+
+// ---- Planification des recuperations automatiques (par organisme) ---------
+app.get('/api/planifications', (req, res) => res.json(planif.listPlanifs()));
+app.put('/api/planifications/:source', (req, res) => {
+  try { res.json(planif.setPlanif(req.params.source, req.body || {})); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
 
 // ---- Captures de debug (diagnostic scraping) ------------------------------
 // Sert la capture .png la plus recente d'une source, pour la consulter dans le
@@ -658,9 +666,10 @@ app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
   }
 });
 
-app.post('/api/urssaf/scrape-all', async (req, res) => {
-  if (!urssafDb.cabinetsConfigure()) return res.status(400).json({ error: 'Configure d\'abord au moins un compte URSSAF.' });
-  if (enCours.has('urssaf:all')) return res.status(409).json({ error: 'Une récupération URSSAF globale est déjà en cours.' });
+// Recuperation URSSAF de TOUS les clients (utilisee par la route ET la planification).
+function lancerUrssafTous() {
+  if (!urssafDb.cabinetsConfigure()) return { started: false, raison: 'compte' };
+  if (enCours.has('urssaf:all')) return { started: false };
   const clients = urssafDb.listClients();
   const parCabinet = new Map();
   for (const c of clients) { if (!c.cabinet_id) continue; if (!parCabinet.has(c.cabinet_id)) parCabinet.set(c.cabinet_id, []); parCabinet.get(c.cabinet_id).push(c); }
@@ -668,47 +677,61 @@ app.post('/api/urssaf/scrape-all', async (req, res) => {
   enCours.add('urssaf:all');
   stopAll = false;
   demarrerSuivi(total);
-  res.json({ started: true, total });
-  try {
-    for (const [cabinetId, sousClients] of parCabinet) {
-      if (stopAll) break;
-      const cab = urssafDb.getCabinetFull(cabinetId);
-      if (!cab) continue;
-      await scrapeAllUrssaf(sousClients, {
-        cabinet: cab, baseFolder: getSetting('destination_folder'), shouldStop: () => stopAll, onLog: progLog,
-        onClient: (nom) => { progression.courant = nom; },
-        onResult: (r) => { progression.resultats.push(r); progression.fait++; },
-      });
-    }
-  } finally { enCours.delete('urssaf:all'); terminerSuivi(); progLog('Récupération URSSAF terminée.'); }
+  (async () => {
+    try {
+      for (const [cabinetId, sousClients] of parCabinet) {
+        if (stopAll) break;
+        const cab = urssafDb.getCabinetFull(cabinetId);
+        if (!cab) continue;
+        await scrapeAllUrssaf(sousClients, {
+          cabinet: cab, baseFolder: getSetting('destination_folder'), shouldStop: () => stopAll, onLog: progLog,
+          onClient: (nom) => { progression.courant = nom; },
+          onResult: (r) => { progression.resultats.push(r); progression.fait++; },
+        });
+      }
+    } finally { enCours.delete('urssaf:all'); terminerSuivi(); progLog('Récupération URSSAF terminée.'); }
+  })();
+  return { started: true, total };
+}
+app.post('/api/urssaf/scrape-all', (req, res) => {
+  const r = lancerUrssafTous();
+  if (r.raison === 'compte') return res.status(400).json({ error: 'Configure d\'abord au moins un compte URSSAF.' });
+  if (!r.started) return res.status(409).json({ error: 'Une récupération URSSAF globale est déjà en cours.' });
+  res.json(r);
 });
 
-// ---- Planification hebdomadaire des recuperations (02:00, fuseau Europe/Paris) ----
-// Verifie chaque minute ; declenche une seule fois le jour voulu. Activee par env.
-function planifierHebdo(envVar, jourEn, label, lancer) {
-  if (!process.env[envVar]) return;
-  let dernier = '';
+// ---- Planificateur des recuperations automatiques (config en base, par organisme) ----
+// Tourne sur le serveur (active par une variable SCHEDULE*). Lit chaque minute la config
+// definie dans Parametres ▸ Planification (organisme actif, jour, heure ; fuseau Europe/Paris).
+if (process.env.SCHEDULE || process.env.SCHEDULE_CARPIMKO || process.env.SCHEDULE_CARMF || process.env.SCHEDULE_URSSAF) {
+  const LANCEURS = {
+    urssaf: () => lancerUrssafTous(),
+    carpimko: () => lancerCarpimkoTous(false),
+    carmf: () => lancerCarmfTous(),
+  };
+  const JOURS_EN = [null, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const dernier = {};
   setInterval(() => {
     try {
       const p = Object.fromEntries(
         new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'long', hour: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false })
           .formatToParts(new Date()).map((x) => [x.type, x.value]),
       );
-      if (p.weekday === jourEn && p.hour === '02') {
-        const jour = `${p.year}-${p.month}-${p.day}`;
-        if (dernier !== jour) {
-          dernier = jour; // une seule fois par jour
-          console.log(`\n  [planif] ${label} — ${jour}`);
-          progLog(`${label} (planifiée).`);
-          lancer();
+      const jourCle = `${p.year}-${p.month}-${p.day}`;
+      const heure = Number(p.hour);
+      for (const pl of planif.listPlanifs()) {
+        if (!pl.actif || !LANCEURS[pl.source]) continue;
+        if (JOURS_EN[pl.jour] === p.weekday && heure === pl.heure && dernier[pl.source] !== jourCle) {
+          dernier[pl.source] = jourCle; // une seule fois par jour
+          console.log(`\n  [planif] Récupération ${pl.source.toUpperCase()} automatique — ${jourCle}`);
+          progLog(`Récupération ${pl.source.toUpperCase()} automatique (planifiée).`);
+          LANCEURS[pl.source]();
         }
       }
     } catch (e) { console.warn('[planif] ' + e.message); }
   }, 60000);
-  console.log(`  Planification active : ${label} (Europe/Paris).`);
+  console.log('  Planificateur actif (config : Paramètres ▸ Planification).');
 }
-planifierHebdo('SCHEDULE_CARPIMKO', 'Tuesday', 'Récupération CARPIMKO automatique (mardi 02h)', () => lancerCarpimkoTous(false));
-planifierHebdo('SCHEDULE_CARMF', 'Wednesday', 'Récupération CARMF automatique (mercredi 02h)', () => lancerCarmfTous());
 
 const PORT = Number(process.env.PORT || 3003);
 
