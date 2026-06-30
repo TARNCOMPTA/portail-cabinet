@@ -112,12 +112,23 @@ server.tool(
 
 server.tool(
   'telecharger_document',
-  "Génère un lien de téléchargement direct (usage unique, valable 10 min) pour un document, par son id et son organisme. Renvoie l'URL et le nom du fichier.",
+  "Télécharge un document par son id et son organisme. Renvoie le FICHIER lui-même (joint dans la conversation sur les clients qui le supportent) + un lien de secours (usage unique, 10 min).",
   { source: SRC, document_id: z.number() },
   async ({ source, document_id }) => {
     try {
-      const r = await apiFetch('/api/documents/lien', { method: 'POST', body: JSON.stringify({ source, document_id }) });
-      return txt({ ok: true, filename: r.filename, url: r.url, note: 'Lien valable 10 minutes, usage unique.' });
+      const r1 = await apiFetch('/api/documents/lien', { method: 'POST', body: JSON.stringify({ source, document_id }) });
+      const filename = r1.filename;
+      const fr = await fetch(r1.url); // /dl est public (gate par le jeton)
+      if (!fr.ok) throw new Error(`Téléchargement impossible (${fr.status}).`);
+      const mime = fr.headers.get('content-type') || 'application/octet-stream';
+      const buf = Buffer.from(await fr.arrayBuffer());
+      const r2 = await apiFetch('/api/documents/lien', { method: 'POST', body: JSON.stringify({ source, document_id }) });
+      const MAX = 8 * 1024 * 1024;
+      const content = [{ type: 'text', text: JSON.stringify({ ok: true, filename, taille: buf.length, url: r2.url, note: 'Fichier joint ci-dessus si le client le supporte ; sinon lien valable 10 min (usage unique).' }) }];
+      if (buf.length <= MAX) {
+        content.unshift({ type: 'resource', resource: { uri: `portail://${source}/document/${document_id}/${encodeURIComponent(filename)}`, mimeType: mime, blob: buf.toString('base64') } });
+      }
+      return { content };
     } catch (e) { return erreur(e); }
   },
 );
