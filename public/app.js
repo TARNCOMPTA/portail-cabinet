@@ -806,8 +806,28 @@ async function chargerMoi() {
   const av = $('#user-avatar');
   if (av) av.textContent = (moi.email || '?').replace(/@.*/, '').slice(0, 2).toUpperCase();
   $('#user-chip').hidden = false;
-  if (moi.role === 'admin') { $('#panel-users').hidden = false; const sb = $('#subtab-btn-users'); if (sb) sb.hidden = false; chargerUsers(); $('#panel-apikey').hidden = false; chargerApiKey(); }
+  if (moi.role === 'admin') { $('#panel-users').hidden = false; const sb = $('#subtab-btn-users'); if (sb) sb.hidden = false; chargerUsers(); $('#panel-apikey').hidden = false; chargerApiKey(); $('#panel-mcp-oauth').hidden = false; chargerMcpOAuth(); }
 }
+
+// ---- Connecteur MCP « organisation » (OAuth) ------------------------------
+function remplirMcpOAuth(r) {
+  $('#mcpoauth-url').value = r.url || '';
+  $('#mcpoauth-id').value = r.client_id || '';
+  $('#mcpoauth-secret').value = r.client_secret || '';
+}
+async function chargerMcpOAuth() {
+  try { remplirMcpOAuth(await api('/api/mcp-oauth/client')); } catch {}
+}
+$('#mcpoauth-regenerer')?.addEventListener('click', async () => {
+  if (!confirm('Régénérer le Client ID/Secret ? Le connecteur déjà configuré dans Claude devra être reconfiguré.')) return;
+  try { remplirMcpOAuth(await api('/api/mcp-oauth/regenerer', { method: 'POST' })); toast('Nouvelles clés générées.', 'ok'); }
+  catch (err) { toast(err.message, 'err'); }
+});
+$('#mcpoauth-copier')?.addEventListener('click', async () => {
+  const t = `URL : ${$('#mcpoauth-url').value}\nClient ID : ${$('#mcpoauth-id').value}\nClient Secret : ${$('#mcpoauth-secret').value}`;
+  try { await navigator.clipboard.writeText(t); toast('Valeurs copiées.', 'ok'); }
+  catch { toast('Copie impossible — sélectionne manuellement.', 'err'); }
+});
 
 // ---- Clé API (MCP) --------------------------------------------------------
 async function chargerApiKey() {

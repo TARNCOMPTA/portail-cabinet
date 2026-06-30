@@ -676,6 +676,26 @@
             <button type="button" class="btn danger" id="apikey-revoquer">Révoquer</button>
           </div>
         </section>
+
+        <section class="panel" id="panel-mcp-oauth" hidden>
+          <h2>Connecteur MCP — organisation <span class="compteur">admin</span></h2>
+          <p class="aide">Pour ajouter le portail comme <strong>connecteur personnalisé</strong> dans Claude (niveau organisation / claude.ai). Dans Claude : « Ajouter un connecteur » → colle l'URL, puis dans « Paramètres avancés » colle le Client ID et le Client Secret. La connexion te demandera de t'authentifier avec ton compte du portail (OAuth).</p>
+          <div class="form-grid">
+            <label style="grid-column:1 / -1">URL du serveur MCP
+              <input id="mcpoauth-url" type="text" readonly />
+            </label>
+            <label>Client ID
+              <input id="mcpoauth-id" type="text" readonly />
+            </label>
+            <label>Client Secret
+              <input id="mcpoauth-secret" type="text" readonly />
+            </label>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn" id="mcpoauth-copier">Copier les 3 valeurs</button>
+            <button type="button" class="btn danger" id="mcpoauth-regenerer">Régénérer Client ID/Secret</button>
+          </div>
+        </section>
         </div>
       </div>
 

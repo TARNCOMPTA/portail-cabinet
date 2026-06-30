@@ -22,6 +22,9 @@ import * as fusions from './src/fusions-db.js';
 import * as planif from './src/planif-db.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
 import { installAuthRoutes, requireAuth, requireAdmin, hashPassword, getApiKey, regenererApiKey, revoquerApiKey } from './src/auth.js';
+import { installOAuth, requireBearer, baseUrl, CALLBACK_HOSTE } from './src/oauth.js';
+import { installMcp } from './src/mcp-http.js';
+import * as oauthDb from './src/oauth-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = resolve(__dirname, 'public');
@@ -37,6 +40,12 @@ for (const f of ['login.html', 'login.js', 'style.css', 'favicon.ico']) {
 // (la page de login en a besoin elle aussi). Cache long (les fichiers sont versionnés).
 app.use('/vendor', express.static(resolve(PUBLIC_DIR, 'vendor'), { maxAge: '30d', immutable: true }));
 installAuthRoutes(app);
+
+// --- Connecteur MCP distant (OAuth 2.1) : endpoints PUBLICS, proteges par leur
+//     propre couche (PKCE + jeton Bearer). A monter AVANT la porte de session. ---
+installOAuth(app);
+installMcp(app, requireBearer);
+oauthDb.purge();
 
 // --- Porte d'authentification : tout le reste exige une session valide ---
 purgerSessionsExpirees();
@@ -130,6 +139,16 @@ app.post('/api/apikey/regenerer', requireAdmin, (req, res) => {
 app.delete('/api/apikey', requireAdmin, (req, res) => {
   revoquerApiKey();
   res.json({ ok: true, definie: false });
+});
+
+// ---- Connecteur MCP « organisation » (OAuth) : URL + Client ID/Secret -----
+app.get('/api/mcp-oauth/client', requireAdmin, (req, res) => {
+  const c = oauthDb.getOrCreateStaticClient([CALLBACK_HOSTE]);
+  res.json({ url: `${baseUrl(req)}/mcp`, client_id: c.client_id, client_secret: c.client_secret });
+});
+app.post('/api/mcp-oauth/regenerer', requireAdmin, (req, res) => {
+  const c = oauthDb.regenStaticClient([CALLBACK_HOSTE]);
+  res.json({ url: `${baseUrl(req)}/mcp`, client_id: c.client_id, client_secret: c.client_secret });
 });
 
 // ---- Comptes cabinet ------------------------------------------------------
