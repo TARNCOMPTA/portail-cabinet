@@ -59,6 +59,15 @@ page.on('response', async (resp) => {
 
 console.log(`\nOuverture de ${url}`);
 await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+// Bandeau cookies (overlay HTML) : on l'accepte automatiquement (plusieurs tentatives,
+// il peut apparaitre un peu apres le chargement).
+for (let i = 0; i < 8; i++) {
+  for (const t of ['Enregistrer et appliquer', 'Tout accepter', 'Accepter', "J'accepte", 'Continuer']) {
+    const b = page.locator(`button:has-text("${t}"), input[type="button"][value="${t}"], a:has-text("${t}")`).first();
+    if (await b.isVisible().catch(() => false)) { await b.click().catch(() => {}); console.log(`(bandeau cookies : clic « ${t} »)`); break; }
+  }
+  await page.waitForTimeout(700);
+}
 console.log('\n>>> CONNECTE-TOI MAINTENANT via la vue « Captcha » (noVNC) du portail, puis ouvre tes');
 console.log(`>>> documents / attestations / relevés. Capture pendant ${secondes}s...\n`);
 await page.waitForTimeout(secondes * 1000);
