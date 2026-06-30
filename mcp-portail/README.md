@@ -17,6 +17,11 @@ cd mcp-portail
 npm install
 ```
 
+## Authentification : clé API (recommandé)
+Dans le portail, va dans **Paramètres ▸ Collaborateurs ▸ Clé API (MCP)** (admin) puis
+**Régénérer la clé** et copie-la. Cette clé est révocable et distincte des mots de passe
+des comptes — c'est la méthode recommandée.
+
 ## Configuration du client Claude
 Ajouter ce serveur dans la config MCP (ex. Claude Desktop : `claude_desktop_config.json`) :
 ```json
@@ -27,15 +32,16 @@ Ajouter ce serveur dans la config MCP (ex. Claude Desktop : `claude_desktop_conf
       "args": ["X:/portail-cabinet/mcp-portail/index.mjs"],
       "env": {
         "PORTAIL_URL": "https://portail.tarncompta.fr",
-        "PORTAIL_EMAIL": "ton.email@cabinet.fr",
-        "PORTAIL_PASSWORD": "ton-mot-de-passe-portail"
+        "PORTAIL_API_KEY": "la-cle-generee-dans-le-portail"
       }
     }
   }
 }
 ```
-- `PORTAIL_EMAIL` / `PORTAIL_PASSWORD` = un compte collaborateur du portail (le MCP se connecte avec).
+- `PORTAIL_API_KEY` = clé générée dans le portail (en-tete `X-API-Key`).
+- Repli possible sans clé : `PORTAIL_EMAIL` + `PORTAIL_PASSWORD` (compte collaborateur).
 - Redémarrer le client Claude après modification de la config.
+- Pour **Claude Code** : `claude mcp add portail-cabinet -s user -e PORTAIL_URL=https://portail.tarncompta.fr -e PORTAIL_API_KEY=la-cle -- node X:/portail-cabinet/mcp-portail/index.mjs`
 
 ## Exemples d'usage (dans le chat)
 - « Ajoute le client Dr DUPONT à CARMF, identifiant 226701Y, mot de passe xxxx. »

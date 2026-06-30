@@ -661,6 +661,21 @@
             </div>
           </form>
         </section>
+
+        <section class="panel" id="panel-apikey" hidden>
+          <h2>Clé API (MCP) <span class="compteur">admin</span></h2>
+          <p class="aide">Clé d'accès pour le serveur MCP / les accès programmatiques, à la place d'un mot de passe. Elle donne un accès complet : ne la partage pas. Tu peux la révoquer ou la régénérer à tout moment (les anciennes configurations cesseront alors de fonctionner).</p>
+          <div class="form-grid">
+            <label style="grid-column:1 / -1">Clé actuelle
+              <input id="apikey-valeur" type="text" readonly placeholder="Aucune clé définie" />
+            </label>
+          </div>
+          <div class="form-actions">
+            <button type="button" class="btn" id="apikey-copier">Copier</button>
+            <button type="button" class="btn primary" id="apikey-regenerer">Régénérer la clé</button>
+            <button type="button" class="btn danger" id="apikey-revoquer">Révoquer</button>
+          </div>
+        </section>
         </div>
       </div>
 

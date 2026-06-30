@@ -4,28 +4,37 @@
 //
 // Variables d'environnement :
 //   PORTAIL_URL       (def. https://portail.tarncompta.fr)
-//   PORTAIL_EMAIL     (compte collaborateur du portail)
+//   PORTAIL_API_KEY   (recommandé — clé générée dans Paramètres ▸ Collaborateurs ▸ Clé API)
+//   PORTAIL_EMAIL     (repli : compte collaborateur du portail)
 //   PORTAIL_PASSWORD
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 
 const BASE = (process.env.PORTAIL_URL || 'https://portail.tarncompta.fr').replace(/\/$/, '');
+const API_KEY = process.env.PORTAIL_API_KEY || '';
 const EMAIL = process.env.PORTAIL_EMAIL || '';
 const PASSWORD = process.env.PORTAIL_PASSWORD || '';
 
 let cookie = null;
 async function login() {
-  if (!EMAIL || !PASSWORD) throw new Error('PORTAIL_EMAIL / PORTAIL_PASSWORD non configurés dans la config MCP.');
+  if (!EMAIL || !PASSWORD) throw new Error('Configure PORTAIL_API_KEY (recommandé) ou PORTAIL_EMAIL / PORTAIL_PASSWORD dans la config MCP.');
   const r = await fetch(`${BASE}/api/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: EMAIL, password: PASSWORD }) });
   if (!r.ok) throw new Error(`Connexion au portail refusée (HTTP ${r.status}). Vérifie l'URL et les identifiants.`);
   const sc = r.headers.get('set-cookie');
   if (sc) cookie = sc.split(';')[0];
 }
 async function apiFetch(path, opts = {}, retry = true) {
-  if (!cookie) await login();
-  const r = await fetch(`${BASE}${path}`, { ...opts, headers: { 'Content-Type': 'application/json', ...(opts.headers || {}), cookie } });
-  if (r.status === 401 && retry) { cookie = null; return apiFetch(path, opts, false); }
+  // Auth par clé API si fournie (pas de login/cookie nécessaire), sinon session.
+  const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
+  if (API_KEY) {
+    headers['X-API-Key'] = API_KEY;
+  } else {
+    if (!cookie) await login();
+    headers.cookie = cookie;
+  }
+  const r = await fetch(`${BASE}${path}`, { ...opts, headers });
+  if (r.status === 401 && retry && !API_KEY) { cookie = null; return apiFetch(path, opts, false); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `Erreur ${r.status}`);
   return data;

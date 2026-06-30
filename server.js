@@ -21,7 +21,7 @@ import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, liste
 import * as fusions from './src/fusions-db.js';
 import * as planif from './src/planif-db.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
-import { installAuthRoutes, requireAuth, requireAdmin, hashPassword } from './src/auth.js';
+import { installAuthRoutes, requireAuth, requireAdmin, hashPassword, getApiKey, regenererApiKey, revoquerApiKey } from './src/auth.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = resolve(__dirname, 'public');
@@ -117,6 +117,19 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
   deleteUserSessions(id);
   deleteUser(id);
   res.json({ ok: true });
+});
+
+// ---- Clé API (pour le MCP / accès programmatique) -------------------------
+app.get('/api/apikey', requireAdmin, (req, res) => {
+  const key = getApiKey();
+  res.json({ key: key || null, definie: !!key });
+});
+app.post('/api/apikey/regenerer', requireAdmin, (req, res) => {
+  res.json({ key: regenererApiKey(), definie: true });
+});
+app.delete('/api/apikey', requireAdmin, (req, res) => {
+  revoquerApiKey();
+  res.json({ ok: true, definie: false });
 });
 
 // ---- Comptes cabinet ------------------------------------------------------

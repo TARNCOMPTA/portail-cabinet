@@ -3,7 +3,21 @@
 import crypto from 'node:crypto';
 import {
   getUserByEmail, touchUserLogin, createSession, getSessionUser, deleteSession,
+  getSetting, setSetting,
 } from './db.js';
+
+// ---- Clé API (pour le MCP / accès programmatique) ----
+// Une clé revocable, distincte des mots de passe des comptes. Donne un accès
+// "service" (role admin) via l'en-tete X-API-Key (ou Authorization: Bearer).
+export function getApiKey() { return getSetting('api_key', '') || ''; }
+export function regenererApiKey() { const k = crypto.randomBytes(24).toString('hex'); setSetting('api_key', k); return k; }
+export function revoquerApiKey() { setSetting('api_key', ''); }
+function cleDeRequete(req) {
+  const h = req.headers['x-api-key'];
+  if (h) return String(h).trim();
+  const m = String(req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/i);
+  return m ? m[1].trim() : '';
+}
 
 const COOKIE = 'portail_session';
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000; // 7 jours
@@ -77,6 +91,14 @@ export function installAuthRoutes(app) {
 
 // Porte : exige une session valide (sinon 401 pour l'API, redirection sinon).
 export function requireAuth(req, res, next) {
+  // Accès par clé API (MCP / programmatique) : en-tete X-API-Key ou Bearer.
+  const cle = getApiKey();
+  const fournie = cleDeRequete(req);
+  if (cle && fournie.length === cle.length
+      && crypto.timingSafeEqual(Buffer.from(fournie), Buffer.from(cle))) {
+    req.user = { id: 0, email: 'api', nom: 'Accès API', role: 'admin', viaApiKey: true };
+    return next();
+  }
   const u = currentUser(req);
   if (!u) {
     if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Non authentifié.' });

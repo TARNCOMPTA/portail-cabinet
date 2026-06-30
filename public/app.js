@@ -806,8 +806,33 @@ async function chargerMoi() {
   const av = $('#user-avatar');
   if (av) av.textContent = (moi.email || '?').replace(/@.*/, '').slice(0, 2).toUpperCase();
   $('#user-chip').hidden = false;
-  if (moi.role === 'admin') { $('#panel-users').hidden = false; const sb = $('#subtab-btn-users'); if (sb) sb.hidden = false; chargerUsers(); }
+  if (moi.role === 'admin') { $('#panel-users').hidden = false; const sb = $('#subtab-btn-users'); if (sb) sb.hidden = false; chargerUsers(); $('#panel-apikey').hidden = false; chargerApiKey(); }
 }
+
+// ---- Clé API (MCP) --------------------------------------------------------
+async function chargerApiKey() {
+  try {
+    const r = await api('/api/apikey');
+    $('#apikey-valeur').value = r.key || '';
+    $('#apikey-valeur').placeholder = r.definie ? '' : 'Aucune clé définie — clique sur « Régénérer la clé »';
+  } catch {}
+}
+$('#apikey-regenerer')?.addEventListener('click', async () => {
+  if (!confirm('Régénérer la clé API ? Les configurations utilisant l\'ancienne clé (MCP) cesseront de fonctionner.')) return;
+  try { const r = await api('/api/apikey/regenerer', { method: 'POST' }); $('#apikey-valeur').value = r.key; toast('Nouvelle clé générée.', 'ok'); }
+  catch (err) { toast(err.message, 'err'); }
+});
+$('#apikey-revoquer')?.addEventListener('click', async () => {
+  if (!confirm('Révoquer la clé API ? Tout accès par clé (MCP) sera coupé.')) return;
+  try { await api('/api/apikey', { method: 'DELETE' }); $('#apikey-valeur').value = ''; $('#apikey-valeur').placeholder = 'Aucune clé définie'; toast('Clé révoquée.', 'ok'); }
+  catch (err) { toast(err.message, 'err'); }
+});
+$('#apikey-copier')?.addEventListener('click', async () => {
+  const v = $('#apikey-valeur').value;
+  if (!v) { toast('Aucune clé à copier.', 'err'); return; }
+  try { await navigator.clipboard.writeText(v); toast('Clé copiée.', 'ok'); }
+  catch { $('#apikey-valeur').select(); document.execCommand('copy'); toast('Clé copiée.', 'ok'); }
+});
 $('#btn-logout').addEventListener('click', async () => {
   try { await fetch('/api/auth/logout', { method: 'POST', credentials: 'same-origin' }); } catch {}
   location.replace('/login.html');
