@@ -77,45 +77,43 @@ export async function scrapeClient(client, opts = {}) {
     }
     log('Connecté à l\'espace CARMF.');
 
-    // ---- 2. Diagnostic de la zone connectee (pour finaliser la recup de documents) ----
-    try {
-      const diag = await page.evaluate(() => ({
-        url: location.href,
-        menus: [...document.querySelectorAll('a')].filter((a) => a.offsetParent && /document|attestation|relev|cotisation|courrier|paiement|fiscal|justificatif/i.test(`${a.textContent || ''} ${a.getAttribute('href') || ''}`)).map((a) => ({ t: (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40), href: (a.getAttribute('href') || '').slice(0, 130) })).slice(0, 40),
-        pdfLinks: [...document.querySelectorAll('a[href*=".pdf"], a[href*="ocument"], a[href*="ownload"], a[href*="telecharg"]')].map((a) => ({ t: (a.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 40), href: (a.href || '').slice(0, 150) })).slice(0, 40),
-      }));
-      writeFileSync(resolve(clientDir, '_diag_carmf.json'), JSON.stringify(diag, null, 2), 'utf8');
-      log(`Diag zone connectée : ${JSON.stringify(diag).slice(0, 400)}`);
-    } catch (e) { log(`(diagnostic : ${e.message})`); }
-    await page.screenshot({ path: resolve(clientDir, `_apres_connexion_${Date.now()}.png`), fullPage: true }).catch(() => {});
-
-    // ---- 3. Telechargement generique des PDF presents (a affiner) ----
-    const liens = await page.evaluate(() =>
-      [...document.querySelectorAll('a')]
-        .filter((a) => /\.pdf($|\?)|telecharg|\/document/i.test(a.href || ''))
-        .map((a) => ({ href: a.href, nom: (a.textContent || '').replace(/\s+/g, ' ').trim() })));
-    const utilises = new Set();
-    for (const l of liens) {
-      if (!l.href) continue;
+    // ---- 2. Recuperation des documents personnels ----
+    // Mecanisme CARMF : printPDF(path) fait GET /pdf<path> -> renvoie un jeton, puis
+    // le PDF est servi a /fichiers/open/<jeton>. On reproduit cet enchainement en HTTP.
+    const BASE = 'https://extranet.carmf.fr';
+    const annee = String(new Date().getFullYear());
+    const cibles = [
+      { path: '/attestation_reglements', libelle: 'Attestation de règlements' },
+      { path: '/comptes', libelle: 'Attestation de mise à jour du compte' },
+      { path: '/affiliations', libelle: "Attestation d'affiliation" },
+      { path: '/points_releves', libelle: 'Relevé de situation' },
+      { path: '/points_releves/carriere', libelle: 'Relevé de carrière' },
+    ];
+    for (const c of cibles) {
       try {
-        const base = sanitize(l.nom || 'document') || 'document';
-        let dest = resolve(clientDir, `${base}.pdf`);
-        if (utilises.has(dest.toLowerCase())) { let i = 2; do { dest = resolve(clientDir, `${base} (${i++}).pdf`); } while (utilises.has(dest.toLowerCase()) && i < 100); }
-        utilises.add(dest.toLowerCase());
-        if (existsSync(dest) && statSync(dest).size > 100) { addDocument(client.id, { libelle: l.nom, fichier: dest }); dejaPresents++; continue; }
-        const resp = await context.request.get(l.href, { timeout: navTimeout });
-        if (!resp.ok()) continue;
-        const buf = await resp.body();
-        if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') continue;
+        const tokResp = await context.request.get(BASE + '/pdf' + c.path, { timeout: navTimeout });
+        if (!tokResp.ok()) { log(`(${c.libelle} : indisponible — HTTP ${tokResp.status()})`); continue; }
+        const token = (await tokResp.text()).trim().replace(/^"|"$/g, '');
+        if (!token || /[<{>]/.test(token)) { log(`(${c.libelle} : jeton PDF invalide)`); continue; }
+        const dest = resolve(clientDir, `${annee}_${sanitize(c.libelle)}.pdf`);
+        if (existsSync(dest) && statSync(dest).size > 100) {
+          addDocument(client.id, { libelle: `${c.libelle} ${annee}`, fichier: dest, date_doc: annee });
+          dejaPresents++;
+          continue;
+        }
+        const pdfResp = await context.request.get(`${BASE}/fichiers/open/${encodeURIComponent(token)}`, { timeout: navTimeout });
+        if (!pdfResp.ok()) { log(`(${c.libelle} : téléchargement HTTP ${pdfResp.status()})`); continue; }
+        const buf = await pdfResp.body();
+        if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') { log(`(${c.libelle} : réponse non-PDF)`); continue; }
         writeFileSync(dest, buf);
-        addDocument(client.id, { libelle: l.nom || base, fichier: dest });
-        docs.push({ libelle: l.nom, fichier: dest });
+        addDocument(client.id, { libelle: `${c.libelle} ${annee}`, fichier: dest, date_doc: annee });
+        docs.push({ libelle: c.libelle, fichier: dest });
         log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
-      } catch (e) { log(`Échec doc : ${e.message.split('\n')[0]}`); }
+      } catch (e) { log(`Échec ${c.libelle} : ${e.message.split('\n')[0]}`); }
     }
 
-    addRunSafe(client.id, { statut: 'succes', message: `${docs.length} document(s) PDF récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : '') + ' (parcours documents à finaliser)', nb_docs: docs.length });
-    log(`Terminé : ${docs.length} nouveau(x), ${dejaPresents} déjà présent(s). (diagnostic enregistré pour finaliser le parcours)`);
+    addRunSafe(client.id, { statut: docs.length + dejaPresents > 0 ? 'succes' : 'echec', message: `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : ''), nb_docs: docs.length });
+    log(`Terminé : ${docs.length} nouveau(x), ${dejaPresents} déjà présent(s).`);
     return { ok: true, docs, dejaPresents };
   } catch (err) {
     await page.screenshot({ path: resolve(clientDir, `_debug_${Date.now()}.png`), fullPage: true }).catch(() => {});
