@@ -45,9 +45,11 @@ const SOURCES = {
   urssaf: { clients: '/api/urssaf/clients', add: '/api/urssaf/clients', scrape: (id) => `/api/urssaf/clients/${id}/scrape`, docs: (id) => `/api/urssaf/clients/${id}/documents`, cle: 'siret' },
   carpimko: { clients: '/api/carpimko/clients', add: '/api/carpimko/clients', scrape: (id) => `/api/carpimko/clients/${id}/scrape`, docs: (id) => `/api/carpimko/clients/${id}/documents`, cle: 'login' },
   carmf: { clients: '/api/carmf/clients', add: '/api/carmf/clients', scrape: (id) => `/api/carmf/clients/${id}/scrape`, docs: (id) => `/api/carmf/clients/${id}/documents`, cle: 'login' },
+  carcdsf: { clients: '/api/carcdsf/clients', add: '/api/carcdsf/clients', scrape: (id) => `/api/carcdsf/clients/${id}/scrape`, docs: (id) => `/api/carcdsf/clients/${id}/documents`, cle: 'login' },
 };
+const AVEC_MDP = new Set(['carpimko', 'carmf', 'carcdsf']);
 const nomFichier = (p) => (p || '').split(/[\\/]/).pop() || '';
-const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf']);
+const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf']);
 const txt = (o) => ({ content: [{ type: 'text', text: typeof o === 'string' ? o : JSON.stringify(o, null, 2) }] });
 const erreur = (e) => ({ isError: true, content: [{ type: 'text', text: `Erreur : ${e.message}` }] });
 
@@ -69,14 +71,15 @@ server.tool(
 
 server.tool(
   'ajouter_client',
-  "Enregistre un nouveau client. carpimko/carmf : 'identifiant' = identifiant de connexion + 'mot_de_passe' OBLIGATOIRE. impots/urssaf : 'identifiant' = SIRET/SIREN (rattacher à un compte via 'cabinet_id' si connu).",
-  { source: SRC, nom: z.string(), identifiant: z.string(), mot_de_passe: z.string().optional(), notes: z.string().optional(), cabinet_id: z.number().optional() },
-  async ({ source, nom, identifiant, mot_de_passe, notes, cabinet_id }) => {
+  "Enregistre un nouveau client. carpimko/carmf/carcdsf : 'identifiant' = identifiant de connexion + 'mot_de_passe' OBLIGATOIRE (carcdsf : préciser aussi 'profession' = cd ou sf). impots/urssaf : 'identifiant' = SIRET/SIREN (rattacher à un compte via 'cabinet_id' si connu).",
+  { source: SRC, nom: z.string(), identifiant: z.string(), mot_de_passe: z.string().optional(), profession: z.enum(['cd', 'sf']).optional().describe('CARCDSF : cd = chirurgien-dentiste, sf = sage-femme'), notes: z.string().optional(), cabinet_id: z.number().optional() },
+  async ({ source, nom, identifiant, mot_de_passe, profession, notes, cabinet_id }) => {
     try {
       const body = { nom };
-      if (source === 'carpimko' || source === 'carmf') {
+      if (AVEC_MDP.has(source)) {
         if (!mot_de_passe) throw new Error(`mot_de_passe requis pour ${source}.`);
         body.login = identifiant; body.password = mot_de_passe; if (notes) body.notes = notes;
+        if (source === 'carcdsf') { if (!profession) throw new Error("profession requise pour carcdsf ('cd' ou 'sf')."); body.profession = profession; }
       } else {
         body.siret = identifiant; if (cabinet_id) body.cabinet_id = cabinet_id;
       }
