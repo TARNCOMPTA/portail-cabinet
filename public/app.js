@@ -501,15 +501,17 @@ function norm(s) { return String(s ?? '').toLowerCase().normalize('NFD').replace
 
 async function chargerDocuments() {
   try {
-    const [imp, urs, cp] = await Promise.all([
+    const [imp, urs, cp, cm] = await Promise.all([
       api('/api/documents').catch(() => []),
       api('/api/urssaf/documents').catch(() => []),
       api('/api/carpimko/documents').catch(() => []),
+      api('/api/carmf/documents').catch(() => []),
     ]);
     tousDocs = [
       ...imp.map((d) => ({ ...d, source: 'Impôts', _href: `/api/documents/file?path=${encodeURIComponent(d.fichier)}` })),
       ...urs.map((d) => ({ ...d, source: 'URSSAF', _href: `/api/urssaf/documents/${d.id}/file` })),
       ...cp.map((d) => ({ ...d, source: 'CARPIMKO', _href: `/api/carpimko/documents/${d.id}/file` })),
+      ...cm.map((d) => ({ ...d, source: 'CARMF', _href: `/api/carmf/documents/${d.id}/file` })),
     ].map((d) => ({ ...d, _annee: anneeDoc(d) }));
     // Classement par année (du plus récent au plus ancien), puis par date au sein de l'année.
     tousDocs.sort((a, b) => b._annee.localeCompare(a._annee) || String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
@@ -573,19 +575,21 @@ let pcFiltre = '';
 let pcPage = 1;
 const pcSelection = new Set();
 const PC_PAR_PAGE = 20;
-const PC_ENDPOINTS = { 'Impôts': '/api/clients', 'URSSAF': '/api/urssaf/clients', 'CARPIMKO': '/api/carpimko/clients' };
+const PC_ENDPOINTS = { 'Impôts': '/api/clients', 'URSSAF': '/api/urssaf/clients', 'CARPIMKO': '/api/carpimko/clients', 'CARMF': '/api/carmf/clients' };
 function hrefDoc(source, d) {
   if (source === 'Impôts') return `/api/documents/file?path=${encodeURIComponent(d.fichier)}`;
   if (source === 'URSSAF') return `/api/urssaf/documents/${d.id}/file`;
+  if (source === 'CARMF') return `/api/carmf/documents/${d.id}/file`;
   return `/api/carpimko/documents/${d.id}/file`;
 }
 async function chargerParClient() {
-  let imp = [], urs = [], cp = [], fus = [];
+  let imp = [], urs = [], cp = [], cm = [], fus = [];
   try {
-    [imp, urs, cp, fus] = await Promise.all([
+    [imp, urs, cp, cm, fus] = await Promise.all([
       api('/api/clients').catch(() => []),
       api('/api/urssaf/clients').catch(() => []),
       api('/api/carpimko/clients').catch(() => []),
+      api('/api/carmf/clients').catch(() => []),
       api('/api/fusions').catch(() => []),
     ]);
   } catch { /* ignore */ }
@@ -593,6 +597,7 @@ async function chargerParClient() {
   imp.forEach((c) => units.push({ source: 'Impôts', id: c.id, nom: c.nom, ident: c.siret || '', nb: c.nb_docs || 0 }));
   urs.forEach((c) => units.push({ source: 'URSSAF', id: c.id, nom: c.nom, ident: c.siret || '', nb: c.nb_docs || 0 }));
   cp.forEach((c) => units.push({ source: 'CARPIMKO', id: c.id, nom: c.nom, ident: c.login || '', nb: c.nb_docs || 0 }));
+  cm.forEach((c) => units.push({ source: 'CARMF', id: c.id, nom: c.nom, ident: c.login || '', nb: c.nb_docs || 0 }));
   // Une fusion manuelle prime sur le regroupement par nom.
   const fusionDe = new Map();
   for (const f of fus) for (const m of f.membres) fusionDe.set(`${m.source}:${m.client_id}`, f);
@@ -718,7 +723,7 @@ document.querySelectorAll('.subtab-btn').forEach((b) => b.addEventListener('clic
 // ---- Tableau de bord (indicateurs) ----------------------------------------
 async function chargerDashboard() {
   try {
-    const [clients, documents, runs, cabinets, uClients, uDocs, uRuns, uCab, cpClients, cpDocs, cpRuns] = await Promise.all([
+    const [clients, documents, runs, cabinets, uClients, uDocs, uRuns, uCab, cpClients, cpDocs, cpRuns, cmClients, cmDocs, cmRuns] = await Promise.all([
       api('/api/clients').catch(() => []),
       api('/api/documents').catch(() => []),
       api('/api/runs').catch(() => []),
@@ -730,14 +735,17 @@ async function chargerDashboard() {
       api('/api/carpimko/clients').catch(() => []),
       api('/api/carpimko/documents').catch(() => []),
       api('/api/carpimko/runs').catch(() => []),
+      api('/api/carmf/clients').catch(() => []),
+      api('/api/carmf/documents').catch(() => []),
+      api('/api/carmf/runs').catch(() => []),
     ]);
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    // Indicateurs agreges sur toutes les sources (Impots + URSSAF + CARPIMKO).
-    set('kpi-clients', clients.length + uClients.length + cpClients.length);
-    set('kpi-documents', documents.length + uDocs.length + cpDocs.length);
-    set('kpi-runs', runs.length + uRuns.length + cpRuns.length);
+    // Indicateurs agreges sur toutes les sources (Impots + URSSAF + CARPIMKO + CARMF).
+    set('kpi-clients', clients.length + uClients.length + cpClients.length + cmClients.length);
+    set('kpi-documents', documents.length + uDocs.length + cpDocs.length + cmDocs.length);
+    set('kpi-runs', runs.length + uRuns.length + cpRuns.length + cmRuns.length);
     set('kpi-comptes', cabinets.length + uCab.length);
-    const totalDocs = documents.length + uDocs.length + cpDocs.length;
+    const totalDocs = documents.length + uDocs.length + cpDocs.length + cmDocs.length;
     const nav = document.getElementById('nav-docs-count'); if (nav) nav.textContent = totalDocs || '';
     const d = document.getElementById('dash-date');
     if (d) d.textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });

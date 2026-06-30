@@ -14,6 +14,8 @@ import {
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
 import * as carpimko from './src/carpimko-db.js';
 import { scrapeClient as scrapeClientCarpimko } from './src/scraper-carpimko.js';
+import * as carmf from './src/carmf-db.js';
+import { scrapeClient as scrapeClientCarmf } from './src/scraper-carmf.js';
 import * as urssafDb from './src/urssaf-db.js';
 import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
 import * as fusions from './src/fusions-db.js';
@@ -474,6 +476,87 @@ app.post('/api/carpimko/scrape-all', (req, res) => {
   const r = lancerCarpimkoTous(!!req.body?.tousDocuments);
   if (!r.started) return res.status(409).json({ error: 'Une récupération CARPIMKO globale est déjà en cours.' });
   res.json(r);
+});
+
+// ===========================================================================
+//  SOURCE CARMF (module autonome : base carmf.db, connexion par client)
+// ===========================================================================
+app.get('/api/carmf/clients', (req, res) => res.json(carmf.listClients()));
+app.post('/api/carmf/clients', (req, res) => {
+  const { nom, login, password, notes, dossier } = req.body || {};
+  if (!nom || !login || !password) return res.status(400).json({ error: 'Nom, identifiant et mot de passe sont requis.' });
+  if (carmf.getClientByLogin(login)) return res.status(409).json({ error: 'Un client avec cet identifiant existe déjà.' });
+  res.status(201).json(carmf.createClient({ nom, login, password, notes, dossier }));
+});
+app.post('/api/carmf/clients/import', (req, res) => {
+  const clients = req.body?.clients;
+  if (!Array.isArray(clients) || clients.length === 0) return res.status(400).json({ error: 'Aucune ligne à importer.' });
+  if (clients.length > 5000) return res.status(400).json({ error: 'Trop de lignes (max 5000).' });
+  res.json(carmf.importClients(clients));
+});
+app.put('/api/carmf/clients/:id', (req, res) => { const c = carmf.updateClient(Number(req.params.id), req.body || {}); if (!c) return res.status(404).json({ error: 'Client introuvable.' }); res.json(c); });
+app.delete('/api/carmf/clients/:id', (req, res) => { carmf.deleteClient(Number(req.params.id)); res.json({ ok: true }); });
+app.get('/api/carmf/clients/:id/documents', (req, res) => { if (!carmf.getClient(Number(req.params.id))) return res.status(404).json({ error: 'Client introuvable.' }); res.json(carmf.listDocuments(Number(req.params.id))); });
+app.get('/api/carmf/documents', (req, res) => res.json(carmf.listAllDocuments()));
+app.get('/api/carmf/documents/:id/file', (req, res) => {
+  const doc = carmf.listAllDocuments().find((d) => d.id === Number(req.params.id));
+  if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
+  res.download(doc.fichier, basename(doc.fichier));
+});
+app.get('/api/carmf/runs', (req, res) => res.json(carmf.listRuns(300)));
+
+async function lancerCarmf(clientId, res) {
+  const creds = carmf.getClientCredentials(clientId);
+  if (!creds) return res?.status(404).json({ error: 'Client introuvable.' });
+  const key = 'carmf:' + clientId;
+  if (enCours.has(key)) return res?.status(409).json({ error: 'Une récupération est déjà en cours pour ce client.' });
+  enCours.add(key);
+  res?.json({ started: true, client: creds.nom });
+  const suiviLocal = !progression.actif;
+  if (suiviLocal) demarrerSuivi(1);
+  progression.courant = creds.nom;
+  try {
+    const r = await scrapeClientCarmf(creds, { onLog: progLog });
+    if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+  } catch (e) {
+    progLog(`ERREUR : ${e.message}`);
+    if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: false, message: e.message, nb_docs: 0 });
+  } finally {
+    enCours.delete(key);
+    if (suiviLocal) { progression.fait = 1; terminerSuivi(); }
+  }
+}
+app.post('/api/carmf/clients/:id/scrape', (req, res) => {
+  const id = Number(req.params.id);
+  const verrou = carmf.clientVerrouille(id);
+  if (verrou.verrouille && !req.body?.force) return res.status(423).json({ error: 'verrou_mdp', message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige-le ou force la tentative.', detail: verrou.message });
+  lancerCarmf(id, res);
+});
+app.post('/api/carmf/scrape-all', async (req, res) => {
+  if (enCours.has('carmf:all')) return res.status(409).json({ error: 'Une récupération CARMF globale est déjà en cours.' });
+  const clients = carmf.listClients();
+  const aTraiter = clients.filter((c) => !c.verrouille);
+  const ignores = clients.filter((c) => c.verrouille).map((c) => c.nom);
+  enCours.add('carmf:all'); stopAll = false;
+  demarrerSuivi(aTraiter.length);
+  res.json({ started: true, total: aTraiter.length, ignores });
+  if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
+  try {
+    for (const c of aTraiter) {
+      if (stopAll) { progLog('Arrêt demandé.'); break; }
+      const key = 'carmf:' + c.id;
+      if (enCours.has(key)) { progression.fait++; continue; }
+      enCours.add(key); progression.courant = c.nom;
+      try {
+        const creds = carmf.getClientCredentials(c.id);
+        if (creds) {
+          const r = await scrapeClientCarmf(creds, { onLog: progLog });
+          progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+        }
+      } catch (e) { progLog(`[${c.nom}] ERREUR : ${e.message}`); progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 }); }
+      finally { enCours.delete(key); progression.fait++; }
+    }
+  } finally { enCours.delete('carmf:all'); terminerSuivi(); progLog('Récupération CARMF terminée.'); }
 });
 
 // ===========================================================================
