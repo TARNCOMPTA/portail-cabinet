@@ -10,6 +10,7 @@ services:
       - UPDATE_DISABLED=1   # sur serveur, mise à jour par "git pull" + rebuild (voir DEPLOIEMENT.md)
       - REMOTE_BROWSER=1    # active la vue navigateur à distance (noVNC) pour la captcha
       - SCHEDULE_CARPIMKO=1 # récupération CARPIMKO automatique chaque mardi à 02:00 (Europe/Paris)
+      - SCHEDULE_CARMF=1    # récupération CARMF automatique chaque mercredi à 02:00 (Europe/Paris)
     volumes:
       - ./data:/app/data            # base SQLite + clé de chiffrement (à conserver/sauvegarder)
       - ./downloads:/app/downloads  # documents récupérés

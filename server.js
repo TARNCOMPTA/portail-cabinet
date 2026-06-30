@@ -532,31 +532,40 @@ app.post('/api/carmf/clients/:id/scrape', (req, res) => {
   if (verrou.verrouille && !req.body?.force) return res.status(423).json({ error: 'verrou_mdp', message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige-le ou force la tentative.', detail: verrou.message });
   lancerCarmf(id, res);
 });
-app.post('/api/carmf/scrape-all', async (req, res) => {
-  if (enCours.has('carmf:all')) return res.status(409).json({ error: 'Une récupération CARMF globale est déjà en cours.' });
+// Recuperation CARMF de TOUS les clients (utilisee par la route ET la planification).
+function lancerCarmfTous() {
+  if (enCours.has('carmf:all')) return { started: false };
   const clients = carmf.listClients();
   const aTraiter = clients.filter((c) => !c.verrouille);
   const ignores = clients.filter((c) => c.verrouille).map((c) => c.nom);
-  enCours.add('carmf:all'); stopAll = false;
+  enCours.add('carmf:all');
+  stopAll = false;
   demarrerSuivi(aTraiter.length);
-  res.json({ started: true, total: aTraiter.length, ignores });
   if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
-  try {
-    for (const c of aTraiter) {
-      if (stopAll) { progLog('Arrêt demandé.'); break; }
-      const key = 'carmf:' + c.id;
-      if (enCours.has(key)) { progression.fait++; continue; }
-      enCours.add(key); progression.courant = c.nom;
-      try {
-        const creds = carmf.getClientCredentials(c.id);
-        if (creds) {
-          const r = await scrapeClientCarmf(creds, { onLog: progLog });
-          progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
-        }
-      } catch (e) { progLog(`[${c.nom}] ERREUR : ${e.message}`); progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 }); }
-      finally { enCours.delete(key); progression.fait++; }
-    }
-  } finally { enCours.delete('carmf:all'); terminerSuivi(); progLog('Récupération CARMF terminée.'); }
+  (async () => {
+    try {
+      for (const c of aTraiter) {
+        if (stopAll) { progLog('Arrêt demandé.'); break; }
+        const key = 'carmf:' + c.id;
+        if (enCours.has(key)) { progression.fait++; continue; }
+        enCours.add(key); progression.courant = c.nom;
+        try {
+          const creds = carmf.getClientCredentials(c.id);
+          if (creds) {
+            const r = await scrapeClientCarmf(creds, { onLog: progLog });
+            progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+          }
+        } catch (e) { progLog(`[${c.nom}] ERREUR : ${e.message}`); progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 }); }
+        finally { enCours.delete(key); progression.fait++; }
+      }
+    } finally { enCours.delete('carmf:all'); terminerSuivi(); progLog('Récupération CARMF terminée.'); }
+  })();
+  return { started: true, total: aTraiter.length, ignores };
+}
+app.post('/api/carmf/scrape-all', (req, res) => {
+  const r = lancerCarmfTous();
+  if (!r.started) return res.status(409).json({ error: 'Une récupération CARMF globale est déjà en cours.' });
+  res.json(r);
 });
 
 // ===========================================================================
@@ -674,30 +683,32 @@ app.post('/api/urssaf/scrape-all', async (req, res) => {
   } finally { enCours.delete('urssaf:all'); terminerSuivi(); progLog('Récupération URSSAF terminée.'); }
 });
 
-// ---- Planification : recuperation CARPIMKO automatique (mardi 02:00, Europe/Paris) ----
-// Activee par l'env SCHEDULE_CARPIMKO (definie dans docker-compose sur le serveur).
-if (process.env.SCHEDULE_CARPIMKO) {
-  let dernierLancement = '';
-  const verifierPlanif = () => {
+// ---- Planification hebdomadaire des recuperations (02:00, fuseau Europe/Paris) ----
+// Verifie chaque minute ; declenche une seule fois le jour voulu. Activee par env.
+function planifierHebdo(envVar, jourEn, label, lancer) {
+  if (!process.env[envVar]) return;
+  let dernier = '';
+  setInterval(() => {
     try {
       const p = Object.fromEntries(
-        new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'long', hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false })
+        new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'long', hour: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false })
           .formatToParts(new Date()).map((x) => [x.type, x.value]),
       );
-      if (p.weekday === 'Tuesday' && p.hour === '02') {
+      if (p.weekday === jourEn && p.hour === '02') {
         const jour = `${p.year}-${p.month}-${p.day}`;
-        if (dernierLancement !== jour) {
-          dernierLancement = jour; // une seule fois par jour
-          console.log(`\n  [planif] Recuperation CARPIMKO automatique (mardi 02h) — ${jour}`);
-          progLog('Récupération CARPIMKO automatique planifiée (mardi 02h).');
-          lancerCarpimkoTous(false);
+        if (dernier !== jour) {
+          dernier = jour; // une seule fois par jour
+          console.log(`\n  [planif] ${label} — ${jour}`);
+          progLog(`${label} (planifiée).`);
+          lancer();
         }
       }
     } catch (e) { console.warn('[planif] ' + e.message); }
-  };
-  setInterval(verifierPlanif, 60000);
-  console.log('  Planification CARPIMKO active : chaque mardi a 02:00 (Europe/Paris).');
+  }, 60000);
+  console.log(`  Planification active : ${label} (Europe/Paris).`);
 }
+planifierHebdo('SCHEDULE_CARPIMKO', 'Tuesday', 'Récupération CARPIMKO automatique (mardi 02h)', () => lancerCarpimkoTous(false));
+planifierHebdo('SCHEDULE_CARMF', 'Wednesday', 'Récupération CARMF automatique (mercredi 02h)', () => lancerCarmfTous());
 
 const PORT = Number(process.env.PORT || 3003);
 
