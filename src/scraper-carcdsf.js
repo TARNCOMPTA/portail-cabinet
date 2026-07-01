@@ -1,44 +1,45 @@
-// Connecteur Playwright de l'espace adherent CARCDSF (adherents.carcdsf.fr).
-// Connexion PAR CLIENT (identifiant adherent + mot de passe), distincte selon la
-// PROFESSION : chirurgien-dentiste ('cd', .../carcdsf-cd) ou sage-femme ('sf',
-// .../carcdsf-sf). Application type servlet « XAS » (rendu cote client).
+// Connecteur CARCDSF (Caisse Autonome de Retraite des Chirurgiens-Dentistes et
+// Sages-Femmes). L'espace adherent est une appli Flutter Web : l'automatisation DOM
+// est impossible. On REJOUE donc directement l'API HTTP (reverse-engineered), ce qui
+// rend le connecteur headless, rapide et planifiable.
 //
-// ETAT : squelette. La connexion est tentee de facon generique et un DIAGNOSTIC de la
-// zone connectee (_diag_carcdsf.json + capture) est enregistre a chaque run, pour
-// finaliser ensuite les chemins exacts (connexion + telechargement) apres exploration
-// d'un compte reel de chaque profession. Tant que ce n'est pas finalise, la recuperation
-// des documents renvoie 0 (et le diagnostic).
+// Parcours (validé, sans 2FA sur les comptes standard) :
+//  1. POST .../InternetWebServicesNonConnectes/{b}/internaute/connexion/V1
+//       en-tete picristoken = jeton client constant ; corps JSON {pseudo,pwd,da,description}
+//       -> reponse : en-tete `authorization: Bearer …` + signaletiqueAccueil{matricule,nature}
+//  2. dossier = matricule*100 + nature
+//  3. Appels connectes : en-tetes picristoken (constante) + authorization (Bearer) + content-type
+//  4. Attestations annuelles : GET .../dossier/courrier/V1/{dossier}/1 -> liste{0,1,…}
+//       chaque item {libelle, noCourrier} ; PDF via POST .../dossier/courrier/generer/V1/{dossier}/1/{noCourrier}
+//       -> reponse.courrier = { courrier: <PDF base64>, nom }
+//  b (base) = 0 pour chirurgien-dentiste, 1 pour sage-femme (espaces carcdsf-cd / carcdsf-sf).
 
-import { chromium } from 'playwright';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addRun } from './carcdsf-db.js';
+import { addDocument, addRun } from './carcdsf-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'carcdsf');
-
-// Points d'entree par profession (espaces distincts).
-const LOGIN_URLS = {
-  cd: process.env.CARCDSF_CD_URL || 'https://adherents.carcdsf.fr/carcdsf-cd',
-  sf: process.env.CARCDSF_SF_URL || 'https://adherents.carcdsf.fr/carcdsf-sf',
-};
+const BASE = process.env.CARCDSF_BASE_URL || 'https://adherents.carcdsf.fr';
+// Jeton client (non lie a l'utilisateur) exige par l'API non-connectee.
+const PICRIS = process.env.CARCDSF_PICRISTOKEN || 'jkhkjhkjhkjhk';
 
 function sanitize(name) { return String(name).replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').trim().slice(0, 120); }
 function addRunSafe(clientId, run) { try { addRun(clientId, run); } catch (e) { console.warn(`(historique CARCDSF ${clientId}: ${e.message})`); } }
-function launchArgs() { return process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []; }
+const baseIndex = (profession) => (profession === 'sf' ? 1 : 0);
 
 /**
- * Recupere les documents d'un client CARCDSF (espace adherent).
+ * Recupere les documents CARCDSF d'un client (espace adherent, API HTTP).
  * @param {{id:number, nom:string, profession:'cd'|'sf', login:string, password:string, dossier?:string}} client
  * @param {{onLog?:(m:string)=>void, baseFolder?:string}} [opts]
  */
 export async function scrapeClient(client, opts = {}) {
   const log = (m) => { const line = `[${client.nom}] ${m}`; console.log(line); opts.onLog?.(line); };
-  const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
-  const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
-  const profession = client.profession === 'sf' ? 'sf' : 'cd';
-  const loginUrl = LOGIN_URLS[profession];
+  const timeout = Number(process.env.NAV_TIMEOUT ?? 45000);
+  const b = baseIndex(client.profession);
+  const API = `${BASE}/InternetWebServices/${b}`;
+  const APINC = `${BASE}/InternetWebServicesNonConnectes/${b}`;
 
   let clientDir;
   if (client.dossier && client.dossier.trim()) clientDir = client.dossier.trim();
@@ -46,59 +47,97 @@ export async function scrapeClient(client, opts = {}) {
   else clientDir = resolve(DOWNLOADS_DIR, sanitize(`${client.id}_${client.nom}`));
   mkdirSync(clientDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless, args: launchArgs() });
-  const context = await browser.newContext({ acceptDownloads: true, locale: 'fr-FR' });
-  const page = await context.newPage();
-  page.setDefaultTimeout(navTimeout);
-
   const docs = [];
+  let dejaPresents = 0;
   try {
-    // ---- 1. Connexion (generique, a affiner apres exploration) ----
-    log(`Ouverture de l'espace CARCDSF (${profession === 'sf' ? 'sage-femme' : 'chirurgien-dentiste'})`);
-    await page.goto(loginUrl, { waitUntil: 'domcontentloaded' });
-    await page.waitForLoadState('networkidle').catch(() => {});
-    const cookie = page.locator('button:has-text("Accepter"), button:has-text("J\'accepte"), #tarteaucitronPersonalize2').first();
-    if (await cookie.isVisible().catch(() => false)) await cookie.click().catch(() => {});
-
     if (!client.password) { const e = new Error('Mot de passe vide pour ce client — re-saisis-le.'); e.kind = 'mdp'; throw e; }
-    log('Tentative de saisie identifiant / mot de passe');
-    const champU = page.locator('input[type="text"]:visible, input[name*="ogin" i]:visible, input[name*="dent" i]:visible, input[id*="ogin" i]:visible').first();
-    const champP = page.locator('input[type="password"]:visible').first();
-    if (await champU.isVisible().catch(() => false)) await champU.fill(client.login).catch(() => {});
-    if (await champP.isVisible().catch(() => false)) await champP.fill(client.password).catch(() => {});
-    await Promise.all([
-      page.waitForLoadState('domcontentloaded').catch(() => {}),
-      page.locator('button[type="submit"]:visible, input[type="submit"]:visible, button:has-text("Connexion"):visible, button:has-text("Se connecter"):visible').first().click().catch(() => {}),
-    ]);
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await page.waitForTimeout(1500);
 
-    // ---- 2. Diagnostic de la zone connectee (pour finaliser les chemins) ----
-    const diag = await page.evaluate(() => ({
-      url: location.href,
-      titre: document.title,
-      inputs: Array.from(document.querySelectorAll('input,select')).slice(0, 40)
-        .map((e) => ({ tag: e.tagName, type: e.type, name: e.name, id: e.id })),
-      liens: Array.from(document.querySelectorAll('a')).slice(0, 80)
-        .map((a) => ({ texte: (a.textContent || '').trim().slice(0, 60), href: a.getAttribute('href') }))
-        .filter((l) => l.texte || l.href),
-      frames: Array.from(document.querySelectorAll('iframe,frame')).map((f) => f.getAttribute('src')),
-    })).catch(() => ({}));
-    writeFileSync(resolve(clientDir, '_diag_carcdsf.json'), JSON.stringify(diag, null, 2));
-    await page.screenshot({ path: resolve(clientDir, '_diag_carcdsf.png'), fullPage: true }).catch(() => {});
-    log(`Zone connectée : ${diag.url || '(inconnue)'} — diagnostic enregistré.`);
+    // ---- 1. Connexion ----
+    log(`Connexion CARCDSF (${client.profession === 'sf' ? 'sage-femme' : 'chirurgien-dentiste'})`);
+    const corps = JSON.stringify({ pseudo: client.login, pwd: client.password, da: '', description: 'portail-cabinet' });
+    const rc = await fetch(`${APINC}/internaute/connexion/V1`, {
+      method: 'POST', headers: { 'content-type': 'application/json', picristoken: PICRIS }, body: corps,
+      signal: AbortSignal.timeout(timeout),
+    });
+    const jc = await rc.json().catch(() => ({}));
+    const authorization = rc.headers.get('authorization');
+    if (!rc.ok || jc.codeRetour !== 0 || !authorization) {
+      const msg = (jc.libelle || '').trim();
+      // Une 2FA ou de mauvais identifiants empechent l'obtention du jeton.
+      const e = new Error('Connexion refusée' + (msg ? ` : ${msg}` : ' (identifiants incorrects ou double authentification requise ?)'));
+      e.kind = 'mdp';
+      throw e;
+    }
+    const sig = jc.signaletiqueAccueil || {};
+    const dossier = Number(sig.matricule) * 100 + Number(sig.nature || 0);
+    if (!sig.matricule) throw new Error('Numéro de dossier introuvable dans la réponse de connexion.');
+    log('Connecté. Récupération des documents.');
+    const H = { picristoken: PICRIS, authorization, 'content-type': 'application/json' };
 
-    // ---- 3. Telechargement des documents : A FINALISER apres exploration ----
-    addRunSafe(client.id, { statut: 'info', message: 'Connexion OK (diagnostic enregistré). Récupération des documents à finaliser après exploration.', nb_docs: 0 });
-    log('Récupération des documents non encore implémentée (en attente d\'exploration du parcours).');
-    return { ok: true, docs, dejaPresents: 0, diagnostic: true };
+    const enregistrer = (libelle, nomFichier, b64, annee) => {
+      const buf = Buffer.from(b64, 'base64');
+      if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') { log(`(${libelle} : réponse non-PDF, ignoré)`); return; }
+      const nom = sanitize(nomFichier || `${libelle}.pdf`).replace(/\.pdf$/i, '') + '.pdf';
+      const dest = resolve(clientDir, `${annee ? annee + '_' : ''}${nom}`);
+      if (existsSync(dest) && statSync(dest).size > 100) { addDocument(client.id, { libelle, fichier: dest, date_doc: annee }); dejaPresents++; return; }
+      writeFileSync(dest, buf);
+      addDocument(client.id, { libelle, fichier: dest, date_doc: annee });
+      docs.push({ libelle, fichier: dest });
+      log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
+    };
+    const generer = async (noCourrier) => {
+      const r = await fetch(`${API}/dossier/courrier/generer/V1/${dossier}/1/${noCourrier}`, { method: 'POST', headers: H, signal: AbortSignal.timeout(timeout) });
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => ({}));
+      return j.courrier && j.courrier.courrier ? j.courrier : null;
+    };
+
+    // ---- 2. Attestations annuelles (Loi Madelin, fiscale, …) ----
+    try {
+      const ra = await fetch(`${API}/dossier/courrier/V1/${dossier}/1`, { headers: H, signal: AbortSignal.timeout(timeout) });
+      const ja = await ra.json().catch(() => ({}));
+      const items = ja.liste && typeof ja.liste === 'object' ? Object.values(ja.liste) : [];
+      log(`${items.length} attestation(s) annuelle(s) trouvée(s).`);
+      for (const it of items) {
+        if (!it || it.noCourrier == null) continue;
+        const annee = (String(it.libelle || '').match(/\b(20\d{2})\b/) || [])[1] || null;
+        try {
+          const c = await generer(it.noCourrier);
+          if (c) enregistrer(it.libelle || `Attestation ${it.noCourrier}`, c.nom, c.courrier, annee);
+          else log(`(${it.libelle || it.noCourrier} : indisponible)`);
+        } catch (e) { log(`Échec ${it.libelle || it.noCourrier} : ${e.message.split('\n')[0]}`); }
+      }
+    } catch (e) { log(`Attestations : ${e.message.split('\n')[0]}`); }
+
+    // ---- 3. Appels de cotisations & courriers (best-effort) ----
+    // La liste est accessible ; le telechargement PDF de ces courriers utilise un
+    // mecanisme distinct non encore identifie (generer renvoie 404 sur identifiantCourrier).
+    // On tente quand meme, et on ignore proprement si indisponible.
+    try {
+      const rl = await fetch(`${API}/dossier/courrier/liste/V1/${dossier}/1`, { headers: H, signal: AbortSignal.timeout(timeout) });
+      const jl = await rl.json().catch(() => ({}));
+      const groupes = jl.liste && typeof jl.liste === 'object' ? jl.liste : {};
+      let nb = 0, ok = 0;
+      for (const [categorie, liste] of Object.entries(groupes)) {
+        for (const it of (Array.isArray(liste) ? liste : [])) {
+          nb++;
+          const c = await generer(it.identifiantCourrier).catch(() => null);
+          if (c && c.courrier) {
+            const annee = String(it.date || '').slice(0, 4) || null;
+            enregistrer(`${categorie} — ${it.libelleCourrier || ''}`.trim(), c.nom, c.courrier, annee);
+            ok++;
+          }
+        }
+      }
+      if (nb) log(`Courriers (cotisations…) : ${ok}/${nb} téléchargé(s)${ok < nb ? ' (les autres non disponibles via l\'API pour l\'instant)' : ''}.`);
+    } catch (e) { log(`Courriers : ${e.message.split('\n')[0]}`); }
+
+    addRunSafe(client.id, { statut: docs.length + dejaPresents > 0 ? 'succes' : 'echec', message: `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : ''), nb_docs: docs.length });
+    log(`Terminé : ${docs.length} nouveau(x), ${dejaPresents} déjà présent(s).`);
+    return { ok: true, docs, dejaPresents };
   } catch (err) {
-    await page.screenshot({ path: resolve(clientDir, `_debug_${Date.now()}.png`), fullPage: true }).catch(() => {});
     addRunSafe(client.id, { statut: err.kind === 'mdp' ? 'echec_mdp' : 'echec', message: err.message, nb_docs: docs.length });
     log(`ERREUR : ${err.message}`);
     return { ok: false, error: err.message, docs };
-  } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
   }
 }
