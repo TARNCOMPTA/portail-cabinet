@@ -292,7 +292,7 @@ $('#btn-scrape-selection').addEventListener('click', async () => {
   if (!ids.length) return;
   if (!confirm(`Récupérer les appels de cotisations pour ${ids.length} client(s) sélectionné(s) ?`)) return;
   try {
-    const r = await api('/api/scrape-selection', { method: 'POST', body: JSON.stringify({ ids }) });
+    const r = await api('/api/scrape-selection', { method: 'POST', body: JSON.stringify({ ids, messagerie: !!$('#chk-messagerie')?.checked }) });
     toast(`Récupération lancée pour ${r.total} client(s).`, 'ok');
     majEtatGlobal(true);
   } catch (err) { toast(err.message, 'err'); }
@@ -305,7 +305,7 @@ $('#table-clients').addEventListener('click', async (e) => {
   const act = btn.dataset.act;
   if (act === 'scrape') {
     btn.disabled = true; btn.textContent = '…';
-    try { await api(`/api/clients/${id}/scrape`, { method: 'POST' }); toast('Récupération lancée. Suis l\'avancement dans l\'historique.', 'ok'); }
+    try { await api(`/api/clients/${id}/scrape`, { method: 'POST', body: JSON.stringify({ messagerie: !!$('#chk-messagerie')?.checked }) }); toast('Récupération lancée. Suis l\'avancement dans l\'historique.', 'ok'); }
     catch (err) { toast(err.message, 'err'); }
     finally { setTimeout(() => { btn.disabled = false; btn.textContent = 'Récupérer'; rafraichir(); }, 1500); }
   } else if (act === 'docs') { ouvrirDocs(id, btn.dataset.nom); }
@@ -367,7 +367,7 @@ async function chargerReglages() {
 $('#btn-scrape-all').addEventListener('click', async () => {
   if (!confirm('Lancer la récupération pour TOUS les clients ?\n(Une connexion par cabinet, puis enchaînement de ses clients.)')) return;
   try {
-    const r = await api('/api/scrape-all', { method: 'POST' });
+    const r = await api('/api/scrape-all', { method: 'POST', body: JSON.stringify({ messagerie: !!$('#chk-messagerie')?.checked }) });
     toast(`Récupération lancée : ${r.total} client(s) sur ${r.cabinets} cabinet(s).`, 'ok');
     majEtatGlobal(true);
   } catch (err) { toast(err.message, 'err'); }

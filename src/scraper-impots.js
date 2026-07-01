@@ -26,6 +26,9 @@ const TF_AVIS_URL = 'https://cfspro.impots.gouv.fr/adelie2mapi/xhtml/impots/tf/a
 const TOUS_DOSSIERS_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=tousMesDossier&idth=consulter.avis.cfe';
 // Pages suivantes de "tous mes dossiers" (10 dossiers/page) : afficherMesDossiers.do?p=N
 const PAGE_DOSSIERS_URL = (p) => `https://cfspro.impots.gouv.fr/mire/afficherMesDossiers.do?p=${p}&action=tousMesDossier&idth=consulter.avis.cfe`;
+// Messagerie securisee "Mes echanges" (appli gaia2), PAR DOSSIER (choix du SIREN).
+const MSG_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=messagerie.gaia2.messagerie';
+const GAIA_URL = 'https://cfspro.impots.gouv.fr/gaia2-zu-mapi/pages/pro/portailpro.xhtml';
 
 // Lit les dossiers (nom + SIREN) presents sur la page courante.
 function lireDossiersPage(page) {
@@ -115,8 +118,99 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
   return { docs, existants };
 }
 
+// Messagerie securisee "Mes echanges" (gaia2) d'un dossier : enregistre le TEXTE de
+// chaque echange (+ pieces jointes si presentes) dans <clientDir>/Messagerie, par ordre
+// chronologique. La liste est une datatable PrimeFaces ; ouvrir un N° deplie le message.
+async function recupererMessagerie(page, context, client, clientDir, navTimeout, log) {
+  const siren = String(client.siret || '').replace(/\D/g, '').slice(0, 9);
+  const dir = resolve(clientDir, 'Messagerie');
+  mkdirSync(dir, { recursive: true });
+  const docs = [];
+  let existants = 0;
+  try {
+    // 1. Choix du dossier sous l'habilitation "messagerie" (peut ouvrir un nouvel onglet)
+    await page.goto(MSG_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(1000);
+    for (let i = 0; i < 9; i++) { const b = page.locator(`#siren${i}`); if (await b.count()) await b.fill(siren[i] || ''); }
+    let popup = null;
+    [popup] = await Promise.all([
+      context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
+      page.locator('input[name="button.submitValider"], input[type="image"]').first().click().catch(() => {}),
+    ]);
+    await page.waitForTimeout(2500);
+    if (/rechercherDossiers/i.test(page.url())) {
+      const radio = page.locator('input[name="idDossier"], #sel0').first();
+      if (await radio.count() && !(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
+      [popup] = await Promise.all([
+        context.waitForEvent('page', { timeout: 8000 }).catch(() => popup),
+        page.locator('input[name="button.submitValider"], input[type="image"]').first().click().catch(() => {}),
+      ]);
+      await page.waitForTimeout(2500);
+    }
+    const gaia = popup || page;
+    if (popup) await popup.waitForLoadState('domcontentloaded').catch(() => {});
+    else if (!/gaia2/i.test(page.url())) await page.goto(GAIA_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await gaia.waitForTimeout(2000);
+
+    // 2. Enumeration des echanges (num + objet + date)
+    const echanges = await gaia.evaluate(() => Array.from(document.querySelectorAll('a[id^="listeDemandesForm:listeDemandes:"][id$=":numDemande"]')).map((a) => {
+      const tds = Array.from(a.closest('tr')?.querySelectorAll('td') || []).map((td) => (td.textContent || '').replace(/\s+/g, ' ').trim());
+      return { num: (a.textContent || '').trim(), id: a.id, objet: tds[1] || '', service: tds[2] || '', date: tds[5] || '' };
+    })).catch(() => []);
+    if (!echanges.length) { log('Messagerie : aucun échange.'); if (popup) await popup.close().catch(() => {}); return { docs, existants }; }
+    // ordre chronologique (date de création croissante)
+    const cle = (d) => (d || '').split('/').reverse().join('');
+    echanges.sort((a, b) => cle(a.date).localeCompare(cle(b.date)));
+    log(`Messagerie : ${echanges.length} échange(s).`);
+
+    for (const e of echanges) {
+      const base = sanitize(`${(e.date || '').replace(/\//g, '-')}_${e.num}_${e.objet}`).slice(0, 110);
+      const dest = resolve(dir, `${base}.txt`);
+      const eid = `MSG_${e.num}`;
+      if (existsSync(dest) || getDocumentByEventid(client.id, eid)) { existants++; try { addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid }); } catch {} continue; }
+      try {
+        await gaia.locator(`[id="${e.id}"]`).first().click({ timeout: navTimeout }).catch(() => {});
+        await gaia.waitForTimeout(1400);
+        // Texte du message : plus petit element contenant "Objet :" + "De :/A :"
+        const texte = await gaia.evaluate(() => {
+          let best = null, len = 1e9;
+          for (const el of document.querySelectorAll('td,div,fieldset,section')) {
+            const t = el.innerText || '';
+            if (/Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 120 && t.length < len) { best = el; len = t.length; }
+          }
+          return best ? best.innerText.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : '';
+        }).catch(() => '');
+        if (texte) {
+          writeFileSync(dest, `N° ${e.num} — ${e.objet}\nService : ${e.service}\nDate : ${e.date}\n${'-'.repeat(60)}\n\n${texte}\n`, 'utf8');
+          try { addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid }); } catch {}
+          docs.push({ libelle: `Message ${e.date}`, fichier: dest });
+          log(`OK : ${base}.txt`);
+        } else { log(`(message ${e.num} : texte introuvable)`); }
+        // Pieces jointes eventuelles (liens de telechargement dans le panneau ouvert)
+        const pjLiens = gaia.locator('a[href$=".pdf"], a[href*="telecharger" i], a[href*="fichier" i], a[id*="telecharg" i]');
+        const npj = await pjLiens.count().catch(() => 0);
+        for (let k = 0; k < npj; k++) {
+          try {
+            const [dl] = await Promise.all([gaia.waitForEvent('download', { timeout: navTimeout }), pjLiens.nth(k).click()]);
+            const nomPj = sanitize(dl.suggestedFilename() || `${e.num}_pj${k + 1}`);
+            const destPj = resolve(dir, `${(e.date || '').replace(/\//g, '-')}_${nomPj}`);
+            await dl.saveAs(destPj);
+            try { addDocument(client.id, { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), fichier: destPj, eventid: `${eid}_PJ${k + 1}` }); } catch {}
+            docs.push({ libelle: `PJ ${e.date}`, fichier: destPj });
+            log(`OK (PJ) : ${nomPj}`);
+          } catch { /* pas de telechargement pour ce lien */ }
+        }
+      } catch (err) { log(`(message ${e.num} : ${err.message.split('\n')[0]})`); }
+    }
+    if (popup) await popup.close().catch(() => {});
+  } catch (err) {
+    log(`Messagerie : ${err.message.split('\n')[0]}`);
+  }
+  return { docs, existants };
+}
+
 // Traite UN client (SIREN) sur une page deja connectee. Telecharge CFE + taxe fonciere.
-async function recupererClient(page, client, { baseFolder, navTimeout, log }) {
+async function recupererClient(page, client, { baseFolder, navTimeout, log, context, messagerie }) {
   const siren = String(client.siret || '').replace(/\D/g, '').slice(0, 9);
   let clientDir;
   if (client.dossier && client.dossier.trim()) clientDir = client.dossier.trim();
@@ -152,15 +246,19 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log }) {
     await page.waitForTimeout(3000);
     const tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
 
-    const nouveaux = cfe.docs.length + tf.docs.length;
-    const existants = cfe.existants + tf.existants;
+    // 5. Messagerie (optionnelle)
+    let msg = { docs: [], existants: 0 };
+    if (messagerie) msg = await recupererMessagerie(page, context, client, clientDir, navTimeout, log);
+
+    const nouveaux = cfe.docs.length + tf.docs.length + msg.docs.length;
+    const existants = cfe.existants + tf.existants + msg.existants;
     addRunSafe(client.id, {
       statut: 'succes',
-      message: `${cfe.docs.length} CFE + ${tf.docs.length} taxe fonciere recupere(s)` + (existants ? `, ${existants} deja present(s)` : ''),
+      message: `${cfe.docs.length} CFE + ${tf.docs.length} taxe fonciere` + (messagerie ? ` + ${msg.docs.length} message(s)` : '') + ` recupere(s)` + (existants ? `, ${existants} deja present(s)` : ''),
       nb_docs: nouveaux,
     });
     log(`Termine : ${nouveaux} nouveau(x), ${existants} deja present(s).`);
-    return { ok: true, docs: [...cfe.docs, ...tf.docs] };
+    return { ok: true, docs: [...cfe.docs, ...tf.docs, ...msg.docs] };
   } catch (err) {
     const shot = resolve(clientDir, `_debug_${Date.now()}.png`);
     await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
@@ -204,7 +302,7 @@ export async function scrapeClient(client, opts = {}) {
   try {
     await attendreConnexionManuelle(page, opts.cabinet, log);
     await minimiserFenetre(context, page, log);
-    return await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log });
+    return await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log, context, messagerie: opts.messagerie });
   } catch (err) {
     addRunSafe(client.id, { statut: 'echec', message: err.message, nb_docs: 0 });
     return { ok: false, error: err.message, docs: [] };
@@ -228,7 +326,7 @@ export async function scrapeAll(clients, opts = {}) {
       const clog = (m) => { const line = `[${client.nom}] ${m}`; console.log(line); opts.onLog?.(line); };
       clog(`(${i + 1}/${clients.length})`);
       opts.onClient?.(client.nom);
-      const r = await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog });
+      const r = await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, context, messagerie: opts.messagerie });
       resume.traites++;
       const msg = r.ok ? `${r.docs.length} document(s)` : (r.error || 'erreur');
       opts.onResult?.({ nom: client.nom, ok: !!r.ok, message: msg, nb_docs: r.docs.length });

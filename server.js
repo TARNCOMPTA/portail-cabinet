@@ -282,7 +282,7 @@ app.post('/api/pick-folder', (req, res) => {
 });
 
 // ---- Recuperation ---------------------------------------------------------
-async function lancer(clientId, res) {
+async function lancer(clientId, res, messagerie = false) {
   const c = getClient(clientId);
   if (!c) return res?.status(404).json({ error: 'Client introuvable.' });
   if (!c.cabinet_id) return res?.status(400).json({ error: 'Ce client n\'est rattaché à aucun cabinet.' });
@@ -294,7 +294,7 @@ async function lancer(clientId, res) {
   const suiviLocal = !progression.actif; // ne pas ecraser un suivi de lot deja en cours
   if (suiviLocal) { demarrerSuivi(1); progression.courant = c.nom; }
   try {
-    const r = await scrapeClient(c, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog });
+    const r = await scrapeClient(c, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog, messagerie });
     if (suiviLocal) progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
   } finally {
     enCours.delete(clientId);
@@ -302,10 +302,10 @@ async function lancer(clientId, res) {
   }
 }
 
-app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), res));
+app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), res, !!req.body?.messagerie));
 
 // Traite un lot de clients : groupe par cabinet, UNE session par cabinet.
-async function lancerLot(clients) {
+async function lancerLot(clients, messagerie = false) {
   const baseFolder = getSetting('destination_folder');
   const parCabinet = new Map();
   for (const c of clients) {
@@ -318,7 +318,7 @@ async function lancerLot(clients) {
     const cab = getCabinetFull(cabinetId);
     if (!cab) continue;
     await scrapeAll(sousClients, {
-      cabinet: cab, baseFolder, shouldStop: () => stopAll,
+      cabinet: cab, baseFolder, shouldStop: () => stopAll, messagerie,
       onLog: progLog,
       onClient: (nom) => { progression.courant = nom; },
       onResult: (r) => { progression.resultats.push(r); progression.fait++; },
@@ -336,7 +336,7 @@ app.post('/api/scrape-all', async (req, res) => {
   stopAll = false;
   demarrerSuivi(total);
   res.json({ started: true, total });
-  try { await lancerLot(clients); } finally { enCours.delete('all'); terminerSuivi(); }
+  try { await lancerLot(clients, !!req.body?.messagerie); } finally { enCours.delete('all'); terminerSuivi(); }
 });
 
 // Recuperer une SELECTION de clients (par ids).
@@ -350,7 +350,7 @@ app.post('/api/scrape-selection', async (req, res) => {
   stopAll = false;
   demarrerSuivi(clients.filter((c) => c.cabinet_id).length);
   res.json({ started: true, total: clients.filter((c) => c.cabinet_id).length });
-  try { await lancerLot(clients); } finally { enCours.delete('all'); terminerSuivi(); }
+  try { await lancerLot(clients, !!req.body?.messagerie); } finally { enCours.delete('all'); terminerSuivi(); }
 });
 
 app.post('/api/scrape-all/stop', (req, res) => { stopAll = true; res.json({ ok: true }); });
