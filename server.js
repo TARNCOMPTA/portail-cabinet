@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import { dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import {
   listClients, getClient, createClient, updateClient, deleteClient, getClientBySiret,
@@ -235,6 +235,27 @@ app.get('/api/documents/file', (req, res) => {
   const f = String(req.query.path || '');
   if (!f || !existsSync(f)) return res.status(404).end();
   res.sendFile(f);
+});
+
+// ---- Messagerie impots (Mes echanges) : messages recuperes en .txt --------
+// Un message = document impots dont l'eventid vaut MSG_<num> ; ses PJ = MSG_<num>_PJ<k>.
+app.get('/api/messages', (req, res) => {
+  const docs = listAllDocuments();
+  const messages = docs.filter((d) => /^MSG_\d+$/.test(d.eventid || ''));
+  const out = messages.map((m) => {
+    const prefixe = `${m.eventid}_PJ`;
+    const pjs = docs.filter((d) => (d.eventid || '').startsWith(prefixe))
+      .map((p) => ({ id: p.id, nom: (p.fichier || '').split(/[\\/]/).pop(), fichier: p.fichier }));
+    return { id: m.id, client_id: m.client_id, client_nom: m.client_nom, libelle: m.libelle, recupere_le: m.recupere_le, fichier: m.fichier, pieces: pjs };
+  }).sort((a, b) => String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+  res.json(out);
+});
+app.get('/api/messages/:id/texte', (req, res) => {
+  const doc = listAllDocuments().find((d) => d.id === Number(req.params.id));
+  if (!doc || !doc.fichier || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Message introuvable.' });
+  let texte = '';
+  try { texte = readFileSync(doc.fichier, 'utf8'); } catch (e) { return res.status(500).json({ error: 'Lecture impossible.' }); }
+  res.json({ id: doc.id, libelle: doc.libelle, client_nom: doc.client_nom, texte });
 });
 
 // Genere un lien de telechargement direct (usage unique, 10 min) pour un document

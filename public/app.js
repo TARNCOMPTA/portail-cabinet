@@ -574,6 +574,43 @@ $('#pag-docs-next').addEventListener('click', () => allerPageDocs(1));
 $('#search-docs').addEventListener('input', (e) => { filtreDocs = e.target.value.trim(); pageDocs = 1; afficherPageDocs(); });
 $('#docs-filtre-annee')?.addEventListener('change', (e) => { filtreAnnee = e.target.value; pageDocs = 1; afficherPageDocs(); });
 
+// ---- Messages (messagerie impôts sécurisée) -------------------------------
+let tousMessages = [];
+async function chargerMessages() {
+  try { tousMessages = await api('/api/messages'); } catch { tousMessages = []; }
+  const nav = document.getElementById('nav-messages-count'); if (nav) nav.textContent = tousMessages.length || '';
+  afficherMessages();
+}
+function afficherMessages() {
+  const q = norm($('#msg-search')?.value || '');
+  const liste = q ? tousMessages.filter((m) => norm(`${m.client_nom || ''} ${m.libelle || ''}`).includes(q)) : tousMessages;
+  const tb = $('#table-messages tbody');
+  if (!tb) return;
+  tb.innerHTML = liste.map((m) => `
+    <tr data-msg="${m.id}" style="cursor:pointer;">
+      <td>${m.recupere_le ? new Date(m.recupere_le + 'Z').toLocaleDateString('fr-FR') : '—'}</td>
+      <td>${esc(m.client_nom || '—')}</td>
+      <td>${esc((m.libelle || '').replace(/^Message\s*/, ''))}</td>
+      <td>${m.pieces?.length ? `<span class="badge cab">${m.pieces.length} PJ</span>` : ''}</td>
+    </tr>`).join('');
+  $('#table-messages').hidden = liste.length === 0;
+  const vide = $('#msg-vide'); if (vide) vide.hidden = liste.length !== 0;
+}
+$('#msg-search')?.addEventListener('input', afficherMessages);
+$('#table-messages')?.addEventListener('click', async (e) => {
+  const tr = e.target.closest('tr[data-msg]'); if (!tr) return;
+  const id = Number(tr.dataset.msg);
+  const m = tousMessages.find((x) => x.id === id);
+  try {
+    const r = await api(`/api/messages/${id}/texte`);
+    $('#msg-lecture-titre').textContent = `${m?.client_nom || ''} — ${(m?.libelle || '').replace(/^Message\s*/, '')}`;
+    $('#msg-lecture-corps').textContent = r.texte || '(vide)';
+    $('#msg-lecture-pj').innerHTML = (m?.pieces || []).map((p) => `<a class="btn small" href="/api/documents/file?path=${encodeURIComponent(p.fichier)}" target="_blank" rel="noopener"><i class="ph ph-paperclip"></i> ${esc(p.nom)}</a>`).join('');
+    $('#msg-lecture').hidden = false;
+    $('#msg-lecture').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (err) { toast(err.message, 'err'); }
+});
+
 // ---- Vue « Clients » transverse : tous les documents d'un client, toutes sources -----
 let pcClients = [];
 let pcFiltre = '';
@@ -720,6 +757,7 @@ function activerOnglet(nom) {
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === nom));
   document.querySelectorAll('.tab-pane').forEach((p) => { p.hidden = p.id !== `tab-${nom}`; });
   if (nom === 'par-client') chargerParClient();
+  if (nom === 'messages') chargerMessages();
 }
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
 activerOnglet('dashboard');

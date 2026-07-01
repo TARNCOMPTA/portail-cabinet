@@ -30,6 +30,7 @@
       <div class="nav-group">Pilotage</div>
       <button type="button" class="tab-btn nav-item" data-tab="dashboard"><i class="ph-fill ph-squares-four"></i> Tableau de bord</button>
       <button type="button" class="tab-btn nav-item" data-tab="documents"><i class="ph ph-folders"></i> Documents <span class="nav-tag count" id="nav-docs-count"></span></button>
+      <button type="button" class="tab-btn nav-item" data-tab="messages"><i class="ph ph-chat-text"></i> Messages <span class="nav-tag count" id="nav-messages-count"></span></button>
       <button type="button" class="tab-btn nav-item" data-tab="par-client"><i class="ph ph-user-list"></i> Clients</button>
 
       <div class="nav-group">Sources de récupération</div>
@@ -615,6 +616,31 @@
             <button type="button" class="btn small" id="pag-docs-next">Suivant ›</button>
           </div>
           <p class="vide" id="vide-docs-all" style="padding: 0 22px 16px;" hidden>Aucun document récupéré pour l'instant.</p>
+        </section>
+      </div>
+
+      <!-- ===================== Messages (messagerie impôts) ===================== -->
+      <div class="tab-pane" id="tab-messages" hidden>
+        <div class="page-head">
+          <div>
+            <h1>Messages</h1>
+            <p>Messagerie sécurisée impôts (« Mes échanges ») récupérée, par client — clique un message pour le lire.</p>
+          </div>
+        </div>
+        <section class="panel flush">
+          <div class="toolbar" style="padding:18px 22px 0;">
+            <input type="search" id="msg-search" class="quick-search" style="margin-bottom:0;flex:1;min-width:200px;" placeholder="🔍 Rechercher (client, objet)…" autocomplete="off" />
+          </div>
+          <table id="table-messages">
+            <thead><tr><th>Date</th><th>Client</th><th>Objet</th><th>PJ</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="vide" id="msg-vide" style="padding:0 22px 16px;" hidden>Aucun message récupéré. Coche « Inclure la messagerie » lors d'une récupération Impôts.</p>
+        </section>
+        <section class="panel" id="msg-lecture" hidden>
+          <div class="panel-head" style="padding:0 0 14px;"><h2 id="msg-lecture-titre" style="margin:0;"></h2></div>
+          <div id="msg-lecture-pj" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;"></div>
+          <pre id="msg-lecture-corps" style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:14px;line-height:1.65;color:var(--ink);margin:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px 18px;"></pre>
         </section>
       </div>
 

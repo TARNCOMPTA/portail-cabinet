@@ -186,13 +186,19 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
           docs.push({ libelle: `Message ${e.date}`, fichier: dest });
           log(`OK : ${base}.txt`);
         } else { log(`(message ${e.num} : texte introuvable)`); }
-        // Pieces jointes eventuelles (liens de telechargement dans le panneau ouvert)
-        const pjLiens = gaia.locator('a[href$=".pdf"], a[href*="telecharger" i], a[href*="fichier" i], a[id*="telecharg" i]');
+        // Pieces jointes : liens PrimeFaces (id finissant par ":downloadFile", texte = nom
+        // du fichier), limites a la ligne du message ouvert (index de la datatable).
+        const idx = (e.id.match(/listeDemandes:(\d+):/) || [])[1];
+        const pjSel = idx != null
+          ? `a[id^="listeDemandesForm:listeDemandes:${idx}:"][id$="downloadFile"]`
+          : 'a[id$="downloadFile"]';
+        const pjLiens = gaia.locator(pjSel);
         const npj = await pjLiens.count().catch(() => 0);
         for (let k = 0; k < npj; k++) {
           try {
+            const nomLien = (await pjLiens.nth(k).innerText().catch(() => '')).trim();
             const [dl] = await Promise.all([gaia.waitForEvent('download', { timeout: navTimeout }), pjLiens.nth(k).click()]);
-            const nomPj = sanitize(dl.suggestedFilename() || `${e.num}_pj${k + 1}`);
+            const nomPj = sanitize(dl.suggestedFilename() || nomLien || `${e.num}_pj${k + 1}`);
             const destPj = resolve(dir, `${(e.date || '').replace(/\//g, '-')}_${nomPj}`);
             await dl.saveAs(destPj);
             try { addDocument(client.id, { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), fichier: destPj, eventid: `${eid}_PJ${k + 1}` }); } catch {}
