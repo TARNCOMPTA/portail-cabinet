@@ -85,8 +85,16 @@ export async function scrapeClient(client, opts = {}) {
       docs.push({ libelle, fichier: dest });
       log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
     };
+    // Attestations annuelles : generées à la volée (POST generer).
     const generer = async (noCourrier) => {
       const r = await fetch(`${API}/dossier/courrier/generer/V1/${dossier}/1/${noCourrier}`, { method: 'POST', headers: H, signal: AbortSignal.timeout(timeout) });
+      if (!r.ok) return null;
+      const j = await r.json().catch(() => ({}));
+      return j.courrier && j.courrier.courrier ? j.courrier : null;
+    };
+    // Courriers déjà enregistrés (appels de cotisations…) : GET telecharge.
+    const telecharge = async (identifiantCourrier) => {
+      const r = await fetch(`${API}/dossier/courrier/telecharge/V1/${dossier}/1/${identifiantCourrier}`, { headers: H, signal: AbortSignal.timeout(timeout) });
       if (!r.ok) return null;
       const j = await r.json().catch(() => ({}));
       return j.courrier && j.courrier.courrier ? j.courrier : null;
@@ -109,10 +117,7 @@ export async function scrapeClient(client, opts = {}) {
       }
     } catch (e) { log(`Attestations : ${e.message.split('\n')[0]}`); }
 
-    // ---- 3. Appels de cotisations & courriers (best-effort) ----
-    // La liste est accessible ; le telechargement PDF de ces courriers utilise un
-    // mecanisme distinct non encore identifie (generer renvoie 404 sur identifiantCourrier).
-    // On tente quand meme, et on ignore proprement si indisponible.
+    // ---- 3. Appels de cotisations & autres courriers enregistrés ----
     try {
       const rl = await fetch(`${API}/dossier/courrier/liste/V1/${dossier}/1`, { headers: H, signal: AbortSignal.timeout(timeout) });
       const jl = await rl.json().catch(() => ({}));
@@ -120,16 +125,16 @@ export async function scrapeClient(client, opts = {}) {
       let nb = 0, ok = 0;
       for (const [categorie, liste] of Object.entries(groupes)) {
         for (const it of (Array.isArray(liste) ? liste : [])) {
+          if (!it || it.identifiantCourrier == null) continue;
           nb++;
-          const c = await generer(it.identifiantCourrier).catch(() => null);
-          if (c && c.courrier) {
-            const annee = String(it.date || '').slice(0, 4) || null;
-            enregistrer(`${categorie} — ${it.libelleCourrier || ''}`.trim(), c.nom, c.courrier, annee);
-            ok++;
-          }
+          try {
+            const c = await telecharge(it.identifiantCourrier);
+            if (c) { const annee = String(it.date || '').slice(0, 4) || null; enregistrer((it.libelleCourrier || categorie || 'Courrier').trim(), c.nom, c.courrier, annee); ok++; }
+            else log(`(${it.libelleCourrier || it.identifiantCourrier} : indisponible)`);
+          } catch (e) { log(`Échec ${it.libelleCourrier || it.identifiantCourrier} : ${e.message.split('\n')[0]}`); }
         }
       }
-      if (nb) log(`Courriers (cotisations…) : ${ok}/${nb} téléchargé(s)${ok < nb ? ' (les autres non disponibles via l\'API pour l\'instant)' : ''}.`);
+      if (nb) log(`Courriers (cotisations…) : ${ok}/${nb} récupéré(s).`);
     } catch (e) { log(`Courriers : ${e.message.split('\n')[0]}`); }
 
     addRunSafe(client.id, { statut: docs.length + dejaPresents > 0 ? 'succes' : 'echec', message: `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : ''), nb_docs: docs.length });
