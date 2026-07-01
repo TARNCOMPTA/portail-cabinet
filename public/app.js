@@ -177,6 +177,7 @@ function renderClients() {
   const slice = liste.slice(debut, debut + taille);
 
   $('#clients-compte').textContent = liste.length === clientsAll.length ? `${clientsAll.length}` : `${liste.length} / ${clientsAll.length}`;
+  const navi = document.getElementById('nav-impots-count'); if (navi) navi.textContent = clientsAll.length || '';
   $('#table-clients').hidden = clientsAll.length === 0;
   $('.vide').hidden = clientsAll.length !== 0;
 
