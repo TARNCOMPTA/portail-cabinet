@@ -289,12 +289,56 @@ dialog h3 { margin: 0 0 18px; font-size: 18px; font-weight: 700; }
 @keyframes slidein { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
 /* ===================== Responsive ===================== */
+.menu-toggle { display: none; }            /* bouton hamburger : mobile uniquement */
+.nav-overlay { display: none; }
+
 @media (max-width: 900px) {
-  body { flex-direction: column; }
-  .sidebar { width: 100%; flex: none; height: auto; position: static; flex-direction: column; }
-  .nav { display: flex; flex-wrap: wrap; gap: 4px; }
-  .nav-group { width: 100%; }
-  .content, .topbar { padding-left: 18px; padding-right: 18px; }
-  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .menu-toggle { display: inline-flex; }
+
+  /* Sidebar transformée en tiroir coulissant */
+  .sidebar {
+    position: fixed; top: 0; left: 0; height: 100dvh; width: 82vw; max-width: 300px;
+    z-index: 60; transform: translateX(-100%); transition: transform .25s ease;
+    box-shadow: 0 0 40px rgba(44, 35, 41, .28);
+  }
+  body.nav-open .sidebar { transform: translateX(0); }
+  .nav-overlay {
+    display: block; position: fixed; inset: 0; z-index: 55; background: rgba(44, 35, 41, .45);
+    opacity: 0; pointer-events: none; transition: opacity .25s ease;
+  }
+  body.nav-open .nav-overlay { opacity: 1; pointer-events: auto; }
+  body.nav-open { overflow: hidden; }
+
+  .topbar { padding: 12px 16px; gap: 10px; }
+  .search { max-width: none; }
+  .content { padding: 18px 16px 40px; }
+  .page-head h1 { font-size: 22px; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+
+  /* Panneaux et barres d'outils moins larges */
+  .panel { padding: 16px; }
+  .panel-head { padding: 16px 16px 12px; }
+  .toolbar { padding-left: 16px !important; padding-right: 16px !important; }
+
+  /* Tables : défilement horizontal au lieu de casser la mise en page */
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; white-space: nowrap; }
+  .panel:not(.flush) table { margin: 0; width: 100%; }
+  .panel:not(.flush) th:first-child, .panel:not(.flush) td:first-child { padding-left: 14px; }
+  .panel:not(.flush) th:last-child, .panel:not(.flush) td:last-child { padding-right: 14px; }
+
+  /* Champs à 16px pour éviter le zoom automatique iOS au focus */
+  .search input, .form-grid input, .form-grid select, .toolbar input, .toolbar select,
+  .quick-search, .champ-dossier input, dialog input, dialog select { font-size: 16px; }
+
+  .progress-resume, .progress-courant, .progress-bilan, .progress-details { margin-left: 16px; margin-right: 16px; }
 }
-@media (max-width: 620px) { .form-grid { grid-template-columns: 1fr; } .kpi-grid { grid-template-columns: 1fr; } dialog { min-width: auto; width: 92vw; } }
+
+@media (max-width: 560px) {
+  .form-grid { grid-template-columns: 1fr; }
+  .kpi-grid { grid-template-columns: 1fr; }
+  dialog { min-width: auto; width: 94vw; padding: 20px; }
+  .page-head { align-items: flex-start; }
+  .page-head .row-actions { width: 100%; }
+  #toast { left: 16px; right: 16px; bottom: 16px; }
+  .subtab-btn { padding: 10px 12px; font-size: 13px; }
+}

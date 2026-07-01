@@ -718,6 +718,13 @@ function activerOnglet(nom) {
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
 activerOnglet('dashboard');
 
+// ---- Menu mobile (tiroir) ----
+const fermerNav = () => document.body.classList.remove('nav-open');
+$('#btn-menu')?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
+$('#nav-overlay')?.addEventListener('click', fermerNav);
+document.querySelectorAll('.sidebar .nav-item').forEach((b) => b.addEventListener('click', fermerNav));
+addEventListener('keydown', (e) => { if (e.key === 'Escape') fermerNav(); });
+
 // Sous-onglets (page Paramètres)
 function activerSousOnglet(nom) {
   document.querySelectorAll('.subtab-btn').forEach((b) => b.classList.toggle('active', b.dataset.subtab === nom));
