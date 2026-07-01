@@ -38,6 +38,7 @@
       <button type="button" class="tab-btn nav-item" data-tab="carpimko"><i class="ph ph-heartbeat"></i> CARPIMKO <span class="nav-tag count" id="nav-carpimko-count"></span></button>
       <button type="button" class="tab-btn nav-item" data-tab="carmf"><i class="ph ph-stethoscope"></i> CARMF <span class="nav-tag count" id="nav-carmf-count"></span></button>
       <button type="button" class="tab-btn nav-item" data-tab="carcdsf"><i class="ph ph-tooth"></i> CARCDSF <span class="nav-tag count" id="nav-carcdsf-count"></span></button>
+      <button type="button" class="tab-btn nav-item" data-tab="carpv"><i class="ph ph-paw-print"></i> CARPV <span class="nav-tag count" id="nav-carpv-count"></span></button>
     </nav>
 
     <div class="sidebar-foot">
@@ -525,6 +526,69 @@
         </section>
       </div>
 
+      <div class="tab-pane" id="tab-carpv" hidden>
+        <div class="page-head">
+          <div>
+            <h1>CARPV</h1>
+            <p>Retraite des vétérinaires — récupération des documents (un identifiant par client).</p>
+          </div>
+          <div class="row-actions">
+            <button type="button" class="btn danger" id="cv-stop" hidden>■ Arrêter</button>
+            <button type="button" class="btn primary" id="cv-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
+          </div>
+        </div>
+        <p class="aide" style="background:var(--warn-bg);color:var(--warn);padding:10px 14px;border-radius:var(--radius-sm);">
+          Saisis l'<strong>identifiant</strong> et le <strong>mot de passe</strong> de l'espace adhérent CARPV de chaque client. Pas de captcha. Un client dont le mot de passe échoue est marqué 🔒 et ignoré par « Tout récupérer ».
+        </p>
+        <section class="panel">
+          <h2 id="cv-form-titre">Ajouter un client CARPV</h2>
+          <form id="form-carpv">
+            <input type="hidden" name="id" />
+            <div class="form-grid">
+              <label>Nom du client<input name="nom" required placeholder="Ex : Dr MARTIN" /></label>
+              <label>Identifiant CARPV<input name="login" required placeholder="identifiant de connexion" /></label>
+              <label>Mot de passe<input name="password" type="password" placeholder="mot de passe espace adhérent" /></label>
+              <label>Notes (optionnel)<input name="notes" placeholder="ex : vétérinaire, Albi" /></label>
+              <label class="full">Dossier d'enregistrement de ce client (optionnel)
+                <span class="champ-dossier"><input name="dossier" placeholder="Vide = dossier interne (downloads/carpv)" /></span>
+              </label>
+            </div>
+            <div class="form-actions">
+              <button type="submit" class="btn primary" id="cv-submit">Enregistrer</button>
+              <button type="button" class="btn" id="cv-cancel" hidden>Annuler</button>
+            </div>
+          </form>
+          <details class="sous-form">
+            <summary style="cursor:pointer;font-weight:600;color:var(--ink-soft);">Import en masse (CSV / copier-coller Excel)</summary>
+            <p class="aide" style="margin-top:12px;">Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>identifiant</strong>, <strong>mot de passe</strong>, notes.</p>
+            <textarea id="cv-import-texte" rows="5" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--mono);font-size:12.5px;background:var(--bg);color:var(--ink);" placeholder="nom;identifiant;mot de passe;notes&#10;Dr MARTIN;123456;motdepasse;vétérinaire"></textarea>
+            <div class="form-actions">
+              <button type="button" class="btn primary" id="cv-import-btn">Importer</button>
+              <span class="aide" id="cv-import-bilan" style="margin:0;"></span>
+            </div>
+          </details>
+        </section>
+        <section class="panel flush">
+          <div class="panel-head"><h2>Clients CARPV <span id="cv-compte" class="compteur"></span></h2></div>
+          <div class="toolbar" style="padding:0 22px;">
+            <input type="search" id="cv-recherche" placeholder="🔍 Rechercher (nom, identifiant, notes)…" />
+          </div>
+          <table id="table-carpv-clients">
+            <thead><tr><th>Nom</th><th>Identifiant</th><th>Notes</th><th>Docs</th><th>Dernier run</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="vide" id="cv-vide" style="padding:0 22px 16px;" hidden>Aucun client CARPV. Ajoute-en un ci-dessus ou importe une liste.</p>
+          <div class="pagination" id="cv-pagination" style="padding-bottom:16px;"></div>
+        </section>
+        <section class="panel flush">
+          <div class="panel-head"><h2>Historique des récupérations</h2></div>
+          <table id="table-carpv-runs">
+            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+      </div>
+
       <!-- ===================== Documents ===================== -->
       <div class="tab-pane" id="tab-documents" hidden>
         <div class="page-head">
@@ -786,5 +850,6 @@
   <script src="urssaf.js"></script>
   <script src="carmf.js"></script>
   <script src="carcdsf.js"></script>
+  <script src="carpv.js"></script>
 </body>
 </html>

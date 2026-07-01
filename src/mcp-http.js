@@ -32,10 +32,11 @@ const SOURCES = {
   carpimko: { clients: '/api/carpimko/clients', add: '/api/carpimko/clients', scrape: (id) => `/api/carpimko/clients/${id}/scrape`, docs: (id) => `/api/carpimko/clients/${id}/documents`, cle: 'login' },
   carmf: { clients: '/api/carmf/clients', add: '/api/carmf/clients', scrape: (id) => `/api/carmf/clients/${id}/scrape`, docs: (id) => `/api/carmf/clients/${id}/documents`, cle: 'login' },
   carcdsf: { clients: '/api/carcdsf/clients', add: '/api/carcdsf/clients', scrape: (id) => `/api/carcdsf/clients/${id}/scrape`, docs: (id) => `/api/carcdsf/clients/${id}/documents`, cle: 'login' },
+  carpv: { clients: '/api/carpv/clients', add: '/api/carpv/clients', scrape: (id) => `/api/carpv/clients/${id}/scrape`, docs: (id) => `/api/carpv/clients/${id}/documents`, cle: 'login' },
 };
-const AVEC_MDP = new Set(['carpimko', 'carmf', 'carcdsf']); // sources login+mot de passe par client
+const AVEC_MDP = new Set(['carpimko', 'carmf', 'carcdsf', 'carpv']); // sources login+mot de passe par client
 const nomFichier = (p) => (p || '').split(/[\\/]/).pop() || '';
-const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf']);
+const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv']);
 const txt = (o) => ({ content: [{ type: 'text', text: typeof o === 'string' ? o : JSON.stringify(o, null, 2) }] });
 const erreur = (e) => ({ isError: true, content: [{ type: 'text', text: `Erreur : ${e.message}` }] });
 

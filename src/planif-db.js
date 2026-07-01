@@ -17,16 +17,17 @@ db.exec(`CREATE TABLE IF NOT EXISTS planifications (
   heure  INTEGER DEFAULT 2
 );`);
 
-export const SOURCES = ['urssaf', 'carpimko', 'carmf', 'carcdsf'];
+export const SOURCES = ['urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv'];
 
-// Valeurs par defaut au premier lancement (reprend l'existant : CARPIMKO mardi 2h,
-// CARMF mercredi 2h ; URSSAF jeudi 2h mais desactive ; CARCDSF vendredi 2h desactive).
+// Valeurs par defaut au premier lancement (CARPIMKO mardi 2h, CARMF mercredi 2h ;
+// URSSAF jeudi, CARCDSF vendredi, CARPV samedi — 2h, desactives par defaut).
 {
   const ins = db.prepare('INSERT OR IGNORE INTO planifications (source, actif, jour, heure) VALUES (?, ?, ?, ?)');
   ins.run('carpimko', 1, 2, 2);
   ins.run('carmf', 1, 3, 2);
   ins.run('urssaf', 0, 4, 2);
   ins.run('carcdsf', 0, 5, 2);
+  ins.run('carpv', 0, 6, 2);
 }
 
 export function listPlanifs() {

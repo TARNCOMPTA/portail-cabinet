@@ -18,6 +18,8 @@ import * as carmf from './src/carmf-db.js';
 import { scrapeClient as scrapeClientCarmf } from './src/scraper-carmf.js';
 import * as carcdsf from './src/carcdsf-db.js';
 import { scrapeClient as scrapeClientCarcdsf } from './src/scraper-carcdsf.js';
+import * as carpv from './src/carpv-db.js';
+import { scrapeClient as scrapeClientCarpv } from './src/scraper-carpv.js';
 import * as urssafDb from './src/urssaf-db.js';
 import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
 import * as fusions from './src/fusions-db.js';
@@ -241,6 +243,7 @@ app.post('/api/documents/lien', (req, res) => {
   const sources = {
     impots: listAllDocuments, carpimko: carpimko.listAllDocuments,
     carmf: carmf.listAllDocuments, urssaf: urssafDb.listAllDocuments,
+    carcdsf: carcdsf.listAllDocuments, carpv: carpv.listAllDocuments,
   };
   const fn = sources[String(req.body?.source || '')];
   if (!fn) return res.status(400).json({ error: 'Source inconnue.' });
@@ -726,6 +729,95 @@ app.post('/api/carcdsf/scrape-all', (req, res) => {
 });
 
 // ===========================================================================
+//  SOURCE CARPV (base carpv.db, connexion par client ; retraite des vétérinaires)
+// ===========================================================================
+app.get('/api/carpv/clients', (req, res) => res.json(carpv.listClients()));
+app.post('/api/carpv/clients', (req, res) => {
+  const { nom, login, password, notes, dossier } = req.body || {};
+  if (!nom || !login || !password) return res.status(400).json({ error: 'Nom, identifiant et mot de passe sont requis.' });
+  if (carpv.getClientByLogin(login)) return res.status(409).json({ error: 'Un client avec cet identifiant existe déjà.' });
+  res.status(201).json(carpv.createClient({ nom, login, password, notes, dossier }));
+});
+app.post('/api/carpv/clients/import', (req, res) => {
+  const clients = req.body?.clients;
+  if (!Array.isArray(clients) || clients.length === 0) return res.status(400).json({ error: 'Aucune ligne à importer.' });
+  if (clients.length > 5000) return res.status(400).json({ error: 'Trop de lignes (max 5000).' });
+  res.json(carpv.importClients(clients));
+});
+app.put('/api/carpv/clients/:id', (req, res) => { const c = carpv.updateClient(Number(req.params.id), req.body || {}); if (!c) return res.status(404).json({ error: 'Client introuvable.' }); res.json(c); });
+app.delete('/api/carpv/clients/:id', (req, res) => { carpv.deleteClient(Number(req.params.id)); res.json({ ok: true }); });
+app.get('/api/carpv/clients/:id/documents', (req, res) => { if (!carpv.getClient(Number(req.params.id))) return res.status(404).json({ error: 'Client introuvable.' }); res.json(carpv.listDocuments(Number(req.params.id))); });
+app.get('/api/carpv/documents', (req, res) => res.json(carpv.listAllDocuments()));
+app.get('/api/carpv/documents/:id/file', (req, res) => {
+  const doc = carpv.listAllDocuments().find((d) => d.id === Number(req.params.id));
+  if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
+  res.download(doc.fichier, basename(doc.fichier));
+});
+app.get('/api/carpv/runs', (req, res) => res.json(carpv.listRuns(300)));
+
+async function lancerCarpv(clientId, res) {
+  const creds = carpv.getClientCredentials(clientId);
+  if (!creds) return res?.status(404).json({ error: 'Client introuvable.' });
+  const key = 'carpv:' + clientId;
+  if (enCours.has(key)) return res?.status(409).json({ error: 'Une récupération est déjà en cours pour ce client.' });
+  enCours.add(key);
+  res?.json({ started: true, client: creds.nom });
+  const suiviLocal = !progression.actif;
+  if (suiviLocal) demarrerSuivi(1);
+  progression.courant = creds.nom;
+  try {
+    const r = await scrapeClientCarpv(creds, { onLog: progLog });
+    if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+  } catch (e) {
+    progLog(`ERREUR : ${e.message}`);
+    if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: false, message: e.message, nb_docs: 0 });
+  } finally {
+    enCours.delete(key);
+    if (suiviLocal) { progression.fait = 1; terminerSuivi(); }
+  }
+}
+app.post('/api/carpv/clients/:id/scrape', (req, res) => {
+  const id = Number(req.params.id);
+  const verrou = carpv.clientVerrouille(id);
+  if (verrou.verrouille && !req.body?.force) return res.status(423).json({ error: 'verrou_mdp', message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige-le ou force la tentative.', detail: verrou.message });
+  lancerCarpv(id, res);
+});
+function lancerCarpvTous() {
+  if (enCours.has('carpv:all')) return { started: false };
+  const clients = carpv.listClients();
+  const aTraiter = clients.filter((c) => !c.verrouille);
+  const ignores = clients.filter((c) => c.verrouille).map((c) => c.nom);
+  enCours.add('carpv:all');
+  stopAll = false;
+  demarrerSuivi(aTraiter.length);
+  if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
+  (async () => {
+    try {
+      for (const c of aTraiter) {
+        if (stopAll) { progLog('Arrêt demandé.'); break; }
+        const key = 'carpv:' + c.id;
+        if (enCours.has(key)) { progression.fait++; continue; }
+        enCours.add(key); progression.courant = c.nom;
+        try {
+          const creds = carpv.getClientCredentials(c.id);
+          if (creds) {
+            const r = await scrapeClientCarpv(creds, { onLog: progLog });
+            progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} nouveau(x)${r.dejaPresents ? ` + ${r.dejaPresents} déjà présent(s)` : ''}` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+          }
+        } catch (e) { progLog(`[${c.nom}] ERREUR : ${e.message}`); progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 }); }
+        finally { enCours.delete(key); progression.fait++; }
+      }
+    } finally { enCours.delete('carpv:all'); terminerSuivi(); progLog('Récupération CARPV terminée.'); }
+  })();
+  return { started: true, total: aTraiter.length, ignores };
+}
+app.post('/api/carpv/scrape-all', (req, res) => {
+  const r = lancerCarpvTous();
+  if (!r.started) return res.status(409).json({ error: 'Une récupération CARPV globale est déjà en cours.' });
+  res.json(r);
+});
+
+// ===========================================================================
 //  SOURCE URSSAF (module autonome : base urssaf.db, tiers declarant par SIRET)
 //  Connexion login/mot de passe, sans captcha (navigateur invisible). Suivi de
 //  progression partage avec les autres sources.
@@ -852,12 +944,13 @@ app.post('/api/urssaf/scrape-all', (req, res) => {
 // ---- Planificateur des recuperations automatiques (config en base, par organisme) ----
 // Tourne sur le serveur (active par une variable SCHEDULE*). Lit chaque minute la config
 // definie dans Parametres ▸ Planification (organisme actif, jour, heure ; fuseau Europe/Paris).
-if (process.env.SCHEDULE || process.env.SCHEDULE_CARPIMKO || process.env.SCHEDULE_CARMF || process.env.SCHEDULE_URSSAF || process.env.SCHEDULE_CARCDSF) {
+if (process.env.SCHEDULE || process.env.SCHEDULE_CARPIMKO || process.env.SCHEDULE_CARMF || process.env.SCHEDULE_URSSAF || process.env.SCHEDULE_CARCDSF || process.env.SCHEDULE_CARPV) {
   const LANCEURS = {
     urssaf: () => lancerUrssafTous(),
     carpimko: () => lancerCarpimkoTous(false),
     carmf: () => lancerCarmfTous(),
     carcdsf: () => lancerCarcdsfTous(),
+    carpv: () => lancerCarpvTous(),
   };
   const JOURS_EN = [null, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const dernier = {};
