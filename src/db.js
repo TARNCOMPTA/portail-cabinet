@@ -200,6 +200,11 @@ export function addDocument(client_id, { libelle, fichier, eventid }) {
 export function getDocumentByEventid(client_id, eventid) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? AND eventid = ?').get(client_id, eventid);
 }
+// Securite : ne sert un fichier par chemin QUE s'il correspond a un document enregistre
+// (evite la lecture de fichier arbitraire sur /api/documents/file?path=...).
+export function documentAvecChemin(fichier) {
+  return db.prepare('SELECT id FROM documents WHERE fichier = ?').get(String(fichier || ''));
+}
 export function listDocuments(client_id) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? ORDER BY recupere_le DESC, id DESC').all(client_id);
 }

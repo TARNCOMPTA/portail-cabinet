@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import {
   listClients, getClient, createClient, updateClient, deleteClient, getClientBySiret,
   listClientsByCabinet, importClients, listDocuments, listAllDocuments, listRuns, getSetting, setSetting,
+  documentAvecChemin,
   listCabinets, getCabinetFull, createCabinet, getCabinetByLogin, updateCabinet, deleteCabinet, cabinetsConfigure,
   countUsers, listUsers, getUserByEmail, getUserById, createUser, updateUserPassword,
   setUserActif, setUserRole, deleteUser, deleteUserSessions, purgerSessionsExpirees,
@@ -34,6 +35,13 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = resolve(__dirname, 'public');
 const app = express();
 app.set('trust proxy', 1); // derriere le reverse proxy HTTPS : lire X-Forwarded-Proto (cookie Secure)
+// En-tetes de securite (sans dependance) : anti-sniffing, anti-clickjacking, referrer discret.
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set('X-Frame-Options', 'SAMEORIGIN');
+  res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  next();
+});
 app.use(express.json());
 
 // --- Assets accessibles SANS connexion (page de login) ---
@@ -233,7 +241,8 @@ app.get('/api/documents', (req, res) => res.json(listAllDocuments()));
 
 app.get('/api/documents/file', (req, res) => {
   const f = String(req.query.path || '');
-  if (!f || !existsSync(f)) return res.status(404).end();
+  // Ne sert que des chemins correspondant a un document impots enregistre (anti-LFI).
+  if (!f || !documentAvecChemin(f) || !existsSync(f)) return res.status(404).end();
   res.sendFile(f);
 });
 
