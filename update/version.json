@@ -1,6 +1,6 @@
 {
-  "version": "1.1.3",
-  "notes": "Le numéro de version sous le logo devient cliquable : il signale les mises à jour disponibles (v actuelle → v nouvelle) et les installe en un clic.",
+  "version": "1.1.4",
+  "notes": "L'onglet Messages est paginé par 10 (recherche remise à la première page).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "ca0f690fa7aaeab17f6cf047f76265c39dcdbf1e9c3d20cca7e1fdb986848232"
+  "sha256": "f0cfb3c9e32284d48f8672b7f95e0cc54fb0a192f3a9067afd13a08fca346d8b"
 }
