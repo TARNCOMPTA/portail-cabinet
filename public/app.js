@@ -902,6 +902,8 @@ async function chargerParClient() {
     g.sources.add(u.source);
   }
   pcClients = [...groups.values()].sort((a, b) => a.nom.localeCompare(b.nom));
+  const navc = document.getElementById('nav-parclient-count');
+  if (navc) navc.textContent = pcClients.length || '';
   for (const k of [...pcSelection]) if (!groups.has(k)) pcSelection.delete(k);
   rendreParClient();
 }
@@ -1365,6 +1367,8 @@ chargerMoi();
 chargerConfig();
 rafraichir();
 chargerDashboard();
+chargerParClient(); // au demarrage aussi : alimente le compteur « Clients » de la sidebar
+chargerMessages(); // idem pour le compteur « Messages »
 chargerReglages();
 suivreEtat();
 afficherVersion();
