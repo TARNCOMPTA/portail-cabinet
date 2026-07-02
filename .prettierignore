@@ -1,8 +1,7 @@
 node_modules/
+public/vendor/
 data/
 downloads/
-.env
-*.log
 app_update/
-restart.flag
-.claude/
+*.db
+*.log

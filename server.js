@@ -6,10 +6,10 @@ import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import {
   listClients, getClient, createClient, updateClient, deleteClient, getClientBySiret,
-  listClientsByCabinet, importClients, listDocuments, listAllDocuments, listRuns, getSetting, setSetting,
+  importClients, listDocuments, listAllDocuments, listRuns, getSetting, setSetting,
   documentAvecChemin,
   listCabinets, getCabinetFull, createCabinet, getCabinetByLogin, updateCabinet, deleteCabinet, cabinetsConfigure,
-  countUsers, listUsers, getUserByEmail, getUserById, createUser, updateUserPassword,
+  listUsers, getUserByEmail, getUserById, createUser, updateUserPassword,
   setUserActif, setUserRole, deleteUser, deleteUserSessions, purgerSessionsExpirees,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';

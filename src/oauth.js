@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import express from 'express';
 import * as oauthDb from './oauth-db.js';
 import { verifyPassword } from './auth.js';
-import { getUserByEmail, getUserById } from './db.js';
+import { getUserByEmail } from './db.js';
 
 const CODE_TTL = 5 * 60 * 1000;          // code d'autorisation : 5 min
 const ACCESS_TTL = 60 * 60 * 1000;       // jeton d'acces : 1 h
