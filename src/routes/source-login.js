@@ -6,6 +6,7 @@
 import express from 'express';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
+import { filtrerReprise, REPRISE_HEURES } from '../reprise.js';
 
 /**
  * @param {string} source  identifiant court (ex 'carmf') = prefixe d'URL et de verrou.
@@ -90,12 +91,15 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
   function lancerTous(extra = {}) {
     if (enCours.has(`${source}:all`)) return { started: false };
     const clients = db.listClients();
-    const aTraiter = clients.filter((c) => !c.verrouille);
+    const deverrouilles = clients.filter((c) => !c.verrouille);
     const ignores = clients.filter((c) => c.verrouille).map((c) => c.nom);
+    const reprise = filtrerReprise(deverrouilles);
+    const aTraiter = reprise.aFaire;
     enCours.add(`${source}:all`);
     ctx.resetArret();
     demarrerSuivi(aTraiter.length);
     if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
+    if (reprise.ignores) progLog(`Reprise : ${reprise.ignores} client(s) ${SRC} déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
     (async () => {
       try {
         for (const c of aTraiter) {
@@ -135,7 +139,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
         progLog(`Récupération ${SRC} terminée.`);
       }
     })();
-    return { started: true, total: aTraiter.length, ignores };
+    return { started: true, total: aTraiter.length, ignores, deja: reprise.ignores };
   }
 
   r.post('/clients/:id/scrape', (req, res) => {

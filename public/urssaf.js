@@ -272,7 +272,9 @@
     if (!confirm('Lancer la récupération URSSAF pour TOUS les clients ?\n(Une connexion par compte cabinet, puis enchaînement.)')) return;
     try {
       const r = await api('/api/urssaf/scrape-all', { method: 'POST', body: JSON.stringify({}) });
-      toast(`Récupération lancée : ${r.total} client(s).`, 'ok');
+      let msg = `Récupération lancée : ${r.total} client(s).`;
+      if (r.ignores) msg += ` Reprise : ${r.ignores} déjà récupéré(s), ignoré(s).`;
+      toast(msg, 'ok');
       $('#u-stop').hidden = false;
       $('#u-scrape-all').disabled = true;
     } catch (err) {

@@ -209,6 +209,7 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
       const r = await api(ep('/scrape-all'), { method: 'POST', body: JSON.stringify(tousDocuments ? { tousDocuments: tousDocsCoche() } : {}) });
       let msg = `Récupération lancée : ${r.total} client(s).`;
       if (r.ignores?.length) msg += ` ${r.ignores.length} verrouillé(s) ignoré(s).`;
+      if (r.deja) msg += ` Reprise : ${r.deja} déjà récupéré(s), ignoré(s).`;
       toast(msg, 'ok');
       if (el('stop')) el('stop').hidden = false;
       el('scrape-all').disabled = true;

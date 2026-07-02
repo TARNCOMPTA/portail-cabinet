@@ -475,7 +475,9 @@ $('#btn-scrape-all').addEventListener('click', async () => {
   if (!confirm('Lancer la récupération pour TOUS les clients ?\n(Une connexion par cabinet, puis enchaînement de ses clients.)')) return;
   try {
     const r = await api('/api/scrape-all', { method: 'POST', body: JSON.stringify({ messagerie: !!$('#chk-messagerie')?.checked }) });
-    toast(`Récupération lancée : ${r.total} client(s) sur ${r.cabinets} cabinet(s).`, 'ok');
+    let msg = `Récupération lancée : ${r.total} client(s) sur ${r.cabinets} cabinet(s).`;
+    if (r.ignores) msg += ` Reprise : ${r.ignores} déjà récupéré(s), ignoré(s).`;
+    toast(msg, 'ok');
     majEtatGlobal(true);
   } catch (err) {
     toast(err.message, 'err');

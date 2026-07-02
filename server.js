@@ -37,6 +37,7 @@ import {
   purgerSessionsExpirees,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
+import { filtrerReprise, REPRISE_HEURES } from './src/reprise.js';
 import * as carpimko from './src/carpimko-db.js';
 import { scrapeClient as scrapeClientCarpimko } from './src/scraper-carpimko.js';
 import * as carmf from './src/carmf-db.js';
@@ -448,18 +449,21 @@ async function lancerLot(clients, messagerie = true) {
   }
 }
 
-// Tout recuperer : tous les clients de tous les cabinets.
+// Tout recuperer : tous les clients de tous les cabinets. Reprise automatique :
+// les clients deja recuperes avec succes recemment sont sautes (voir src/reprise.js).
 app.post('/api/scrape-all', async (req, res) => {
   if (!cabinetsConfigure()) return res.status(400).json({ error: "Configure d'abord au moins un compte cabinet." });
   if (enCours.has('all')) return res.status(409).json({ error: 'Une récupération globale est déjà en cours.' });
-  const clients = listClients();
-  const total = clients.filter((c) => c.cabinet_id).length;
+  const { aFaire, ignores } = filtrerReprise(listClients());
+  const total = aFaire.filter((c) => c.cabinet_id).length;
   enCours.add('all');
   stopAll = false;
   demarrerSuivi(total);
-  res.json({ started: true, total });
+  if (ignores) progLog(`Reprise : ${ignores} dossier(s) déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
+  const cabinets = new Set(aFaire.filter((c) => c.cabinet_id).map((c) => c.cabinet_id)).size;
+  res.json({ started: true, total, cabinets, ignores });
   try {
-    await lancerLot(clients, req.body?.messagerie !== false);
+    await lancerLot(aFaire, req.body?.messagerie !== false);
   } finally {
     enCours.delete('all');
     terminerSuivi();
@@ -725,9 +729,9 @@ app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
 function lancerUrssafTous() {
   if (!urssafDb.cabinetsConfigure()) return { started: false, raison: 'compte' };
   if (enCours.has('urssaf:all')) return { started: false };
-  const clients = urssafDb.listClients();
+  const { aFaire, ignores } = filtrerReprise(urssafDb.listClients());
   const parCabinet = new Map();
-  for (const c of clients) {
+  for (const c of aFaire) {
     if (!c.cabinet_id) continue;
     if (!parCabinet.has(c.cabinet_id)) parCabinet.set(c.cabinet_id, []);
     parCabinet.get(c.cabinet_id).push(c);
@@ -736,6 +740,7 @@ function lancerUrssafTous() {
   enCours.add('urssaf:all');
   stopAll = false;
   demarrerSuivi(total);
+  if (ignores) progLog(`Reprise : ${ignores} client(s) URSSAF déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
   (async () => {
     try {
       for (const [cabinetId, sousClients] of parCabinet) {
@@ -762,7 +767,7 @@ function lancerUrssafTous() {
       progLog('Récupération URSSAF terminée.');
     }
   })();
-  return { started: true, total };
+  return { started: true, total, ignores };
 }
 app.post('/api/urssaf/scrape-all', (req, res) => {
   const r = lancerUrssafTous();
