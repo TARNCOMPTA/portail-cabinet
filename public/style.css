@@ -130,6 +130,14 @@ body {
   margin-top: 3px;
   letter-spacing: 0.2px;
 }
+/* Badge version (sidebar) : cliquable ; mis en evidence quand une maj est disponible. */
+#brand-version {
+  cursor: pointer;
+}
+#brand-version.maj-dispo {
+  color: var(--accent);
+  font-weight: 700;
+}
 
 .nav {
   flex: 1;

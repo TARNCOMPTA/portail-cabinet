@@ -1222,7 +1222,7 @@ async function afficherVersion() {
     const v = await api('/api/version');
     $('#pied-version').textContent = 'v' + v.version;
     const bv = $('#brand-version');
-    if (bv) bv.textContent = ` · v${v.version}`;
+    if (bv && !bv.classList.contains('maj-dispo')) bv.textContent = ` · v${v.version}`;
   } catch {
     /* ignore */
   }
@@ -1257,33 +1257,56 @@ async function chargerMoi() {
 }
 
 // ---- Mise à jour en ligne (admin) ------------------------------------------
-async function chargerMaj() {
-  $('#maj-etat').textContent = 'Vérification…';
-  try {
-    const r = await api('/api/update/check');
-    $('#maj-actuelle').value = 'v' + (r.current || '?');
-    $('#maj-derniere').value = r.latest ? 'v' + r.latest : '—';
-    $('#maj-notes').value = r.notes || '';
-    $('#maj-notes-bloc').hidden = !r.notes;
-    $('#maj-installer').hidden = !r.updateAvailable;
-    $('#maj-etat').textContent = r.erreur
-      ? 'Vérification impossible : ' + r.erreur
-      : r.updateAvailable
-        ? 'Une mise à jour est disponible.'
-        : 'Le portail est à jour.';
-  } catch (err) {
-    $('#maj-etat').textContent = err.message;
+// Deux points d'entrée : le panneau Paramètres et le badge version de la sidebar
+// (cliquable ; mis en évidence quand une mise à jour est disponible).
+let etatMaj = null;
+function setEtatMaj(t) {
+  const e = $('#maj-etat');
+  if (e) e.textContent = t;
+}
+function majBadgeVersion() {
+  const bv = $('#brand-version');
+  if (!bv) return;
+  if (etatMaj?.updateAvailable) {
+    bv.textContent = ` · v${etatMaj.current} → v${etatMaj.latest}`;
+    bv.classList.add('maj-dispo');
+    bv.title = `Mise à jour v${etatMaj.latest} disponible — cliquer pour l'installer`;
+  } else if (etatMaj?.current) {
+    bv.textContent = ` · v${etatMaj.current}`;
+    bv.classList.remove('maj-dispo');
+    bv.title = 'Le portail est à jour (cliquer pour revérifier)';
   }
 }
-$('#maj-verifier')?.addEventListener('click', chargerMaj);
-$('#maj-installer')?.addEventListener('click', async () => {
-  if (!confirm("Installer la mise à jour maintenant ?\nL'application redémarre toute seule (quelques secondes d'interruption).")) return;
+async function chargerMaj() {
+  setEtatMaj('Vérification…');
+  try {
+    const r = await api('/api/update/check');
+    etatMaj = r;
+    if ($('#maj-actuelle')) {
+      $('#maj-actuelle').value = 'v' + (r.current || '?');
+      $('#maj-derniere').value = r.latest ? 'v' + r.latest : '—';
+      $('#maj-notes').value = r.notes || '';
+      $('#maj-notes-bloc').hidden = !r.notes;
+      $('#maj-installer').hidden = !r.updateAvailable;
+    }
+    setEtatMaj(r.erreur ? 'Vérification impossible : ' + r.erreur : r.updateAvailable ? 'Une mise à jour est disponible.' : 'Le portail est à jour.');
+    majBadgeVersion();
+  } catch (err) {
+    setEtatMaj(err.message);
+  }
+}
+async function installerMaj() {
+  if (!etatMaj?.updateAvailable) return;
+  if (!confirm(`Installer la mise à jour v${etatMaj.latest} maintenant ?\nL'application redémarre toute seule (quelques secondes d'interruption).`)) return;
   const btn = $('#maj-installer');
-  btn.disabled = true;
-  $('#maj-etat').textContent = 'Téléchargement et installation…';
+  if (btn) btn.disabled = true;
+  setEtatMaj('Téléchargement et installation…');
+  toast(`Installation de la v${etatMaj.latest}…`, 'ok');
   try {
     const r = await api('/api/update/apply', { method: 'POST' });
-    $('#maj-etat').textContent = `Version ${r.version} installée — redémarrage en cours…`;
+    setEtatMaj(`Version ${r.version} installée — redémarrage en cours…`);
+    const bv = $('#brand-version');
+    if (bv) bv.textContent = ` · redémarrage…`;
     // Le serveur s'arrête pour appliquer la maj : on attend qu'il revienne avec la nouvelle version.
     const debut = Date.now();
     const attendre = setInterval(async () => {
@@ -1299,15 +1322,25 @@ $('#maj-installer')?.addEventListener('click', async () => {
       }
       if (Date.now() - debut > 3 * 60 * 1000) {
         clearInterval(attendre);
-        $('#maj-etat').textContent = 'Le redémarrage prend plus de temps que prévu — recharge la page dans un instant.';
-        btn.disabled = false;
+        setEtatMaj('Le redémarrage prend plus de temps que prévu — recharge la page dans un instant.');
+        if (btn) btn.disabled = false;
       }
     }, 3000);
   } catch (err) {
     toast(err.message, 'err');
-    $('#maj-etat').textContent = err.message;
-    btn.disabled = false;
+    setEtatMaj(err.message);
+    if (btn) btn.disabled = false;
   }
+}
+$('#maj-verifier')?.addEventListener('click', chargerMaj);
+$('#maj-installer')?.addEventListener('click', installerMaj);
+// Badge version de la sidebar : installe si une maj est connue, sinon revérifie.
+$('#brand-version')?.addEventListener('click', async () => {
+  if (!moi || moi.role !== 'admin') return;
+  if (etatMaj?.updateAvailable) return installerMaj();
+  await chargerMaj();
+  if (etatMaj?.updateAvailable) installerMaj();
+  else toast(`Le portail est à jour (v${etatMaj?.current || '?'}).`, 'ok');
 });
 
 // ---- Connecteur MCP « organisation » (OAuth) ------------------------------
