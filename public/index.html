@@ -909,10 +909,19 @@
               <select id="docs-filtre-annee" title="Filtrer par année du document">
                 <option value="">Toutes les années</option>
               </select>
+              <button
+                type="button"
+                class="btn primary"
+                id="docs-zip"
+                title="Télécharge un ZIP (un dossier par client) : la sélection cochée, sinon tout le résultat affiché"
+              >
+                <i class="ph ph-download-simple"></i> <span id="docs-zip-lib">Télécharger tout (ZIP)</span>
+              </button>
             </div>
             <table id="table-docs">
               <thead>
                 <tr>
+                  <th style="width: 34px"><input type="checkbox" id="docs-cocher-tout" title="Cocher / décocher tout le résultat filtré" /></th>
                   <th>Année</th>
                   <th>Date</th>
                   <th>Client</th>
@@ -1058,7 +1067,7 @@
           <div class="page-head">
             <div>
               <h1>Paramètres</h1>
-              <p>Identifiants des sources, équipe, dossier d'enregistrement et compte.</p>
+              <p>Identifiants des sources, équipe, planification et compte.</p>
             </div>
           </div>
 
@@ -1066,7 +1075,6 @@
             <button type="button" class="subtab-btn active" data-subtab="impots"><i class="ph ph-bank"></i> Comptes Impôts</button>
             <button type="button" class="subtab-btn" data-subtab="urssaf"><i class="ph ph-buildings"></i> Comptes URSSAF</button>
             <button type="button" class="subtab-btn" data-subtab="users" id="subtab-btn-users" hidden><i class="ph ph-users-three"></i> Collaborateurs</button>
-            <button type="button" class="subtab-btn" data-subtab="dossier"><i class="ph ph-folder"></i> Dossier</button>
             <button type="button" class="subtab-btn" data-subtab="planif"><i class="ph ph-clock"></i> Planification</button>
             <button type="button" class="subtab-btn" data-subtab="moncompte"><i class="ph ph-user"></i> Mon compte</button>
           </nav>
@@ -1149,18 +1157,6 @@
                   <button type="button" class="btn" id="ucab-cancel" hidden>Annuler</button>
                 </div>
               </form>
-            </section>
-          </div>
-
-          <div class="subtab-pane" id="sp-dossier" hidden>
-            <section class="panel">
-              <h2>Dossier d'enregistrement</h2>
-              <p class="aide">Où ranger les avis (CFE, taxe foncière). Un sous-dossier par client y est créé. Vide = dossier interne.</p>
-              <div class="champ-dossier">
-                <input id="dest-global" placeholder="Ex : D:\Clients\Impots" />
-                <button type="button" class="btn" id="pick-global">Parcourir…</button>
-                <button type="button" class="btn primary" id="save-global">Enregistrer</button>
-              </div>
             </section>
           </div>
 

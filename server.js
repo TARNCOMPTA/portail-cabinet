@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import JSZip from 'jszip';
 import { dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
@@ -326,18 +327,20 @@ app.get('/api/messages/:id/texte', (req, res) => {
   res.json({ id: doc.id, libelle: doc.libelle, client_nom: doc.client_nom, texte });
 });
 
+// Toutes les listes de documents, par cle de source (resolution serveur par id).
+const DOCS_PAR_SOURCE = {
+  impots: listAllDocuments,
+  carpimko: carpimko.listAllDocuments,
+  carmf: carmf.listAllDocuments,
+  urssaf: urssafDb.listAllDocuments,
+  carcdsf: carcdsf.listAllDocuments,
+  carpv: carpv.listAllDocuments,
+};
+
 // Genere un lien de telechargement direct (usage unique, 10 min) pour un document
 // d'une source donnee. Resolu cote serveur via l'id (pas de chemin arbitraire).
 app.post('/api/documents/lien', (req, res) => {
-  const sources = {
-    impots: listAllDocuments,
-    carpimko: carpimko.listAllDocuments,
-    carmf: carmf.listAllDocuments,
-    urssaf: urssafDb.listAllDocuments,
-    carcdsf: carcdsf.listAllDocuments,
-    carpv: carpv.listAllDocuments,
-  };
-  const fn = sources[String(req.body?.source || '')];
+  const fn = DOCS_PAR_SOURCE[String(req.body?.source || '')];
   if (!fn) return res.status(400).json({ error: 'Source inconnue.' });
   const doc = fn().find((d) => d.id === Number(req.body?.document_id));
   if (!doc || !doc.fichier || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Document introuvable.' });
@@ -345,6 +348,47 @@ app.post('/api/documents/lien', (req, res) => {
   const filename = basename(doc.fichier);
   oauthDb.saveDl({ token, path: doc.fichier, filename, expires_at: Date.now() + 10 * 60 * 1000 });
   res.json({ url: `${baseUrl(req)}/dl/${token}`, filename });
+});
+
+// Telechargement EN MASSE : un ZIP des documents demandes ({items:[{source,id}]}),
+// ranges par client. Resolution par id uniquement (aucun chemin fourni par le client).
+app.post('/api/documents/zip', async (req, res) => {
+  const items = Array.isArray(req.body?.items) ? req.body.items : [];
+  if (!items.length) return res.status(400).json({ error: 'Aucun document sélectionné.' });
+  if (items.length > 2000) return res.status(400).json({ error: 'Trop de documents (max 2000 par archive).' });
+  const parSource = new Map();
+  for (const it of items) {
+    const src = String(it?.source || '');
+    if (!DOCS_PAR_SOURCE[src]) return res.status(400).json({ error: `Source inconnue : ${src}` });
+    if (!parSource.has(src)) parSource.set(src, new Set());
+    parSource.get(src).add(Number(it.id));
+  }
+  const zip = new JSZip();
+  const nomsPris = new Set();
+  const propre = (s) =>
+    String(s || '')
+      // eslint-disable-next-line no-control-regex -- sanitisation volontaire des noms des entrees du zip
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, '_')
+      .trim() || '_';
+  let nb = 0;
+  for (const [src, ids] of parSource) {
+    for (const doc of DOCS_PAR_SOURCE[src]()) {
+      if (!ids.has(doc.id) || !doc.fichier || !existsSync(doc.fichier)) continue;
+      let chemin = `${propre(doc.client_nom || 'Sans client')}/${propre(basename(doc.fichier))}`;
+      for (let k = 2; nomsPris.has(chemin); k++) chemin = chemin.replace(/(\.[^./]*)?$/, ` (${k})$1`);
+      nomsPris.add(chemin);
+      zip.file(chemin, readFileSync(doc.fichier));
+      nb++;
+    }
+  }
+  if (!nb) return res.status(404).json({ error: 'Aucun fichier trouvé pour cette sélection.' });
+  const nom = `documents_${new Date().toISOString().slice(0, 10)}.zip`;
+  res.set('Content-Type', 'application/zip');
+  res.set('Content-Disposition', `attachment; filename="${nom}"`);
+  zip
+    .generateNodeStream({ type: 'nodebuffer', streamFiles: true, compression: 'STORE' })
+    .pipe(res)
+    .on('error', () => res.end());
 });
 
 // ---- Reglages -------------------------------------------------------------

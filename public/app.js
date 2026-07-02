@@ -432,22 +432,6 @@ async function choisirDossier() {
   const r = await api('/api/pick-folder', { method: 'POST' });
   return r.folder || null;
 }
-$('#pick-global').addEventListener('click', async () => {
-  try {
-    const f = await choisirDossier();
-    if (f) $('#dest-global').value = f;
-  } catch (err) {
-    toast(err.message, 'err');
-  }
-});
-$('#save-global').addEventListener('click', async () => {
-  try {
-    await api('/api/settings', { method: 'POST', body: JSON.stringify({ destinationFolder: $('#dest-global').value.trim() }) });
-    toast('Dossier de destination enregistré.', 'ok');
-  } catch (err) {
-    toast(err.message, 'err');
-  }
-});
 document.addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-pick]');
   if (!btn) return;
@@ -461,15 +445,6 @@ document.addEventListener('click', async (e) => {
     toast(err.message, 'err');
   }
 });
-async function chargerReglages() {
-  try {
-    const s = await api('/api/settings');
-    $('#dest-global').value = s.destinationFolder || '';
-  } catch {
-    /* ignore */
-  }
-}
-
 // ---- Tout récupérer (une session par cabinet) ----
 $('#btn-scrape-all').addEventListener('click', async () => {
   if (!confirm('Lancer la récupération pour TOUS les clients ?\n(Une connexion par cabinet, puis enchaînement de ses clients.)')) return;
@@ -722,7 +697,7 @@ const SOURCES = [
 async function chargerDocuments() {
   try {
     const listesDocs = await Promise.all(SOURCES.map((s) => api(s.docs).catch(() => [])));
-    tousDocs = SOURCES.flatMap((s, i) => listesDocs[i].map((d) => ({ ...d, source: s.label, _href: s.hrefDoc(d) }))).map((d) => ({
+    tousDocs = SOURCES.flatMap((s, i) => listesDocs[i].map((d) => ({ ...d, source: s.label, _src: s.key, _href: s.hrefDoc(d) }))).map((d) => ({
       ...d,
       _annee: anneeDoc(d),
       ...infoDoc(d),
@@ -764,8 +739,10 @@ function afficherPageDocs() {
   if (pageDocs < 1) pageDocs = 1;
   const debut = (pageDocs - 1) * DOCS_PAR_PAGE;
   for (const d of liste.slice(debut, debut + DOCS_PAR_PAGE)) {
+    const cle = `${d._src}:${d.id}`;
     const tr = document.createElement('tr');
     tr.innerHTML = `
+      <td><input type="checkbox" data-doc-coche="${cle}" ${docsSelection.has(cle) ? 'checked' : ''} /></td>
       <td><strong>${esc(d._annee || '—')}</strong></td>
       <td>${esc(d._date || '—')}</td>
       <td>${esc(d.client_nom || '—')}</td>
@@ -774,6 +751,7 @@ function afficherPageDocs() {
       <td><a class="btn small primary" href="${d._href}" target="_blank">Ouvrir</a></td>`;
     tbody.appendChild(tr);
   }
+  majBoutonZip();
   const pag = $('#pagination-docs');
   if (pag) {
     pag.hidden = liste.length <= DOCS_PAR_PAGE;
@@ -797,6 +775,67 @@ $('#docs-filtre-annee')?.addEventListener('change', (e) => {
   filtreAnnee = e.target.value;
   pageDocs = 1;
   afficherPageDocs();
+});
+
+// ---- Téléchargement en masse (ZIP) -----------------------------------------
+// Cases à cocher (persistantes entre pages/filtres) ; le bouton prend la
+// sélection si non vide, sinon TOUT le résultat filtré courant.
+const docsSelection = new Set(); // clés `${source}:${id}`
+function majBoutonZip() {
+  const lib = $('#docs-zip-lib');
+  if (!lib) return;
+  const n = docsSelection.size;
+  lib.textContent = n ? `Télécharger la sélection (${n})` : `Télécharger tout (${docsAffiches().length})`;
+  $('#docs-zip').disabled = !n && !docsAffiches().length;
+  const tout = $('#docs-cocher-tout');
+  if (tout) {
+    const affiches = docsAffiches();
+    tout.checked = affiches.length > 0 && affiches.every((d) => docsSelection.has(`${d._src}:${d.id}`));
+  }
+}
+$('#table-docs')?.addEventListener('change', (e) => {
+  const cb = e.target.closest('input[data-doc-coche]');
+  if (!cb) return;
+  if (cb.checked) docsSelection.add(cb.dataset.docCoche);
+  else docsSelection.delete(cb.dataset.docCoche);
+  majBoutonZip();
+});
+$('#docs-cocher-tout')?.addEventListener('change', (e) => {
+  for (const d of docsAffiches()) {
+    if (e.target.checked) docsSelection.add(`${d._src}:${d.id}`);
+    else docsSelection.delete(`${d._src}:${d.id}`);
+  }
+  afficherPageDocs();
+});
+$('#docs-zip')?.addEventListener('click', async () => {
+  const items = docsSelection.size
+    ? [...docsSelection].map((c) => ({ source: c.split(':')[0], id: Number(c.split(':')[1]) }))
+    : docsAffiches().map((d) => ({ source: d._src, id: d.id }));
+  if (!items.length) return toast('Aucun document à télécharger.', 'err');
+  const btn = $('#docs-zip');
+  btn.disabled = true;
+  toast(`Préparation du ZIP (${items.length} document(s))…`, 'ok');
+  try {
+    const r = await fetch('/api/documents/zip', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ items }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `Erreur ${r.status}`);
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (r.headers.get('Content-Disposition') || '').match(/filename="([^"]+)"/)?.[1] || 'documents.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 30000);
+    toast('ZIP téléchargé.', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  } finally {
+    btn.disabled = false;
+    majBoutonZip();
+  }
 });
 
 // ---- Messages (messagerie impôts sécurisée) -------------------------------
@@ -1430,7 +1469,6 @@ rafraichir();
 chargerDashboard();
 chargerParClient(); // au demarrage aussi : alimente le compteur « Clients » de la sidebar
 chargerMessages(); // idem pour le compteur « Messages »
-chargerReglages();
 suivreEtat();
 afficherVersion();
 suivreProgression();
