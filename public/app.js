@@ -1182,8 +1182,64 @@ async function chargerMoi() {
     chargerApiKey();
     $('#panel-mcp-oauth').hidden = false;
     chargerMcpOAuth();
+    $('#panel-maj').hidden = false;
+    chargerMaj();
   }
 }
+
+// ---- Mise à jour en ligne (admin) ------------------------------------------
+async function chargerMaj() {
+  $('#maj-etat').textContent = 'Vérification…';
+  try {
+    const r = await api('/api/update/check');
+    $('#maj-actuelle').value = 'v' + (r.current || '?');
+    $('#maj-derniere').value = r.latest ? 'v' + r.latest : '—';
+    $('#maj-notes').value = r.notes || '';
+    $('#maj-notes-bloc').hidden = !r.notes;
+    $('#maj-installer').hidden = !r.updateAvailable;
+    $('#maj-etat').textContent = r.erreur
+      ? 'Vérification impossible : ' + r.erreur
+      : r.updateAvailable
+        ? 'Une mise à jour est disponible.'
+        : 'Le portail est à jour.';
+  } catch (err) {
+    $('#maj-etat').textContent = err.message;
+  }
+}
+$('#maj-verifier')?.addEventListener('click', chargerMaj);
+$('#maj-installer')?.addEventListener('click', async () => {
+  if (!confirm("Installer la mise à jour maintenant ?\nL'application redémarre toute seule (quelques secondes d'interruption).")) return;
+  const btn = $('#maj-installer');
+  btn.disabled = true;
+  $('#maj-etat').textContent = 'Téléchargement et installation…';
+  try {
+    const r = await api('/api/update/apply', { method: 'POST' });
+    $('#maj-etat').textContent = `Version ${r.version} installée — redémarrage en cours…`;
+    // Le serveur s'arrête pour appliquer la maj : on attend qu'il revienne avec la nouvelle version.
+    const debut = Date.now();
+    const attendre = setInterval(async () => {
+      try {
+        const v = await fetch('/api/version').then((x) => x.json());
+        if (v.version === r.version) {
+          clearInterval(attendre);
+          toast(`Mise à jour v${r.version} appliquée.`, 'ok');
+          setTimeout(() => location.reload(), 1200);
+        }
+      } catch {
+        /* serveur en cours de redémarrage */
+      }
+      if (Date.now() - debut > 3 * 60 * 1000) {
+        clearInterval(attendre);
+        $('#maj-etat').textContent = 'Le redémarrage prend plus de temps que prévu — recharge la page dans un instant.';
+        btn.disabled = false;
+      }
+    }, 3000);
+  } catch (err) {
+    toast(err.message, 'err');
+    $('#maj-etat').textContent = err.message;
+    btn.disabled = false;
+  }
+});
 
 // ---- Connecteur MCP « organisation » (OAuth) ------------------------------
 // Sécurité : le Client Secret n'est visible qu'à la génération (stocké haché).

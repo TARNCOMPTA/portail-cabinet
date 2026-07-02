@@ -1297,6 +1297,33 @@
                 <button type="button" class="btn danger" id="mcpoauth-regenerer">Régénérer Client ID/Secret</button>
               </div>
             </section>
+
+            <section class="panel" id="panel-maj" hidden>
+              <h2>Mise à jour de l'application <span class="compteur">admin</span></h2>
+              <p class="aide">
+                Met à jour le portail en un clic depuis la dernière version publiée (GitHub), sans passer par le serveur. L'application redémarre toute seule
+                (quelques secondes d'interruption) ; les données (clients, documents, clés) ne sont pas touchées.
+              </p>
+              <div class="form-grid">
+                <label
+                  >Version installée
+                  <input id="maj-actuelle" type="text" readonly />
+                </label>
+                <label
+                  >Dernière version publiée
+                  <input id="maj-derniere" type="text" readonly placeholder="—" />
+                </label>
+                <label style="grid-column: 1 / -1" id="maj-notes-bloc" hidden
+                  >Nouveautés
+                  <textarea id="maj-notes" readonly rows="3"></textarea>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn" id="maj-verifier">Vérifier</button>
+                <button type="button" class="btn primary" id="maj-installer" hidden>Mettre à jour maintenant</button>
+                <span class="aide" id="maj-etat" style="margin: 0"></span>
+              </div>
+            </section>
           </div>
         </div>
       </div>

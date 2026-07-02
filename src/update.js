@@ -9,6 +9,7 @@
 // sont jamais touchees (elles ne sont pas dans l'archive).
 
 import JSZip from 'jszip';
+import crypto from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,6 +62,7 @@ export async function verifierMaj() {
       latest,
       notes: manifest.notes || '',
       url: manifest.url || '',
+      sha256: manifest.sha256 || '',
       updateAvailable: comparerVersions(latest, current) > 0,
     };
   } catch (e) {
@@ -75,6 +77,12 @@ export async function appliquerMaj(onLog = () => {}) {
   const res = await fetch(etat.url, { cache: 'no-store' });
   if (!res.ok) throw new Error(`Telechargement echoue (HTTP ${res.status}).`);
   const buf = Buffer.from(await res.arrayBuffer());
+
+  // Integrite : l'empreinte publiee dans le manifeste doit correspondre a l'archive.
+  if (etat.sha256) {
+    const h = crypto.createHash('sha256').update(buf).digest('hex');
+    if (h !== String(etat.sha256).toLowerCase()) throw new Error('Empreinte SHA-256 invalide - maj annulee.');
+  }
 
   const zip = await JSZip.loadAsync(buf);
   if (!zip.file('server.js')) throw new Error('Archive invalide (server.js absent) - maj annulee.');

@@ -2,3 +2,13 @@
 # CRLF uniquement pour les scripts Windows .bat.
 * text=auto eol=lf
 *.bat text eol=crlf
+
+# Fichiers exclus de l'archive de mise à jour en ligne (git archive, cf scripts/publier-maj.mjs).
+update export-ignore
+.gitattributes export-ignore
+.git-blame-ignore-revs export-ignore
+.prettierignore export-ignore
+.prettierrc.json export-ignore
+eslint.config.js export-ignore
+test export-ignore
+scripts export-ignore

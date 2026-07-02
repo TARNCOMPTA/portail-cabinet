@@ -497,10 +497,10 @@ app.post('/api/scrape-all/stop', (req, res) => {
 
 // ---- Mise a jour ----------------------------------------------------------
 app.get('/api/version', (req, res) => res.json({ version: versionLocale() }));
-app.get('/api/update/check', async (req, res) => res.json(await verifierMaj()));
-app.post('/api/update/apply', async (req, res) => {
+app.get('/api/update/check', requireAdmin, async (req, res) => res.json(await verifierMaj()));
+app.post('/api/update/apply', requireAdmin, async (req, res) => {
   try {
-    res.json(await appliquerMaj());
+    res.json(await appliquerMaj((m) => console.log('[maj] ' + m)));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }

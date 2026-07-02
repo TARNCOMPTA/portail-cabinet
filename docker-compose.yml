@@ -8,7 +8,8 @@ services:
       - PORT=3000
       - PUBLIC_URL=https://portail.tarncompta.fr # base publique (OAuth/MCP : issuer + URL du connecteur)
       - NAV_TIMEOUT=60000
-      - UPDATE_DISABLED=1 # sur serveur, mise à jour par "git pull" + rebuild (voir DEPLOIEMENT.md)
+      # Mise à jour EN LIGNE activée : bouton « Mettre à jour » (Paramètres, admin) ou auto au boot.
+      # Pour revenir au mode "git pull + rebuild" uniquement : remettre UPDATE_DISABLED=1.
       - REMOTE_BROWSER=1 # active la vue navigateur à distance (noVNC) pour la captcha
       - SCHEDULE_CARPIMKO=1 # récupération CARPIMKO automatique chaque mardi à 02:00 (Europe/Paris)
       - SCHEDULE_CARMF=1 # récupération CARMF automatique chaque mercredi à 02:00 (Europe/Paris)
