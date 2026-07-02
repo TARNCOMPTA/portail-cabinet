@@ -1186,10 +1186,12 @@ async function chargerMoi() {
 }
 
 // ---- Connecteur MCP « organisation » (OAuth) ------------------------------
+// Sécurité : le Client Secret n'est visible qu'à la génération (stocké haché).
 function remplirMcpOAuth(r) {
   $('#mcpoauth-url').value = r.url || '';
   $('#mcpoauth-id').value = r.client_id || '';
   $('#mcpoauth-secret').value = r.client_secret || '';
+  if (!r.client_secret) $('#mcpoauth-secret').placeholder = r.secret_defini ? 'Défini — visible uniquement à la génération' : '';
 }
 async function chargerMcpOAuth() {
   try {
@@ -1200,7 +1202,7 @@ $('#mcpoauth-regenerer')?.addEventListener('click', async () => {
   if (!confirm('Régénérer le Client ID/Secret ? Le connecteur déjà configuré dans Claude devra être reconfiguré.')) return;
   try {
     remplirMcpOAuth(await api('/api/mcp-oauth/regenerer', { method: 'POST' }));
-    toast('Nouvelles clés générées.', 'ok');
+    toast('Nouvelles clés générées. Copie le Client Secret MAINTENANT : il ne sera plus affiché.', 'ok');
   } catch (err) {
     toast(err.message, 'err');
   }
@@ -1216,11 +1218,12 @@ $('#mcpoauth-copier')?.addEventListener('click', async () => {
 });
 
 // ---- Clé API (MCP) --------------------------------------------------------
+// Sécurité : la clé n'est visible qu'à la génération (stockée hachée côté serveur).
 async function chargerApiKey() {
   try {
     const r = await api('/api/apikey');
-    $('#apikey-valeur').value = r.key || '';
-    $('#apikey-valeur').placeholder = r.definie ? '' : 'Aucune clé définie — clique sur « Régénérer la clé »';
+    $('#apikey-valeur').value = '';
+    $('#apikey-valeur').placeholder = r.definie ? 'Définie — visible uniquement à la génération' : 'Aucune clé définie — clique sur « Régénérer la clé »';
   } catch {}
 }
 $('#apikey-regenerer')?.addEventListener('click', async () => {
@@ -1228,7 +1231,7 @@ $('#apikey-regenerer')?.addEventListener('click', async () => {
   try {
     const r = await api('/api/apikey/regenerer', { method: 'POST' });
     $('#apikey-valeur').value = r.key;
-    toast('Nouvelle clé générée.', 'ok');
+    toast('Nouvelle clé générée. Copie-la MAINTENANT : elle ne sera plus affichée.', 'ok');
   } catch (err) {
     toast(err.message, 'err');
   }

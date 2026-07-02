@@ -6,16 +6,36 @@ import { getUserByEmail, touchUserLogin, createSession, getSessionUser, deleteSe
 // ---- Clé API (pour le MCP / accès programmatique) ----
 // Une clé revocable, distincte des mots de passe des comptes. Donne un accès
 // "service" (role admin) via l'en-tete X-API-Key (ou Authorization: Bearer).
-export function getApiKey() {
-  return getSetting('api_key', '') || '';
+// Seul le HACHAGE (SHA-256) est stocké : le clair n'est visible qu'à la
+// génération. Migration : une ancienne clé stockée en clair (setting api_key)
+// est hachée au premier accès et reste valide.
+const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex');
+function getApiKeyHash() {
+  const ancienne = getSetting('api_key', '') || '';
+  if (ancienne) {
+    setSetting('api_key_hash', sha256(ancienne));
+    setSetting('api_key', '');
+  }
+  return getSetting('api_key_hash', '') || '';
+}
+export function apiKeyDefinie() {
+  return !!getApiKeyHash();
 }
 export function regenererApiKey() {
   const k = crypto.randomBytes(24).toString('hex');
-  setSetting('api_key', k);
-  return k;
+  setSetting('api_key_hash', sha256(k));
+  setSetting('api_key', '');
+  return k; // seul moment où le clair existe
 }
 export function revoquerApiKey() {
+  setSetting('api_key_hash', '');
   setSetting('api_key', '');
+}
+// Clé de service INTERNE (appels du MCP HTTP vers l'API locale) : générée en
+// mémoire à chaque démarrage, jamais stockée ni exposée.
+const CLE_INTERNE = crypto.randomBytes(24).toString('hex');
+export function getCleInterne() {
+  return CLE_INTERNE;
 }
 function cleDeRequete(req) {
   const h = req.headers['x-api-key'];
@@ -131,11 +151,18 @@ export function installAuthRoutes(app) {
 // Porte : exige une session valide (sinon 401 pour l'API, redirection sinon).
 export function requireAuth(req, res, next) {
   // Accès par clé API (MCP / programmatique) : en-tete X-API-Key ou Bearer.
-  const cle = getApiKey();
+  // Comparaison sur les hachages (longueur constante -> timingSafeEqual direct).
   const fournie = cleDeRequete(req);
-  if (cle && fournie.length === cle.length && crypto.timingSafeEqual(Buffer.from(fournie), Buffer.from(cle))) {
-    req.user = { id: 0, email: 'api', nom: 'Accès API', role: 'admin', viaApiKey: true };
-    return next();
+  if (fournie) {
+    const hFournie = sha256(fournie);
+    const hStockee = getApiKeyHash();
+    const ok =
+      (hStockee && crypto.timingSafeEqual(Buffer.from(hFournie), Buffer.from(hStockee))) ||
+      crypto.timingSafeEqual(Buffer.from(hFournie), Buffer.from(sha256(CLE_INTERNE)));
+    if (ok) {
+      req.user = { id: 0, email: 'api', nom: 'Accès API', role: 'admin', viaApiKey: true };
+      return next();
+    }
   }
   const u = currentUser(req);
   if (!u) {

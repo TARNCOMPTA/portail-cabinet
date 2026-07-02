@@ -50,10 +50,25 @@ db.exec(`
 const rnd = (n = 32) => crypto.randomBytes(n).toString('base64url');
 
 // ---- Clients --------------------------------------------------------------
+// Le client_secret est stocké HACHÉ (« sha256:<hex> ») : le clair n'est visible
+// qu'à la création/régénération. Les anciens secrets en clair sont migrés au
+// démarrage (hachés sur place) et restent valides.
+const hashSecret = (s) => 'sha256:' + crypto.createHash('sha256').update(s).digest('hex');
+for (const row of db.prepare("SELECT client_id, client_secret FROM clients WHERE client_secret IS NOT NULL AND client_secret NOT LIKE 'sha256:%'").all()) {
+  db.prepare('UPDATE clients SET client_secret = ? WHERE client_id = ?').run(hashSecret(row.client_secret), row.client_id);
+}
+
 export function getClient(clientId) {
   const r = db.prepare('SELECT * FROM clients WHERE client_id = ?').get(clientId);
   if (r) r.redirect_uris = JSON.parse(r.redirect_uris || '[]');
   return r || null;
+}
+// Vrai si le secret fourni correspond au hachage stocké (client confidentiel).
+export function verifierSecret(client, secret) {
+  if (!client?.client_secret) return false;
+  const attendu = Buffer.from(client.client_secret);
+  const fourni = Buffer.from(hashSecret(String(secret ?? '')));
+  return attendu.length === fourni.length && crypto.timingSafeEqual(attendu, fourni);
 }
 export function createClient({ client_id, client_secret, redirect_uris = [], name = '', statique = 0 }) {
   db.prepare(
@@ -63,20 +78,23 @@ export function createClient({ client_id, client_secret, redirect_uris = [], nam
                 client_secret = excluded.client_secret,
                 redirect_uris = excluded.redirect_uris,
                 name = excluded.name`,
-  ).run(client_id, client_secret ?? null, JSON.stringify(redirect_uris), name, statique ? 1 : 0);
+  ).run(client_id, client_secret ? hashSecret(client_secret) : null, JSON.stringify(redirect_uris), name, statique ? 1 : 0);
   return getClient(client_id);
 }
 // Client « statique » (les 2 cles affichees dans le portail). Cree au besoin.
+// À la CRÉATION, le clair est renvoyé une seule fois dans client_secret_clair.
 export function getOrCreateStaticClient(redirectUris) {
   let row = db.prepare('SELECT * FROM clients WHERE statique = 1 ORDER BY created_at LIMIT 1').get();
   if (!row) {
-    return createClient({
+    const secret = rnd(32);
+    const cree = createClient({
       client_id: 'mcp-' + rnd(12),
-      client_secret: rnd(32),
+      client_secret: secret,
       redirect_uris: redirectUris,
       name: 'Connecteur MCP (organisation)',
       statique: 1,
     });
+    return { ...cree, client_secret_clair: secret };
   }
   row.redirect_uris = JSON.parse(row.redirect_uris || '[]');
   return row;

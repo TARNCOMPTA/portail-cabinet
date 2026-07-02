@@ -176,7 +176,7 @@ export function installOAuth(app) {
     const b = req.body || {};
     const { client, secret } = authClient(req);
     if (!client) return res.status(401).json({ error: 'invalid_client' });
-    if (client.client_secret && client.client_secret !== secret) return res.status(401).json({ error: 'invalid_client' });
+    if (client.client_secret && !oauthDb.verifierSecret(client, secret)) return res.status(401).json({ error: 'invalid_client' });
 
     if (b.grant_type === 'authorization_code') {
       const row = oauthDb.takeCode(String(b.code || ''));

@@ -6,20 +6,15 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
-import { getApiKey, regenererApiKey } from './auth.js';
+import { getCleInterne } from './auth.js';
 
 const PORT = Number(process.env.PORT || 3003);
 const LOCAL = `http://127.0.0.1:${PORT}`;
 
-function cleInterne() {
-  let k = getApiKey();
-  if (!k) k = regenererApiKey(); // garantit un acces interne pour les appels du MCP
-  return k;
-}
 async function apiFetch(path, opts = {}) {
   const r = await fetch(`${LOCAL}${path}`, {
     ...opts,
-    headers: { 'Content-Type': 'application/json', 'X-API-Key': cleInterne(), ...(opts.headers || {}) },
+    headers: { 'Content-Type': 'application/json', 'X-API-Key': getCleInterne(), ...(opts.headers || {}) },
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || `Erreur ${r.status}`);

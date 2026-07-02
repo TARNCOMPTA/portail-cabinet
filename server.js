@@ -52,7 +52,7 @@ import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, liste
 import * as fusions from './src/fusions-db.js';
 import * as planif from './src/planif-db.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
-import { installAuthRoutes, requireAuth, requireAdmin, hashPassword, getApiKey, regenererApiKey, revoquerApiKey } from './src/auth.js';
+import { installAuthRoutes, requireAuth, requireAdmin, hashPassword, apiKeyDefinie, regenererApiKey, revoquerApiKey } from './src/auth.js';
 import { installOAuth, requireBearer, baseUrl, CALLBACK_HOSTE } from './src/oauth.js';
 import { installMcp } from './src/mcp-http.js';
 import * as oauthDb from './src/oauth-db.js';
@@ -194,9 +194,9 @@ app.delete('/api/users/:id', requireAdmin, (req, res) => {
 });
 
 // ---- Clé API (pour le MCP / accès programmatique) -------------------------
+// Le clair n'est renvoyé QU'À la (re)génération ; ensuite seul « definie » est visible.
 app.get('/api/apikey', requireAdmin, (req, res) => {
-  const key = getApiKey();
-  res.json({ key: key || null, definie: !!key });
+  res.json({ definie: apiKeyDefinie() });
 });
 app.post('/api/apikey/regenerer', requireAdmin, (req, res) => {
   res.json({ key: regenererApiKey(), definie: true });
@@ -207,13 +207,14 @@ app.delete('/api/apikey', requireAdmin, (req, res) => {
 });
 
 // ---- Connecteur MCP « organisation » (OAuth) : URL + Client ID/Secret -----
+// Meme principe : le Client Secret n'est renvoyé qu'à la création/régénération.
 app.get('/api/mcp-oauth/client', requireAdmin, (req, res) => {
   const c = oauthDb.getOrCreateStaticClient([CALLBACK_HOSTE]);
-  res.json({ url: `${baseUrl(req)}/mcp`, client_id: c.client_id, client_secret: c.client_secret });
+  res.json({ url: `${baseUrl(req)}/mcp`, client_id: c.client_id, client_secret: c.client_secret_clair || null, secret_defini: !!c.client_secret });
 });
 app.post('/api/mcp-oauth/regenerer', requireAdmin, (req, res) => {
   const c = oauthDb.regenStaticClient([CALLBACK_HOSTE]);
-  res.json({ url: `${baseUrl(req)}/mcp`, client_id: c.client_id, client_secret: c.client_secret });
+  res.json({ url: `${baseUrl(req)}/mcp`, client_id: c.client_id, client_secret: c.client_secret_clair, secret_defini: true });
 });
 
 // ---- Comptes cabinet ------------------------------------------------------
