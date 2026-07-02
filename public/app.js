@@ -629,6 +629,19 @@ function anneeDoc(d) {
   if (d.recupere_le && /^\d{4}/.test(d.recupere_le)) return d.recupere_le.slice(0, 4);
   return '—';
 }
+// Beaucoup de libellés commencent par la date du document (« JJ/MM/AAAA — objet » URSSAF/
+// CARPIMKO, « Message JJ/MM/AAAA objet » / « PJ JJ/MM/AAAA nom » impôts) : on l'extrait pour
+// la colonne Date (plus parlante que la date de récupération) et on nettoie le libellé.
+// Renvoie { _date (affichage), _cle (tri AAAA-MM-JJ), _libelle }.
+function infoDoc(d) {
+  const brut = d.libelle || (d.fichier ? d.fichier.split(/[\\/]/).pop() : '—');
+  const m = brut.match(/^(Message|PJ)?\s*(\d{2})\/(\d{2})\/(\d{4})\s*(?:—\s*)?(.*)$/);
+  if (m) {
+    const reste = [m[1], m[5]].filter(Boolean).join(' ');
+    return { _date: `${m[2]}/${m[3]}/${m[4]}`, _cle: `${m[4]}-${m[3]}-${m[2]}`, _libelle: reste || brut };
+  }
+  return { _date: d.recupere_le ? new Date(d.recupere_le + 'Z').toLocaleDateString('fr-FR') : '—', _cle: String(d.recupere_le || ''), _libelle: brut };
+}
 function remplirAnnees() {
   const sel = $('#docs-filtre-annee');
   if (!sel) return;
@@ -710,9 +723,10 @@ async function chargerDocuments() {
     tousDocs = SOURCES.flatMap((s, i) => listesDocs[i].map((d) => ({ ...d, source: s.label, _href: s.hrefDoc(d) }))).map((d) => ({
       ...d,
       _annee: anneeDoc(d),
+      ...infoDoc(d),
     }));
-    // Classement par année (du plus récent au plus ancien), puis par date au sein de l'année.
-    tousDocs.sort((a, b) => b._annee.localeCompare(a._annee) || String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+    // Classement par année (du plus récent au plus ancien), puis par date du document.
+    tousDocs.sort((a, b) => b._annee.localeCompare(a._annee) || b._cle.localeCompare(a._cle));
     remplirAnnees();
   } catch {
     tousDocs = [];
@@ -725,7 +739,9 @@ function docsAffiches() {
   if (filtreDocs) {
     const q = norm(filtreDocs);
     liste = liste.filter((d) =>
-      norm(`${d.client_nom || ''} ${d.libelle || ''} ${d.fichier || ''} ${d.recupere_le || ''} ${d.source || ''} ${d._annee || ''}`).includes(q),
+      norm(
+        `${d.client_nom || ''} ${d.libelle || ''} ${d._libelle || ''} ${d._date || ''} ${d.fichier || ''} ${d.recupere_le || ''} ${d.source || ''} ${d._annee || ''}`,
+      ).includes(q),
     );
   }
   return liste;
@@ -746,14 +762,13 @@ function afficherPageDocs() {
   if (pageDocs < 1) pageDocs = 1;
   const debut = (pageDocs - 1) * DOCS_PAR_PAGE;
   for (const d of liste.slice(debut, debut + DOCS_PAR_PAGE)) {
-    const lib = d.libelle || (d.fichier ? d.fichier.split(/[\\/]/).pop() : '—');
     const tr = document.createElement('tr');
     tr.innerHTML = `
       <td><strong>${esc(d._annee || '—')}</strong></td>
-      <td>${d.recupere_le ? new Date(d.recupere_le + 'Z').toLocaleString('fr-FR') : '—'}</td>
+      <td>${esc(d._date || '—')}</td>
       <td>${esc(d.client_nom || '—')}</td>
       <td><span class="badge cab">${esc(d.source || '—')}</span></td>
-      <td>${esc(lib)}</td>
+      <td>${esc(d._libelle || '—')}</td>
       <td><a class="btn small primary" href="${d._href}" target="_blank">Ouvrir</a></td>`;
     tbody.appendChild(tr);
   }
@@ -950,17 +965,17 @@ async function voirDocsClient(key) {
   const docs = [];
   for (const r of c.refs) {
     const ds = await api(`${PC_ENDPOINTS[r.source]}/${r.id}/documents`).catch(() => []);
-    docs.push(...ds.map((d) => ({ ...d, source: r.source, _annee: anneeDoc(d), _href: hrefDoc(r.source, d) })));
+    docs.push(...ds.map((d) => ({ ...d, source: r.source, _annee: anneeDoc(d), _href: hrefDoc(r.source, d), ...infoDoc(d) })));
   }
-  docs.sort((a, b) => String(b._annee).localeCompare(String(a._annee)) || String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+  docs.sort((a, b) => String(b._annee).localeCompare(String(a._annee)) || String(b._cle).localeCompare(String(a._cle)));
   tb.innerHTML = docs
     .map(
       (d) => `
     <tr>
       <td><strong>${esc(d._annee || '—')}</strong></td>
       <td><span class="badge cab">${esc(d.source)}</span></td>
-      <td>${esc(d.libelle || (d.fichier ? d.fichier.split(/[\\/]/).pop() : '—'))}</td>
-      <td>${d.recupere_le ? new Date(d.recupere_le + 'Z').toLocaleDateString('fr-FR') : '—'}</td>
+      <td>${esc(d._libelle || '—')}</td>
+      <td>${esc(d._date || '—')}</td>
       <td><a class="btn small primary" href="${d._href}" target="_blank">Ouvrir</a></td>
     </tr>`,
     )
