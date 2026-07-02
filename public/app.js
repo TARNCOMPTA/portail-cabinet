@@ -762,6 +762,12 @@ function activerOnglet(nom) {
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
 activerOnglet('dashboard');
 
+// Cartes "source" du tableau de bord -> navigation vers l'onglet correspondant.
+document.addEventListener('click', (e) => {
+  const card = e.target.closest('[data-goto]');
+  if (card) activerOnglet(card.dataset.goto);
+});
+
 // ---- Menu mobile (tiroir) ----
 const fermerNav = () => document.body.classList.remove('nav-open');
 $('#btn-menu')?.addEventListener('click', () => document.body.classList.toggle('nav-open'));
