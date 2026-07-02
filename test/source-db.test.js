@@ -7,7 +7,15 @@ import { resolve } from 'node:path';
 import { creerSourceDb } from '../src/creer-source-db.js';
 
 const FICH = '_test_source.db';
-const nettoyer = () => { for (const suf of ['', '-wal', '-shm']) { try { rmSync(resolve('data', FICH) + suf, { force: true }); } catch { /* ignore */ } } };
+const nettoyer = () => {
+  for (const suf of ['', '-wal', '-shm']) {
+    try {
+      rmSync(resolve('data', FICH) + suf, { force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+};
 nettoyer(); // repartir d'une base vierge
 
 const db = creerSourceDb(FICH, { profession: true });

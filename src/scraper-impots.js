@@ -45,8 +45,20 @@ function lireDossiersPage(page) {
   });
 }
 
-function sanitize(name) { return String(name).replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').trim().slice(0, 120); }
-function addRunSafe(clientId, run) { try { addRun(clientId, run); } catch (e) { console.warn(`(historique: ${e.message})`); } }
+function sanitize(name) {
+  return String(name)
+    .replace(/[^\w.\- ]+/g, '_')
+    .replace(/\s+/g, '_')
+    .trim()
+    .slice(0, 120);
+}
+function addRunSafe(clientId, run) {
+  try {
+    addRun(clientId, run);
+  } catch (e) {
+    console.warn(`(historique: ${e.message})`);
+  }
+}
 
 // Champs de la page de connexion (idp.impots.gouv.fr). Cibles par "name" (les id ont un suffixe variable).
 const LOGIN_USER_SEL = 'input[name="user"], input[type="email"]';
@@ -58,7 +70,10 @@ async function attendreConnexionManuelle(page, cabinet, log) {
   log('Ouverture de la page de connexion impots...');
   await page.goto(ACCUEIL_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
   // Deja connecte ? sinon on attend l'accueil "mire" (max 5 min)
-  if (/\/mire\//.test(page.url())) { log('Session deja active.'); return; }
+  if (/\/mire\//.test(page.url())) {
+    log('Session deja active.');
+    return;
+  }
 
   // Pre-remplissage des identifiants (la captcha reste manuelle).
   const champUser = page.locator(LOGIN_USER_SEL).first();
@@ -68,14 +83,25 @@ async function attendreConnexionManuelle(page, cabinet, log) {
   if (login && (await champUser.isVisible().catch(() => false))) {
     try {
       await champUser.fill(login);
-      if (pwd) await page.locator(LOGIN_PWD_SEL).first().fill(pwd).catch(() => {});
+      if (pwd)
+        await page
+          .locator(LOGIN_PWD_SEL)
+          .first()
+          .fill(pwd)
+          .catch(() => {});
       if (pwd) {
         log('E-mail et mot de passe pre-remplis. >>> SAISIS LA CAPTCHA puis clique sur Connexion. <<<');
-        await page.locator(LOGIN_CAPTCHA_SEL).first().focus().catch(() => {});
+        await page
+          .locator(LOGIN_CAPTCHA_SEL)
+          .first()
+          .focus()
+          .catch(() => {});
       } else {
         log('E-mail pre-rempli. Saisis ton mot de passe + la captcha (aucun mot de passe enregistre).');
       }
-    } catch (e) { log(`(pre-remplissage : ${e.message.split('\n')[0]})`); }
+    } catch (e) {
+      log(`(pre-remplissage : ${e.message.split('\n')[0]})`);
+    }
   } else {
     log('Connecte-toi dans le navigateur (identifiants + captcha).');
   }
@@ -95,20 +121,24 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
   let existants = 0;
   for (let i = 0; i < n; i++) {
     const lien = liens.nth(i);
-    const ligneTxt = (await lien.evaluate((el) => (el.closest('tr')?.innerText || '')).catch(() => '')).replace(/\s+/g, ' ');
+    const ligneTxt = (await lien.evaluate((el) => el.closest('tr')?.innerText || '').catch(() => '')).replace(/\s+/g, ' ');
     const ref = (ligneTxt.match(/\d{10,15}/) || [])[0] || `${prefixe}${i + 1}`;
     const annee = (ligneTxt.match(/\b20\d{2}\b/) || [])[0] || '';
     const eid = `${prefixe}_${ref}`;
     const dest = resolve(clientDir, `${prefixe}_${annee ? annee + '_' : ''}${ref}.pdf`);
     if (existsSync(dest) || getDocumentByEventid(client.id, eid)) {
       existants++;
-      try { addDocument(client.id, { libelle: `${prefixe} ${annee} ${ref}`, fichier: dest, eventid: eid }); } catch {}
+      try {
+        addDocument(client.id, { libelle: `${prefixe} ${annee} ${ref}`, fichier: dest, eventid: eid });
+      } catch {}
       continue;
     }
     try {
       const [dl] = await Promise.all([page.waitForEvent('download', { timeout: navTimeout }), lien.click()]);
       await dl.saveAs(dest);
-      try { addDocument(client.id, { libelle: `${prefixe} ${annee} ${ref}`, fichier: dest, eventid: eid }); } catch {}
+      try {
+        addDocument(client.id, { libelle: `${prefixe} ${annee} ${ref}`, fichier: dest, eventid: eid });
+      } catch {}
       docs.push({ libelle: `${prefixe} ${annee}`, fichier: dest });
       log(`OK : ${prefixe}_${annee}_${ref}.pdf`);
     } catch (e) {
@@ -122,7 +152,9 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
 // chaque echange (+ pieces jointes si presentes) dans <clientDir>/Messagerie, par ordre
 // chronologique. La liste est une datatable PrimeFaces ; ouvrir un N° deplie le message.
 async function recupererMessagerie(page, context, client, clientDir, navTimeout, log) {
-  const siren = String(client.siret || '').replace(/\D/g, '').slice(0, 9);
+  const siren = String(client.siret || '')
+    .replace(/\D/g, '')
+    .slice(0, 9);
   const dir = resolve(clientDir, 'Messagerie');
   mkdirSync(dir, { recursive: true });
   const docs = [];
@@ -131,19 +163,30 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
     // 1. Choix du dossier sous l'habilitation "messagerie" (peut ouvrir un nouvel onglet)
     await page.goto(MSG_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1000);
-    for (let i = 0; i < 9; i++) { const b = page.locator(`#siren${i}`); if (await b.count()) await b.fill(siren[i] || ''); }
+    for (let i = 0; i < 9; i++) {
+      const b = page.locator(`#siren${i}`);
+      if (await b.count()) await b.fill(siren[i] || '');
+    }
     let popup = null;
     [popup] = await Promise.all([
       context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
-      page.locator('input[name="button.submitValider"], input[type="image"]').first().click().catch(() => {}),
+      page
+        .locator('input[name="button.submitValider"], input[type="image"]')
+        .first()
+        .click()
+        .catch(() => {}),
     ]);
     await page.waitForTimeout(2500);
     if (/rechercherDossiers/i.test(page.url())) {
       const radio = page.locator('input[name="idDossier"], #sel0').first();
-      if (await radio.count() && !(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
+      if ((await radio.count()) && !(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
       [popup] = await Promise.all([
         context.waitForEvent('page', { timeout: 8000 }).catch(() => popup),
-        page.locator('input[name="button.submitValider"], input[type="image"]').first().click().catch(() => {}),
+        page
+          .locator('input[name="button.submitValider"], input[type="image"]')
+          .first()
+          .click()
+          .catch(() => {}),
       ]);
       await page.waitForTimeout(2500);
     }
@@ -153,11 +196,19 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
     await gaia.waitForTimeout(2000);
 
     // 2. Enumeration des echanges (num + objet + date)
-    const echanges = await gaia.evaluate(() => Array.from(document.querySelectorAll('a[id^="listeDemandesForm:listeDemandes:"][id$=":numDemande"]')).map((a) => {
-      const tds = Array.from(a.closest('tr')?.querySelectorAll('td') || []).map((td) => (td.textContent || '').replace(/\s+/g, ' ').trim());
-      return { num: (a.textContent || '').trim(), id: a.id, objet: tds[1] || '', service: tds[2] || '', date: tds[5] || '' };
-    })).catch(() => []);
-    if (!echanges.length) { log('Messagerie : aucun échange.'); if (popup) await popup.close().catch(() => {}); return { docs, existants }; }
+    const echanges = await gaia
+      .evaluate(() =>
+        Array.from(document.querySelectorAll('a[id^="listeDemandesForm:listeDemandes:"][id$=":numDemande"]')).map((a) => {
+          const tds = Array.from(a.closest('tr')?.querySelectorAll('td') || []).map((td) => (td.textContent || '').replace(/\s+/g, ' ').trim());
+          return { num: (a.textContent || '').trim(), id: a.id, objet: tds[1] || '', service: tds[2] || '', date: tds[5] || '' };
+        }),
+      )
+      .catch(() => []);
+    if (!echanges.length) {
+      log('Messagerie : aucun échange.');
+      if (popup) await popup.close().catch(() => {});
+      return { docs, existants };
+    }
     // ordre chronologique (date de création croissante)
     const cle = (d) => (d || '').split('/').reverse().join('');
     echanges.sort((a, b) => cle(a.date).localeCompare(cle(b.date)));
@@ -167,46 +218,80 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
       const base = sanitize(`${(e.date || '').replace(/\//g, '-')}_${e.num}_${e.objet}`).slice(0, 110);
       const dest = resolve(dir, `${base}.txt`);
       const eid = `MSG_${e.num}`;
-      if (existsSync(dest) || getDocumentByEventid(client.id, eid)) { existants++; try { addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid }); } catch {} continue; }
+      if (existsSync(dest) || getDocumentByEventid(client.id, eid)) {
+        existants++;
+        try {
+          addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid });
+        } catch {}
+        continue;
+      }
       try {
-        await gaia.locator(`[id="${e.id}"]`).first().click({ timeout: navTimeout }).catch(() => {});
+        await gaia
+          .locator(`[id="${e.id}"]`)
+          .first()
+          .click({ timeout: navTimeout })
+          .catch(() => {});
         await gaia.waitForTimeout(1400);
         // Texte du message : plus petit element contenant "Objet :" + "De :/A :"
-        const texte = await gaia.evaluate(() => {
-          let best = null, len = 1e9;
-          for (const el of document.querySelectorAll('td,div,fieldset,section')) {
-            const t = el.innerText || '';
-            if (/Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 120 && t.length < len) { best = el; len = t.length; }
-          }
-          return best ? best.innerText.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim() : '';
-        }).catch(() => '');
+        const texte = await gaia
+          .evaluate(() => {
+            let best = null,
+              len = 1e9;
+            for (const el of document.querySelectorAll('td,div,fieldset,section')) {
+              const t = el.innerText || '';
+              if (/Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 120 && t.length < len) {
+                best = el;
+                len = t.length;
+              }
+            }
+            return best
+              ? best.innerText
+                  .replace(/[ \t]+\n/g, '\n')
+                  .replace(/\n{3,}/g, '\n\n')
+                  .trim()
+              : '';
+          })
+          .catch(() => '');
         if (texte) {
           writeFileSync(dest, `N° ${e.num} — ${e.objet}\nService : ${e.service}\nDate : ${e.date}\n${'-'.repeat(60)}\n\n${texte}\n`, 'utf8');
-          try { addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid }); } catch {}
+          try {
+            addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid });
+          } catch {}
           docs.push({ libelle: `Message ${e.date}`, fichier: dest });
           log(`OK : ${base}.txt`);
-        } else { log(`(message ${e.num} : texte introuvable)`); }
+        } else {
+          log(`(message ${e.num} : texte introuvable)`);
+        }
         // Pieces jointes : liens PrimeFaces (id finissant par ":downloadFile", texte = nom
         // du fichier), limites a la ligne du message ouvert (index de la datatable).
         const idx = (e.id.match(/listeDemandes:(\d+):/) || [])[1];
-        const pjSel = idx != null
-          ? `a[id^="listeDemandesForm:listeDemandes:${idx}:"][id$="downloadFile"]`
-          : 'a[id$="downloadFile"]';
+        const pjSel = idx != null ? `a[id^="listeDemandesForm:listeDemandes:${idx}:"][id$="downloadFile"]` : 'a[id$="downloadFile"]';
         const pjLiens = gaia.locator(pjSel);
         const npj = await pjLiens.count().catch(() => 0);
         for (let k = 0; k < npj; k++) {
           try {
-            const nomLien = (await pjLiens.nth(k).innerText().catch(() => '')).trim();
+            const nomLien = (
+              await pjLiens
+                .nth(k)
+                .innerText()
+                .catch(() => '')
+            ).trim();
             const [dl] = await Promise.all([gaia.waitForEvent('download', { timeout: navTimeout }), pjLiens.nth(k).click()]);
             const nomPj = sanitize(dl.suggestedFilename() || nomLien || `${e.num}_pj${k + 1}`);
             const destPj = resolve(dir, `${(e.date || '').replace(/\//g, '-')}_${nomPj}`);
             await dl.saveAs(destPj);
-            try { addDocument(client.id, { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), fichier: destPj, eventid: `${eid}_PJ${k + 1}` }); } catch {}
+            try {
+              addDocument(client.id, { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), fichier: destPj, eventid: `${eid}_PJ${k + 1}` });
+            } catch {}
             docs.push({ libelle: `PJ ${e.date}`, fichier: destPj });
             log(`OK (PJ) : ${nomPj}`);
-          } catch { /* pas de telechargement pour ce lien */ }
+          } catch {
+            /* pas de telechargement pour ce lien */
+          }
         }
-      } catch (err) { log(`(message ${e.num} : ${err.message.split('\n')[0]})`); }
+      } catch (err) {
+        log(`(message ${e.num} : ${err.message.split('\n')[0]})`);
+      }
     }
     if (popup) await popup.close().catch(() => {});
   } catch (err) {
@@ -217,7 +302,9 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
 
 // Traite UN client (SIREN) sur une page deja connectee. Telecharge CFE + taxe fonciere.
 async function recupererClient(page, client, { baseFolder, navTimeout, log, context, messagerie }) {
-  const siren = String(client.siret || '').replace(/\D/g, '').slice(0, 9);
+  const siren = String(client.siret || '')
+    .replace(/\D/g, '')
+    .slice(0, 9);
   let clientDir;
   if (client.dossier && client.dossier.trim()) clientDir = client.dossier.trim();
   else if (baseFolder && baseFolder.trim()) clientDir = resolve(baseFolder.trim(), sanitize(client.nom));
@@ -229,17 +316,30 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     // 1. Choisir le dossier par SIREN
     await page.goto(CFE_CHOISIR_URL, { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1200);
-    for (let i = 0; i < 9; i++) { const box = page.locator(`#siren${i}`); if (await box.count()) await box.fill(siren[i] || ''); }
-    await page.locator('input[name="button.submitValider"], input[type="image"]').first().click().catch(() => {});
+    for (let i = 0; i < 9; i++) {
+      const box = page.locator(`#siren${i}`);
+      if (await box.count()) await box.fill(siren[i] || '');
+    }
+    await page
+      .locator('input[name="button.submitValider"], input[type="image"]')
+      .first()
+      .click()
+      .catch(() => {});
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await page.waitForTimeout(2500);
     // 2. Liste de dossiers -> selection + CONSULTER
     if (/rechercherDossiers/i.test(page.url())) {
       const radio = page.locator('input[name="idDossier"], #sel0').first();
-      if (await radio.count()) { if (!(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {}); }
+      if (await radio.count()) {
+        if (!(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
+      }
       await Promise.all([
         page.waitForLoadState('domcontentloaded').catch(() => {}),
-        page.locator('input[name="button.submitValider"], input[type="image"]').first().click().catch(() => {}),
+        page
+          .locator('input[name="button.submitValider"], input[type="image"]')
+          .first()
+          .click()
+          .catch(() => {}),
       ]);
       await page.waitForTimeout(3000);
     }
@@ -260,7 +360,11 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     const existants = cfe.existants + tf.existants + msg.existants;
     addRunSafe(client.id, {
       statut: 'succes',
-      message: `${cfe.docs.length} CFE + ${tf.docs.length} taxe fonciere` + (messagerie ? ` + ${msg.docs.length} message(s)` : '') + ` recupere(s)` + (existants ? `, ${existants} deja present(s)` : ''),
+      message:
+        `${cfe.docs.length} CFE + ${tf.docs.length} taxe fonciere` +
+        (messagerie ? ` + ${msg.docs.length} message(s)` : '') +
+        ` recupere(s)` +
+        (existants ? `, ${existants} deja present(s)` : ''),
       nb_docs: nouveaux,
     });
     log(`Termine : ${nouveaux} nouveau(x), ${existants} deja present(s).`);
@@ -303,7 +407,11 @@ async function minimiserFenetre(context, page, log) {
 
 /** Un client : connexion manuelle (visible) puis recuperation, fenetre reduite. */
 export async function scrapeClient(client, opts = {}) {
-  const log = (m) => { const line = `[${client.nom}] ${m}`; console.log(line); opts.onLog?.(line); };
+  const log = (m) => {
+    const line = `[${client.nom}] ${m}`;
+    console.log(line);
+    opts.onLog?.(line);
+  };
   const { browser, context, page, navTimeout } = await ouvrirSession();
   try {
     await attendreConnexionManuelle(page, opts.cabinet, log);
@@ -319,7 +427,11 @@ export async function scrapeClient(client, opts = {}) {
 
 /** Tous les clients fournis : UNE connexion manuelle (visible), fenetre reduite, puis tout le lot. */
 export async function scrapeAll(clients, opts = {}) {
-  const log = (m) => { const line = `[lot] ${m}`; console.log(line); opts.onLog?.(line); };
+  const log = (m) => {
+    const line = `[lot] ${m}`;
+    console.log(line);
+    opts.onLog?.(line);
+  };
   const resume = { total: clients.length, traites: 0, avecDocs: 0, docs: 0, echecs: 0 };
   const { browser, context, page, navTimeout } = await ouvrirSession();
   try {
@@ -327,17 +439,28 @@ export async function scrapeAll(clients, opts = {}) {
     await minimiserFenetre(context, page, log);
     log(`Traitement de ${clients.length} client(s)...`);
     for (let i = 0; i < clients.length; i++) {
-      if (opts.shouldStop && opts.shouldStop()) { log('Arret demande.'); break; }
+      if (opts.shouldStop && opts.shouldStop()) {
+        log('Arret demande.');
+        break;
+      }
       const client = clients[i];
-      const clog = (m) => { const line = `[${client.nom}] ${m}`; console.log(line); opts.onLog?.(line); };
+      const clog = (m) => {
+        const line = `[${client.nom}] ${m}`;
+        console.log(line);
+        opts.onLog?.(line);
+      };
       clog(`(${i + 1}/${clients.length})`);
       opts.onClient?.(client.nom);
       const r = await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, context, messagerie: opts.messagerie });
       resume.traites++;
-      const msg = r.ok ? `${r.docs.length} document(s)` : (r.error || 'erreur');
+      const msg = r.ok ? `${r.docs.length} document(s)` : r.error || 'erreur';
       opts.onResult?.({ nom: client.nom, ok: !!r.ok, message: msg, nb_docs: r.docs.length });
-      if (r.ok) { if (r.docs.length) { resume.avecDocs++; resume.docs += r.docs.length; } }
-      else resume.echecs++;
+      if (r.ok) {
+        if (r.docs.length) {
+          resume.avecDocs++;
+          resume.docs += r.docs.length;
+        }
+      } else resume.echecs++;
     }
     log(`Termine : ${resume.docs} document(s) pour ${resume.avecDocs}/${resume.traites} ; ${resume.echecs} echec(s).`);
     return { ok: true, resume };
@@ -351,7 +474,11 @@ export async function scrapeAll(clients, opts = {}) {
 
 /** Liste les dossiers du cabinet (nom + SIREN) via "Voir tous mes dossiers". Connexion manuelle. */
 export async function listerClients(cabinet, opts = {}) {
-  const log = (m) => { const line = `[sync] ${m}`; console.log(line); opts.onLog?.(line); };
+  const log = (m) => {
+    const line = `[sync] ${m}`;
+    console.log(line);
+    opts.onLog?.(line);
+  };
   const { browser, page } = await ouvrirSession();
   try {
     await attendreConnexionManuelle(page, cabinet, log);
@@ -362,25 +489,34 @@ export async function listerClients(cabinet, opts = {}) {
     const vus = new Set();
     const ajouter = (lot) => {
       let nouveaux = 0;
-      for (const d of lot) { if (d.siren && !vus.has(d.siren)) { vus.add(d.siren); rows.push({ nom: d.nom, siret: d.siren }); nouveaux++; } }
+      for (const d of lot) {
+        if (d.siren && !vus.has(d.siren)) {
+          vus.add(d.siren);
+          rows.push({ nom: d.nom, siret: d.siren });
+          nouveaux++;
+        }
+      }
       return nouveaux;
     };
     ajouter(await lireDossiersPage(page));
     log(`Page 1 : ${rows.length} dossier(s).`);
 
     // Nombre total de pages (le plus grand p=N parmi les liens de pagination)
-    const pageMax = await page.evaluate(() => {
-      let max = 1;
-      for (const a of document.querySelectorAll('a[href*="afficherMesDossiers.do"]')) {
-        const m = (a.getAttribute('href') || '').match(/[?&]p=(\d+)/);
-        if (m) max = Math.max(max, parseInt(m[1], 10));
-      }
-      return max;
-    }).catch(() => 1);
+    const pageMax = await page
+      .evaluate(() => {
+        let max = 1;
+        for (const a of document.querySelectorAll('a[href*="afficherMesDossiers.do"]')) {
+          const m = (a.getAttribute('href') || '').match(/[?&]p=(\d+)/);
+          if (m) max = Math.max(max, parseInt(m[1], 10));
+        }
+        return max;
+      })
+      .catch(() => 1);
 
     // Pages suivantes : on suit directement les URL p=2..N (avec marge si N grandit en avancant)
     const plafond = 500;
-    let p = 2, sansNouveau = 0;
+    let p = 2,
+      sansNouveau = 0;
     while (p <= plafond) {
       await page.goto(PAGE_DOSSIERS_URL(p), { waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.waitForTimeout(1200);
@@ -388,16 +524,20 @@ export async function listerClients(cabinet, opts = {}) {
       if (!lot.length) break; // plus de dossiers : on a depasse la derniere page
       const n = ajouter(lot);
       log(`Page ${p} : +${n} (total ${rows.length})`);
-      if (n === 0) { if (++sansNouveau >= 2) break; } else sansNouveau = 0;
+      if (n === 0) {
+        if (++sansNouveau >= 2) break;
+      } else sansNouveau = 0;
       // si on a atteint le max annonce et qu'aucune page suivante n'apparait, on s'arrete
       if (p >= pageMax) {
-        const encore = await page.evaluate((cur) => {
-          for (const a of document.querySelectorAll('a[href*="afficherMesDossiers.do"]')) {
-            const m = (a.getAttribute('href') || '').match(/[?&]p=(\d+)/);
-            if (m && parseInt(m[1], 10) > cur) return true;
-          }
-          return false;
-        }, p).catch(() => false);
+        const encore = await page
+          .evaluate((cur) => {
+            for (const a of document.querySelectorAll('a[href*="afficherMesDossiers.do"]')) {
+              const m = (a.getAttribute('href') || '').match(/[?&]p=(\d+)/);
+              if (m && parseInt(m[1], 10) > cur) return true;
+            }
+            return false;
+          }, p)
+          .catch(() => false);
         if (!encore) break;
       }
       p++;

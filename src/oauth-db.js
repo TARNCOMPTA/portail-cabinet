@@ -56,13 +56,14 @@ export function getClient(clientId) {
   return r || null;
 }
 export function createClient({ client_id, client_secret, redirect_uris = [], name = '', statique = 0 }) {
-  db.prepare(`INSERT INTO clients (client_id, client_secret, redirect_uris, name, statique)
+  db.prepare(
+    `INSERT INTO clients (client_id, client_secret, redirect_uris, name, statique)
               VALUES (?, ?, ?, ?, ?)
               ON CONFLICT(client_id) DO UPDATE SET
                 client_secret = excluded.client_secret,
                 redirect_uris = excluded.redirect_uris,
-                name = excluded.name`)
-    .run(client_id, client_secret ?? null, JSON.stringify(redirect_uris), name, statique ? 1 : 0);
+                name = excluded.name`,
+  ).run(client_id, client_secret ?? null, JSON.stringify(redirect_uris), name, statique ? 1 : 0);
   return getClient(client_id);
 }
 // Client « statique » (les 2 cles affichees dans le portail). Cree au besoin.
@@ -70,8 +71,11 @@ export function getOrCreateStaticClient(redirectUris) {
   let row = db.prepare('SELECT * FROM clients WHERE statique = 1 ORDER BY created_at LIMIT 1').get();
   if (!row) {
     return createClient({
-      client_id: 'mcp-' + rnd(12), client_secret: rnd(32),
-      redirect_uris: redirectUris, name: 'Connecteur MCP (organisation)', statique: 1,
+      client_id: 'mcp-' + rnd(12),
+      client_secret: rnd(32),
+      redirect_uris: redirectUris,
+      name: 'Connecteur MCP (organisation)',
+      statique: 1,
     });
   }
   row.redirect_uris = JSON.parse(row.redirect_uris || '[]');
@@ -84,11 +88,13 @@ export function regenStaticClient(redirectUris) {
 
 // ---- Codes d'autorisation (usage unique) ----------------------------------
 export function saveCode(o) {
-  db.prepare(`INSERT INTO codes (code, client_id, redirect_uri, code_challenge, scope, user_id, resource, expires_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(o.code, o.client_id, o.redirect_uri, o.code_challenge, o.scope, o.user_id, o.resource, o.expires_at);
+  db.prepare(
+    `INSERT INTO codes (code, client_id, redirect_uri, code_challenge, scope, user_id, resource, expires_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(o.code, o.client_id, o.redirect_uri, o.code_challenge, o.scope, o.user_id, o.resource, o.expires_at);
 }
-export function takeCode(code) { // recupere puis supprime (usage unique)
+export function takeCode(code) {
+  // recupere puis supprime (usage unique)
   const r = db.prepare('SELECT * FROM codes WHERE code = ?').get(code);
   if (r) db.prepare('DELETE FROM codes WHERE code = ?').run(code);
   return r || null;
@@ -96,20 +102,27 @@ export function takeCode(code) { // recupere puis supprime (usage unique)
 
 // ---- Jetons ---------------------------------------------------------------
 export function saveToken(o) {
-  db.prepare(`INSERT INTO tokens (access_token, refresh_token, client_id, user_id, scope, expires_at)
-              VALUES (?, ?, ?, ?, ?, ?)`)
-    .run(o.access_token, o.refresh_token, o.client_id, o.user_id, o.scope, o.expires_at);
+  db.prepare(
+    `INSERT INTO tokens (access_token, refresh_token, client_id, user_id, scope, expires_at)
+              VALUES (?, ?, ?, ?, ?, ?)`,
+  ).run(o.access_token, o.refresh_token, o.client_id, o.user_id, o.scope, o.expires_at);
 }
-export function getByAccess(token) { return db.prepare('SELECT * FROM tokens WHERE access_token = ?').get(token) || null; }
-export function getByRefresh(token) { return db.prepare('SELECT * FROM tokens WHERE refresh_token = ?').get(token) || null; }
-export function deleteByRefresh(token) { db.prepare('DELETE FROM tokens WHERE refresh_token = ?').run(token); }
+export function getByAccess(token) {
+  return db.prepare('SELECT * FROM tokens WHERE access_token = ?').get(token) || null;
+}
+export function getByRefresh(token) {
+  return db.prepare('SELECT * FROM tokens WHERE refresh_token = ?').get(token) || null;
+}
+export function deleteByRefresh(token) {
+  db.prepare('DELETE FROM tokens WHERE refresh_token = ?').run(token);
+}
 
 // ---- Jetons de telechargement (lien direct, usage unique) -----------------
 export function saveDl(o) {
-  db.prepare('INSERT INTO download_tokens (token, path, filename, expires_at) VALUES (?, ?, ?, ?)')
-    .run(o.token, o.path, o.filename, o.expires_at);
+  db.prepare('INSERT INTO download_tokens (token, path, filename, expires_at) VALUES (?, ?, ?, ?)').run(o.token, o.path, o.filename, o.expires_at);
 }
-export function takeDl(token) { // recupere puis supprime (usage unique)
+export function takeDl(token) {
+  // recupere puis supprime (usage unique)
   const r = db.prepare('SELECT * FROM download_tokens WHERE token = ?').get(token);
   if (r) db.prepare('DELETE FROM download_tokens WHERE token = ?').run(token);
   return r || null;

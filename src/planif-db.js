@@ -31,15 +31,19 @@ export const SOURCES = ['urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv'];
 }
 
 export function listPlanifs() {
-  return db.prepare('SELECT source, actif, jour, heure FROM planifications').all().map((p) => ({ ...p, actif: !!p.actif }));
+  return db
+    .prepare('SELECT source, actif, jour, heure FROM planifications')
+    .all()
+    .map((p) => ({ ...p, actif: !!p.actif }));
 }
 export function setPlanif(source, { actif, jour, heure }) {
   if (!SOURCES.includes(source)) throw new Error('Source inconnue.');
   const j = Math.min(7, Math.max(1, Number(jour) || 2));
   const h = Math.min(23, Math.max(0, Number.isFinite(Number(heure)) ? Number(heure) : 2));
-  db.prepare(`INSERT INTO planifications (source, actif, jour, heure) VALUES (?, ?, ?, ?)
-    ON CONFLICT(source) DO UPDATE SET actif = excluded.actif, jour = excluded.jour, heure = excluded.heure`)
-    .run(source, actif ? 1 : 0, j, h);
+  db.prepare(
+    `INSERT INTO planifications (source, actif, jour, heure) VALUES (?, ?, ?, ?)
+    ON CONFLICT(source) DO UPDATE SET actif = excluded.actif, jour = excluded.jour, heure = excluded.heure`,
+  ).run(source, actif ? 1 : 0, j, h);
   return listPlanifs().find((p) => p.source === source);
 }
 

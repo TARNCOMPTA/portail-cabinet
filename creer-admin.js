@@ -10,8 +10,14 @@ if (!email || !pwd) {
   console.error('  (le nom peut contenir des espaces : mets-le entre guillemets)');
   process.exit(1);
 }
-if (String(pwd).length < 8) { console.error('Mot de passe trop court (8 caracteres minimum).'); process.exit(1); }
-if (getUserByEmail(email)) { console.error(`Un utilisateur avec l'e-mail ${email} existe deja.`); process.exit(1); }
+if (String(pwd).length < 8) {
+  console.error('Mot de passe trop court (8 caracteres minimum).');
+  process.exit(1);
+}
+if (getUserByEmail(email)) {
+  console.error(`Un utilisateur avec l'e-mail ${email} existe deja.`);
+  process.exit(1);
+}
 
 const u = createUser({ email, nom: nom || email, password_hash: hashPassword(pwd), role: 'admin' });
 console.log(`Administrateur cree : ${u.email} (${countUsers()} utilisateur(s) au total).`);

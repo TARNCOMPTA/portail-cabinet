@@ -22,34 +22,62 @@ const DOCUMENTS_URL = 'https://www2.carpimko.com/migration/MesDocuments?tab=docs
 const REGEX_APPEL = /appel\s*de\s*cotisation/i;
 const TOUS_DOCUMENTS_DEFAUT = String(process.env.TOUS_DOCUMENTS ?? 'false').toLowerCase() === 'true';
 
-function sanitize(name) { return String(name).replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').trim().slice(0, 120); }
-function dateIso(fr) { const m = String(fr).match(/(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : 'sans-date'; }
-function addRunSafe(clientId, run) { try { addRun(clientId, run); } catch (e) { console.warn(`(historique CARPIMKO ${clientId}: ${e.message})`); } }
+function sanitize(name) {
+  return String(name)
+    .replace(/[^\w.\- ]+/g, '_')
+    .replace(/\s+/g, '_')
+    .trim()
+    .slice(0, 120);
+}
+function dateIso(fr) {
+  const m = String(fr).match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : 'sans-date';
+}
+function addRunSafe(clientId, run) {
+  try {
+    addRun(clientId, run);
+  } catch (e) {
+    console.warn(`(historique CARPIMKO ${clientId}: ${e.message})`);
+  }
+}
 
 async function fermerCookies(page) {
   for (const sel of ['#tarteaucitronAllDenied2', '#tarteaucitronPersonalize2', 'button:has-text("Tout refuser")', 'button:has-text("Tout accepter")']) {
     const b = page.locator(sel).first();
-    if (await b.isVisible().catch(() => false)) { await b.click().catch(() => {}); return; }
+    if (await b.isVisible().catch(() => false)) {
+      await b.click().catch(() => {});
+      return;
+    }
   }
 }
 
 async function extraireDocuments(page) {
   return page.$$eval('table tr', (rows) =>
-    rows.map((tr) => {
-      const dl = tr.querySelector('a[href*="download"]');
-      const view = tr.querySelector('a[href*="viewDocument"]');
-      if (!dl && !view) return null;
-      const cells = [...tr.querySelectorAll('td')].map((td) => td.innerText.trim());
-      let fileName = '';
-      if (view) { try { fileName = new URL(view.href).searchParams.get('fileName') || ''; } catch { /* ignore */ } }
-      return { date: cells[0] || '', nom: cells[1] || (dl ? dl.innerText.trim() : ''), downloadHref: dl ? dl.href : view ? view.href : '', fileName };
-    }).filter(Boolean)
+    rows
+      .map((tr) => {
+        const dl = tr.querySelector('a[href*="download"]');
+        const view = tr.querySelector('a[href*="viewDocument"]');
+        if (!dl && !view) return null;
+        const cells = [...tr.querySelectorAll('td')].map((td) => td.innerText.trim());
+        let fileName = '';
+        if (view) {
+          try {
+            fileName = new URL(view.href).searchParams.get('fileName') || '';
+          } catch {
+            /* ignore */
+          }
+        }
+        return { date: cells[0] || '', nom: cells[1] || (dl ? dl.innerText.trim() : ''), downloadHref: dl ? dl.href : view ? view.href : '', fileName };
+      })
+      .filter(Boolean),
   );
 }
 
 // Sur serveur Linux (Docker, root), Chromium exige --no-sandbox ; --disable-dev-shm-usage
 // evite les plantages lies a la petite taille de /dev/shm en conteneur.
-function launchArgs() { return process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : []; }
+function launchArgs() {
+  return process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
+}
 
 /**
  * Recupere les documents (appels de cotisations par defaut) d'un client.
@@ -57,7 +85,11 @@ function launchArgs() { return process.platform === 'linux' ? ['--no-sandbox', '
  * @param {{onLog?:(m:string)=>void, tousDocuments?:boolean, baseFolder?:string}} [opts]
  */
 export async function scrapeClient(client, opts = {}) {
-  const log = (m) => { const line = `[${client.nom}] ${m}`; console.log(line); opts.onLog?.(line); };
+  const log = (m) => {
+    const line = `[${client.nom}] ${m}`;
+    console.log(line);
+    opts.onLog?.(line);
+  };
   // Navigateur VISIBLE par defaut (sur serveur : ecran :99 -> noVNC pour une verif email/SMS).
   const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
@@ -89,7 +121,11 @@ export async function scrapeClient(client, opts = {}) {
       if (id) await page.locator(`label[for="${id}"]`).click();
     });
 
-    if (!client.password) { const e = new Error('Mot de passe vide pour ce client — re-saisis-le.'); e.kind = 'mdp'; throw e; }
+    if (!client.password) {
+      const e = new Error('Mot de passe vide pour ce client — re-saisis-le.');
+      e.kind = 'mdp';
+      throw e;
+    }
     log('Saisie du numero de dossier et du mot de passe');
     const champUser = page.locator('#Login').first();
     const champPwd = page.locator('#MotDePasse').first();
@@ -106,13 +142,17 @@ export async function scrapeClient(client, opts = {}) {
           nbMotDePasse: document.querySelectorAll('#MotDePasse').length,
           nbInputsPassword: cand.length,
           iframes: document.querySelectorAll('iframe').length,
-          motDePasse: f ? { type: f.type, name: f.name, disabled: f.disabled, readOnly: f.readOnly, visible: !!f.offsetParent, outer: f.outerHTML.slice(0, 250) } : null,
+          motDePasse: f
+            ? { type: f.type, name: f.name, disabled: f.disabled, readOnly: f.readOnly, visible: !!f.offsetParent, outer: f.outerHTML.slice(0, 250) }
+            : null,
           inputsPassword: cand.slice(0, 4).map((e) => ({ id: e.id, name: e.name, disabled: e.disabled, readOnly: e.readOnly, visible: !!e.offsetParent })),
         };
       });
       writeFileSync(resolve(clientDir, '_diag_mdp.json'), JSON.stringify(diag, null, 2), 'utf8');
       log(`Diag champ mdp : ${JSON.stringify(diag).slice(0, 500)}`);
-    } catch (e) { log(`(diag champ mdp : ${e.message})`); }
+    } catch (e) {
+      log(`(diag champ mdp : ${e.message})`);
+    }
     // Remplissage robuste, avec verification : 1) fill, 2) frappe clavier, 3) injection JS.
     const pwdRempli = async () => ((await champPwd.inputValue().catch(() => '')) || '').length > 0;
     await champPwd.click().catch(() => {});
@@ -122,25 +162,36 @@ export async function scrapeClient(client, opts = {}) {
       await champPwd.pressSequentially(client.password, { delay: 30 }).catch(() => {});
     }
     if (!(await pwdRempli())) {
-      await champPwd.evaluate((el, val) => {
-        el.value = val;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-      }, client.password).catch(() => {});
+      await champPwd
+        .evaluate((el, val) => {
+          el.value = val;
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }, client.password)
+        .catch(() => {});
     }
     // Capture AVANT envoi (diagnostic : montre si le mot de passe est bien saisi).
-    try { await page.screenshot({ path: resolve(clientDir, `_avant_envoi_${Date.now()}.png`), fullPage: true }); } catch { /* ignore */ }
+    try {
+      await page.screenshot({ path: resolve(clientDir, `_avant_envoi_${Date.now()}.png`), fullPage: true });
+    } catch {
+      /* ignore */
+    }
     // Securite anti-blocage : si le champ est toujours vide, on N'ENVOIE PAS
     // (eviter de consommer une tentative CARPIMKO pour rien).
     if (!(await pwdRempli())) {
       const e = new Error('Impossible de saisir le mot de passe dans le champ CARPIMKO (champ special ?). Envoi annule pour ne pas consommer de tentative.');
-      e.kind = 'mdp'; throw e;
+      e.kind = 'mdp';
+      throw e;
     }
     await Promise.all([page.waitForLoadState('domcontentloaded'), page.locator('#connexionForm button[type="submit"]').click()]);
     await page.waitForTimeout(2000);
 
     if (/Comptes\/Connexion/i.test(page.url())) {
-      const erreur = await page.locator('.validation-summary-errors, .field-validation-error, .alert-danger').first().innerText().catch(() => '');
+      const erreur = await page
+        .locator('.validation-summary-errors, .field-validation-error, .alert-danger')
+        .first()
+        .innerText()
+        .catch(() => '');
       const detail = erreur ? erreur.trim().replace(/\s+/g, ' ') : '(identifiants incorrects ?)';
       const e = new Error(`Connexion refusee : ${detail}`);
       e.kind = 'mdp'; // -> verrou anti-blocage de compte
@@ -157,13 +208,31 @@ export async function scrapeClient(client, opts = {}) {
     const vus = new Set();
     for (let p = 0; p < 30; p++) {
       const lot = await extraireDocuments(page);
-      for (const d of lot) { const cle = d.fileName || d.downloadHref || `${d.date}|${d.nom}`; if (!vus.has(cle)) { vus.add(cle); tous.push(d); } }
+      for (const d of lot) {
+        const cle = d.fileName || d.downloadHref || `${d.date}|${d.nom}`;
+        if (!vus.has(cle)) {
+          vus.add(cle);
+          tous.push(d);
+        }
+      }
       const suivant = page.locator('a[aria-label="Next"], a:has-text("›"), li:not(.disabled) > a[rel="next"]').first();
       if (await suivant.isVisible().catch(() => false)) {
-        const avant = page.url() + (await page.locator('table').first().innerText().catch(() => ''));
+        const avant =
+          page.url() +
+          (await page
+            .locator('table')
+            .first()
+            .innerText()
+            .catch(() => ''));
         await suivant.click().catch(() => {});
         await page.waitForTimeout(1500);
-        const apres = page.url() + (await page.locator('table').first().innerText().catch(() => ''));
+        const apres =
+          page.url() +
+          (await page
+            .locator('table')
+            .first()
+            .innerText()
+            .catch(() => ''));
         if (avant === apres) break;
       } else break;
     }
@@ -180,13 +249,15 @@ export async function scrapeClient(client, opts = {}) {
       for (const d of cibles) {
         if (!d.downloadHref) continue;
         // Nom : prefere le vrai nom de fichier du document (unique) ; sinon date + libelle.
-        const nomDoc = d.fileName ? d.fileName.replace(/\.[a-z0-9]+$/i, '') : (d.nom || 'document');
+        const nomDoc = d.fileName ? d.fileName.replace(/\.[a-z0-9]+$/i, '') : d.nom || 'document';
         const baseNom = `${dateIso(d.date)}_${sanitize(nomDoc)}`;
         let dest = resolve(clientDir, `${baseNom}.pdf`);
         // Collision dans CE run (2 documents distincts -> meme nom) : on suffixe (2), (3)...
         if (utilises.has(dest.toLowerCase())) {
           let i = 2;
-          do { dest = resolve(clientDir, `${baseNom} (${i++}).pdf`); } while (utilises.has(dest.toLowerCase()) && i < 100);
+          do {
+            dest = resolve(clientDir, `${baseNom} (${i++}).pdf`);
+          } while (utilises.has(dest.toLowerCase()) && i < 100);
         }
         utilises.add(dest.toLowerCase());
         // Deja telecharge lors d'un run precedent (fichier present sur le disque).
@@ -204,16 +275,21 @@ export async function scrapeClient(client, opts = {}) {
           addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date) });
           docsRecuperes.push({ libelle: d.nom, fichier: dest });
           log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
-        } catch (e) { log(`Echec "${d.nom}" (${d.date}) : ${e.message}`); }
+        } catch (e) {
+          log(`Echec "${d.nom}" (${d.date}) : ${e.message}`);
+        }
       }
     }
 
     const motBilan = tousDocuments ? 'document(s)' : 'appel(s) de cotisations';
-    const bilan = `${docsRecuperes.length} nouveau(x) ${motBilan} telecharge(s)` +
-      (dejaPresents > 0 ? `, ${dejaPresents} deja present(s) (ignore(s))` : '') + ` — ${cibles.length} detecte(s)`;
+    const bilan =
+      `${docsRecuperes.length} nouveau(x) ${motBilan} telecharge(s)` +
+      (dejaPresents > 0 ? `, ${dejaPresents} deja present(s) (ignore(s))` : '') +
+      ` — ${cibles.length} detecte(s)`;
     addRunSafe(client.id, {
       statut: docsRecuperes.length + dejaPresents > 0 || cibles.length === 0 ? 'succes' : 'echec',
-      message: bilan, nb_docs: docsRecuperes.length,
+      message: bilan,
+      nb_docs: docsRecuperes.length,
     });
     log(`Termine : ${bilan}.`);
     return { ok: true, docs: docsRecuperes, dejaPresents };

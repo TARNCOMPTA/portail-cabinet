@@ -1,59 +1,138 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Connexion — Tarn Compta</title>
-  <script>
-    (function () {
-      var t = localStorage.getItem('theme') || 'light';
-      document.documentElement.setAttribute('data-theme', t);
-    })();
-  </script>
-  <link rel="stylesheet" href="vendor/hanken/hanken.css">
-  <link rel="stylesheet" href="style.css" />
-  <style>
-    body { display: block; }
-    .login-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
-    .login-card { width: 100%; max-width: 400px; padding: 30px 30px 28px; box-shadow: var(--shadow); }
-    .login-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; }
-    .login-brand .logo-dot { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 16px; letter-spacing: .5px; box-shadow: var(--shadow-accent); }
-    .login-brand .brand-name { font-weight: 800; font-size: 17px; letter-spacing: -.2px; line-height: 1; }
-    .login-brand .brand-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
-    .login-card h1 { font-size: 19px; margin: 0 0 4px; font-weight: 800; letter-spacing: -.3px; }
-    .login-card .sub { margin: 0 0 22px; color: var(--ink-soft); font-size: 13.5px; }
-    .login-card label { display: block; margin-bottom: 14px; font-size: 12px; font-weight: 600; color: var(--muted); }
-    .login-card input {
-      width: 100%; margin-top: 6px; padding: 11px 13px; border: 1px solid var(--border-strong);
-      border-radius: var(--radius-sm); font-size: 14px; font-family: inherit; color: var(--ink); background: var(--bg);
-    }
-    .login-card input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent); }
-    .login-err { color: var(--err); font-size: 13px; min-height: 1.1em; margin: 4px 0 14px; font-weight: 600; }
-    .login-card .btn.primary { width: 100%; height: 42px; justify-content: center; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <div class="login-wrap">
-    <form id="form-login" class="panel login-card">
-      <div class="login-brand">
-        <div class="logo-dot">TC</div>
-        <div>
-          <div class="brand-name">Tarn Compta</div>
-          <div class="brand-sub">Portail de récupération</div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Connexion — Tarn Compta</title>
+    <script>
+      (function () {
+        var t = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
+    <link rel="stylesheet" href="vendor/hanken/hanken.css" />
+    <link rel="stylesheet" href="style.css" />
+    <style>
+      body {
+        display: block;
+      }
+      .login-wrap {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .login-card {
+        width: 100%;
+        max-width: 400px;
+        padding: 30px 30px 28px;
+        box-shadow: var(--shadow);
+      }
+      .login-brand {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 22px;
+      }
+      .login-brand .logo-dot {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        background: var(--accent);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 16px;
+        letter-spacing: 0.5px;
+        box-shadow: var(--shadow-accent);
+      }
+      .login-brand .brand-name {
+        font-weight: 800;
+        font-size: 17px;
+        letter-spacing: -0.2px;
+        line-height: 1;
+      }
+      .login-brand .brand-sub {
+        font-size: 12px;
+        color: var(--muted);
+        margin-top: 3px;
+      }
+      .login-card h1 {
+        font-size: 19px;
+        margin: 0 0 4px;
+        font-weight: 800;
+        letter-spacing: -0.3px;
+      }
+      .login-card .sub {
+        margin: 0 0 22px;
+        color: var(--ink-soft);
+        font-size: 13.5px;
+      }
+      .login-card label {
+        display: block;
+        margin-bottom: 14px;
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--muted);
+      }
+      .login-card input {
+        width: 100%;
+        margin-top: 6px;
+        padding: 11px 13px;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius-sm);
+        font-size: 14px;
+        font-family: inherit;
+        color: var(--ink);
+        background: var(--bg);
+      }
+      .login-card input:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent);
+      }
+      .login-err {
+        color: var(--err);
+        font-size: 13px;
+        min-height: 1.1em;
+        margin: 4px 0 14px;
+        font-weight: 600;
+      }
+      .login-card .btn.primary {
+        width: 100%;
+        height: 42px;
+        justify-content: center;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="login-wrap">
+      <form id="form-login" class="panel login-card">
+        <div class="login-brand">
+          <div class="logo-dot">TC</div>
+          <div>
+            <div class="brand-name">Tarn Compta</div>
+            <div class="brand-sub">Portail de récupération</div>
+          </div>
         </div>
-      </div>
-      <h1>Connexion</h1>
-      <p class="sub">Connecte-toi avec ton compte collaborateur.</p>
-      <label>E-mail
-        <input name="email" type="email" autocomplete="username" required autofocus />
-      </label>
-      <label>Mot de passe
-        <input name="password" type="password" autocomplete="current-password" required />
-      </label>
-      <p class="login-err" id="login-err"></p>
-      <button type="submit" class="btn primary" id="login-submit">Se connecter</button>
-    </form>
-  </div>
-  <script src="login.js"></script>
-</body>
+        <h1>Connexion</h1>
+        <p class="sub">Connecte-toi avec ton compte collaborateur.</p>
+        <label
+          >E-mail
+          <input name="email" type="email" autocomplete="username" required autofocus />
+        </label>
+        <label
+          >Mot de passe
+          <input name="password" type="password" autocomplete="current-password" required />
+        </label>
+        <p class="login-err" id="login-err"></p>
+        <button type="submit" class="btn primary" id="login-submit">Se connecter</button>
+      </form>
+    </div>
+    <script src="login.js"></script>
+  </body>
 </html>

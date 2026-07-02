@@ -3,6 +3,18 @@
 import { creerSourceDb } from './creer-source-db.js';
 
 export const {
-  listClients, clientVerrouille, getClient, getClientCredentials, createClient, updateClient,
-  deleteClient, getClientByLogin, importClients, addDocument, listDocuments, listAllDocuments, addRun, listRuns,
+  listClients,
+  clientVerrouille,
+  getClient,
+  getClientCredentials,
+  createClient,
+  updateClient,
+  deleteClient,
+  getClientByLogin,
+  importClients,
+  addDocument,
+  listDocuments,
+  listAllDocuments,
+  addRun,
+  listRuns,
 } = creerSourceDb('carpv.db');

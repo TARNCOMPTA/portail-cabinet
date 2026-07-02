@@ -3,31 +3,31 @@ services:
   app:
     build: .
     restart: unless-stopped
-    init: true   # tini comme PID 1 : reape les process Chromium fermes (sinon zombies <defunct>)
+    init: true # tini comme PID 1 : reape les process Chromium fermes (sinon zombies <defunct>)
     environment:
       - PORT=3000
-      - PUBLIC_URL=https://portail.tarncompta.fr  # base publique (OAuth/MCP : issuer + URL du connecteur)
+      - PUBLIC_URL=https://portail.tarncompta.fr # base publique (OAuth/MCP : issuer + URL du connecteur)
       - NAV_TIMEOUT=60000
-      - UPDATE_DISABLED=1   # sur serveur, mise à jour par "git pull" + rebuild (voir DEPLOIEMENT.md)
-      - REMOTE_BROWSER=1    # active la vue navigateur à distance (noVNC) pour la captcha
+      - UPDATE_DISABLED=1 # sur serveur, mise à jour par "git pull" + rebuild (voir DEPLOIEMENT.md)
+      - REMOTE_BROWSER=1 # active la vue navigateur à distance (noVNC) pour la captcha
       - SCHEDULE_CARPIMKO=1 # récupération CARPIMKO automatique chaque mardi à 02:00 (Europe/Paris)
-      - SCHEDULE_CARMF=1    # récupération CARMF automatique chaque mercredi à 02:00 (Europe/Paris)
+      - SCHEDULE_CARMF=1 # récupération CARMF automatique chaque mercredi à 02:00 (Europe/Paris)
     volumes:
-      - ./data:/app/data            # base SQLite + clé de chiffrement (à conserver/sauvegarder)
-      - ./downloads:/app/downloads  # documents récupérés
+      - ./data:/app/data # base SQLite + clé de chiffrement (à conserver/sauvegarder)
+      - ./downloads:/app/downloads # documents récupérés
     expose:
-      - "3000"
-      - "6080"
+      - '3000'
+      - '6080'
 
   caddy:
     image: caddy:2
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - '80:80'
+      - '443:443'
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data            # certificats Let's Encrypt (persistés)
+      - caddy_data:/data # certificats Let's Encrypt (persistés)
       - caddy_config:/config
     depends_on:
       - app

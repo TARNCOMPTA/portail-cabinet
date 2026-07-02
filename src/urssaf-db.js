@@ -54,7 +54,11 @@ db.exec(`
   const dups = db.prepare('SELECT MIN(id) AS keep FROM cabinets GROUP BY lower(login) HAVING COUNT(*) > 1').all();
   for (const { keep } of dups) {
     const login = db.prepare('SELECT login FROM cabinets WHERE id = ?').get(keep).login;
-    db.prepare('UPDATE clients SET cabinet_id = ? WHERE cabinet_id IN (SELECT id FROM cabinets WHERE lower(login) = lower(?) AND id != ?)').run(keep, login, keep);
+    db.prepare('UPDATE clients SET cabinet_id = ? WHERE cabinet_id IN (SELECT id FROM cabinets WHERE lower(login) = lower(?) AND id != ?)').run(
+      keep,
+      login,
+      keep,
+    );
     db.prepare('DELETE FROM cabinets WHERE lower(login) = lower(?) AND id != ?').run(login, keep);
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_urssaf_cabinets_login ON cabinets(lower(login))');
@@ -62,12 +66,17 @@ db.exec(`
 
 // ---- Comptes cabinet ------------------------------------------------------
 export function listCabinets() {
-  return db.prepare(`
+  return db
+    .prepare(
+      `
     SELECT c.id, c.libelle, c.login,
            (SELECT COUNT(*) FROM clients cl WHERE cl.cabinet_id = c.id) AS nb_clients,
            (c.password_enc IS NOT NULL) AS pwd_ok
     FROM cabinets c ORDER BY c.libelle COLLATE NOCASE, c.id
-  `).all().map((c) => ({ ...c, pwd_ok: !!c.pwd_ok }));
+  `,
+    )
+    .all()
+    .map((c) => ({ ...c, pwd_ok: !!c.pwd_ok }));
 }
 export function getCabinetFull(id) {
   const c = db.prepare('SELECT * FROM cabinets WHERE id = ?').get(id);
@@ -78,7 +87,8 @@ export function getCabinetByLogin(login) {
   return db.prepare('SELECT id, libelle, login FROM cabinets WHERE lower(login) = lower(?)').get(String(login || '').trim());
 }
 export function createCabinet({ libelle, login, password }) {
-  const info = db.prepare('INSERT INTO cabinets (libelle, login, password_enc) VALUES (?, ?, ?)')
+  const info = db
+    .prepare('INSERT INTO cabinets (libelle, login, password_enc) VALUES (?, ?, ?)')
     .run((libelle || login || '').trim(), String(login || '').trim(), password ? encrypt(String(password)) : null);
   return db.prepare('SELECT id, libelle, login FROM cabinets WHERE id = ?').get(info.lastInsertRowid);
 }
@@ -103,7 +113,9 @@ export function cabinetsConfigure() {
 
 // ---- Clients --------------------------------------------------------------
 export function listClients() {
-  return db.prepare(`
+  return db
+    .prepare(
+      `
     SELECT c.id, c.nom, c.siret, c.dossier, c.cabinet_id, c.created_at, c.updated_at,
            (SELECT libelle FROM cabinets cab WHERE cab.id = c.cabinet_id) AS cabinet_libelle,
            (SELECT COUNT(*) FROM documents d WHERE d.client_id = c.id) AS nb_docs,
@@ -111,24 +123,37 @@ export function listClients() {
            (SELECT statut   FROM runs r WHERE r.client_id = c.id ORDER BY r.lance_le DESC, r.id DESC LIMIT 1) AS dernier_statut,
            (SELECT message  FROM runs r WHERE r.client_id = c.id ORDER BY r.lance_le DESC, r.id DESC LIMIT 1) AS dernier_message
     FROM clients c ORDER BY c.nom COLLATE NOCASE
-  `).all();
+  `,
+    )
+    .all();
 }
-export function getClient(id) { return db.prepare('SELECT * FROM clients WHERE id = ?').get(id); }
-export function getClientBySiret(siret) { return db.prepare('SELECT * FROM clients WHERE siret = ?').get(String(siret).replace(/\s+/g, '')); }
+export function getClient(id) {
+  return db.prepare('SELECT * FROM clients WHERE id = ?').get(id);
+}
+export function getClientBySiret(siret) {
+  return db.prepare('SELECT * FROM clients WHERE siret = ?').get(String(siret).replace(/\s+/g, ''));
+}
 export function createClient({ nom, siret, dossier, cabinet_id }) {
-  const info = db.prepare('INSERT INTO clients (nom, siret, dossier, cabinet_id) VALUES (?, ?, ?, ?)')
+  const info = db
+    .prepare('INSERT INTO clients (nom, siret, dossier, cabinet_id) VALUES (?, ?, ?, ?)')
     .run(nom, String(siret).replace(/\s+/g, ''), dossier ?? null, cabinet_id ?? null);
   return getClient(info.lastInsertRowid);
 }
 export function updateClient(id, { nom, siret, dossier, cabinet_id }) {
   const c = getClient(id);
   if (!c) return null;
-  db.prepare(`UPDATE clients SET nom = ?, siret = ?, dossier = ?, cabinet_id = ?, updated_at = datetime('now') WHERE id = ?`)
-    .run(nom ?? c.nom, siret !== undefined ? String(siret).replace(/\s+/g, '') : c.siret,
-      dossier !== undefined ? dossier : c.dossier, cabinet_id !== undefined ? cabinet_id : c.cabinet_id, id);
+  db.prepare(`UPDATE clients SET nom = ?, siret = ?, dossier = ?, cabinet_id = ?, updated_at = datetime('now') WHERE id = ?`).run(
+    nom ?? c.nom,
+    siret !== undefined ? String(siret).replace(/\s+/g, '') : c.siret,
+    dossier !== undefined ? dossier : c.dossier,
+    cabinet_id !== undefined ? cabinet_id : c.cabinet_id,
+    id,
+  );
   return getClient(id);
 }
-export function deleteClient(id) { db.prepare('DELETE FROM clients WHERE id = ?').run(id); }
+export function deleteClient(id) {
+  db.prepare('DELETE FROM clients WHERE id = ?').run(id);
+}
 
 export function importClients(rows, cabinetId = null) {
   const bilan = { crees: 0, maj: 0, ignores: 0, erreurs: [] };
@@ -136,22 +161,36 @@ export function importClients(rows, cabinetId = null) {
     const ligne = i + 1;
     const nom = (r.nom ?? '').toString().trim();
     const siret = (r.siret ?? '').toString().replace(/\s+/g, '');
-    if (!nom && !siret) { bilan.ignores++; return; }
-    if (!nom || !siret) { bilan.erreurs.push({ ligne, raison: 'nom et SIRET requis', valeur: nom || siret }); return; }
+    if (!nom && !siret) {
+      bilan.ignores++;
+      return;
+    }
+    if (!nom || !siret) {
+      bilan.erreurs.push({ ligne, raison: 'nom et SIRET requis', valeur: nom || siret });
+      return;
+    }
     try {
       const ex = getClientBySiret(siret);
-      if (ex) { updateClient(ex.id, { nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id }); bilan.maj++; }
-      else { createClient({ nom, siret, cabinet_id: cabinetId }); bilan.crees++; }
-    } catch (e) { bilan.erreurs.push({ ligne, raison: e.message, valeur: nom }); }
+      if (ex) {
+        updateClient(ex.id, { nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id });
+        bilan.maj++;
+      } else {
+        createClient({ nom, siret, cabinet_id: cabinetId });
+        bilan.crees++;
+      }
+    } catch (e) {
+      bilan.erreurs.push({ ligne, raison: e.message, valeur: nom });
+    }
   });
   return bilan;
 }
 
 // ---- Documents & runs -----------------------------------------------------
 export function addDocument(client_id, { libelle, fichier, eventid }) {
-  db.prepare(`INSERT INTO documents (client_id, libelle, fichier, eventid) VALUES (?, ?, ?, ?)
-              ON CONFLICT(client_id, eventid) DO UPDATE SET libelle = excluded.libelle, fichier = excluded.fichier`)
-    .run(client_id, libelle ?? null, fichier, eventid ?? null);
+  db.prepare(
+    `INSERT INTO documents (client_id, libelle, fichier, eventid) VALUES (?, ?, ?, ?)
+              ON CONFLICT(client_id, eventid) DO UPDATE SET libelle = excluded.libelle, fichier = excluded.fichier`,
+  ).run(client_id, libelle ?? null, fichier, eventid ?? null);
 }
 export function getDocumentByEventid(client_id, eventid) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? AND eventid = ?').get(client_id, eventid);
@@ -160,13 +199,17 @@ export function listDocuments(client_id) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? ORDER BY recupere_le DESC, id DESC').all(client_id);
 }
 export function listAllDocuments(limit = 5000) {
-  return db.prepare(`SELECT d.*, c.nom AS client_nom FROM documents d LEFT JOIN clients c ON c.id = d.client_id ORDER BY d.recupere_le DESC, d.id DESC LIMIT ?`).all(limit);
+  return db
+    .prepare(`SELECT d.*, c.nom AS client_nom FROM documents d LEFT JOIN clients c ON c.id = d.client_id ORDER BY d.recupere_le DESC, d.id DESC LIMIT ?`)
+    .all(limit);
 }
 export function addRun(client_id, { statut, message, nb_docs }) {
   db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs) VALUES (?, ?, ?, ?)').run(client_id, statut, message ?? null, nb_docs ?? 0);
 }
 export function listRuns(limit = 300) {
-  return db.prepare(`SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`).all(limit);
+  return db
+    .prepare(`SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`)
+    .all(limit);
 }
 
 export default db;

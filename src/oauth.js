@@ -8,8 +8,8 @@ import * as oauthDb from './oauth-db.js';
 import { verifyPassword } from './auth.js';
 import { getUserByEmail } from './db.js';
 
-const CODE_TTL = 5 * 60 * 1000;          // code d'autorisation : 5 min
-const ACCESS_TTL = 60 * 60 * 1000;       // jeton d'acces : 1 h
+const CODE_TTL = 5 * 60 * 1000; // code d'autorisation : 5 min
+const ACCESS_TTL = 60 * 60 * 1000; // jeton d'acces : 1 h
 const CALLBACK_HOSTE = 'https://claude.ai/api/mcp/auth_callback'; // Claude web/Desktop/mobile
 const SCOPES = ['mcp', 'offline_access'];
 
@@ -18,7 +18,9 @@ function baseUrl(req) {
   const proto = req.headers['x-forwarded-proto'] || req.protocol || 'https';
   return `${proto}://${req.headers.host}`;
 }
-function s256(verifier) { return crypto.createHash('sha256').update(verifier).digest('base64url'); }
+function s256(verifier) {
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
+}
 
 // redirect_uri autorisee : callback Claude hoste, boucle locale (Claude Code, port
 // variable) ou URI explicitement enregistree par le client (DCR).
@@ -28,7 +30,9 @@ function redirectOk(client, uri) {
   try {
     const u = new URL(uri);
     if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.pathname === '/callback') return true;
-  } catch { return false; }
+  } catch {
+    return false;
+  }
   return (client?.redirect_uris || []).includes(uri);
 }
 function ensureStatic(req) {
@@ -41,7 +45,8 @@ function pageAutorisation(req, params, erreur = '') {
   // champs visibles -> valeurs en tableau -> echec garanti des tentatives suivantes).
   const champs = Object.entries(params)
     .filter(([k]) => k !== 'email' && k !== 'password')
-    .map(([k, v]) => `<input type="hidden" name="${k}" value="${String(v ?? '').replace(/"/g, '&quot;')}">`).join('');
+    .map(([k, v]) => `<input type="hidden" name="${k}" value="${String(v ?? '').replace(/"/g, '&quot;')}">`)
+    .join('');
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Autoriser le connecteur — Portail Cabinet</title>
@@ -120,16 +125,26 @@ export function installOAuth(app) {
     const p = req.body || {};
     const v = validerAuthorizeParams(p);
     if (v.err) return res.status(400).send(`Paramètres OAuth invalides : ${v.err}`);
-    const email = String(p.email || '').trim().toLowerCase();
+    const email = String(p.email || '')
+      .trim()
+      .toLowerCase();
     const u = getUserByEmail(email);
     if (!u || !u.actif || !verifyPassword(String(p.password || ''), u.password_hash)) {
-      return res.status(401).set('Content-Type', 'text/html; charset=utf-8')
+      return res
+        .status(401)
+        .set('Content-Type', 'text/html; charset=utf-8')
         .send(pageAutorisation(req, p, 'E-mail ou mot de passe incorrect.'));
     }
     const code = oauthDb.rnd(24);
     oauthDb.saveCode({
-      code, client_id: p.client_id, redirect_uri: p.redirect_uri, code_challenge: p.code_challenge,
-      scope: p.scope || 'mcp', user_id: u.id, resource: p.resource || null, expires_at: Date.now() + CODE_TTL,
+      code,
+      client_id: p.client_id,
+      redirect_uri: p.redirect_uri,
+      code_challenge: p.code_challenge,
+      scope: p.scope || 'mcp',
+      user_id: u.id,
+      resource: p.resource || null,
+      expires_at: Date.now() + CODE_TTL,
     });
     const url = new URL(p.redirect_uri);
     url.searchParams.set('code', code);
@@ -140,17 +155,20 @@ export function installOAuth(app) {
   // --- /token ---
   function authClient(req) {
     const b = req.body || {};
-    let id = b.client_id, secret = b.client_secret;
+    let id = b.client_id,
+      secret = b.client_secret;
     const h = req.headers.authorization || '';
     if (h.startsWith('Basic ')) {
       const [bid, bsec] = Buffer.from(h.slice(6), 'base64').toString().split(':');
-      id = id || bid; secret = secret ?? bsec;
+      id = id || bid;
+      secret = secret ?? bsec;
     }
     const client = id ? oauthDb.getClient(id) : null;
     return { client, secret };
   }
   function emettreJetons(res, client_id, user_id, scope) {
-    const access = oauthDb.rnd(32), refresh = oauthDb.rnd(32);
+    const access = oauthDb.rnd(32),
+      refresh = oauthDb.rnd(32);
     oauthDb.saveToken({ access_token: access, refresh_token: refresh, client_id, user_id, scope, expires_at: Date.now() + ACCESS_TTL });
     res.json({ access_token: access, token_type: 'Bearer', expires_in: Math.floor(ACCESS_TTL / 1000), refresh_token: refresh, scope });
   }
@@ -190,9 +208,11 @@ export function installOAuth(app) {
     const client_secret = isPublic ? null : oauthDb.rnd(32);
     oauthDb.createClient({ client_id, client_secret, redirect_uris, name: b.client_name || 'Client MCP', statique: 0 });
     const out = {
-      client_id, redirect_uris,
+      client_id,
+      redirect_uris,
       token_endpoint_auth_method: isPublic ? 'none' : 'client_secret_post',
-      grant_types: ['authorization_code', 'refresh_token'], response_types: ['code'],
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
     };
     if (client_secret) out.client_secret = client_secret;
     res.status(201).json(out);
@@ -202,9 +222,11 @@ export function installOAuth(app) {
 // --- Garde Bearer pour /mcp ---
 export function requireBearer(req, res, next) {
   const base = baseUrl(req);
-  const defie = () => res.status(401)
-    .set('WWW-Authenticate', `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`)
-    .json({ error: 'invalid_token', error_description: 'Jeton d\'accès requis.' });
+  const defie = () =>
+    res
+      .status(401)
+      .set('WWW-Authenticate', `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`)
+      .json({ error: 'invalid_token', error_description: "Jeton d'accès requis." });
   const h = req.headers.authorization || '';
   if (!h.startsWith('Bearer ')) return defie();
   const row = oauthDb.getByAccess(h.slice(7).trim());

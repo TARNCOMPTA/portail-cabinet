@@ -18,8 +18,7 @@ const STAGING = resolve(APP_DIR, 'app_update');
 const RESTART_FLAG = resolve(APP_DIR, 'restart.flag');
 
 // URL par defaut du manifeste (depot public). Surchargeable via .env (UPDATE_MANIFEST_URL).
-const MANIFEST_URL = process.env.UPDATE_MANIFEST_URL
-  || 'https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/version.json';
+const MANIFEST_URL = process.env.UPDATE_MANIFEST_URL || 'https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/version.json';
 
 export function versionLocale() {
   try {
@@ -31,8 +30,12 @@ export function versionLocale() {
 }
 
 export function comparerVersions(a, b) {
-  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
-  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+  const pa = String(a)
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
+  const pb = String(b)
+    .split('.')
+    .map((n) => parseInt(n, 10) || 0);
   for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
     const d = (pa[i] || 0) - (pb[i] || 0);
     if (d !== 0) return d;
@@ -53,8 +56,11 @@ export async function verifierMaj() {
     const manifest = JSON.parse((await res.text()).replace(/^﻿/, ''));
     const latest = manifest.version || '0.0.0';
     return {
-      configure: true, current, latest,
-      notes: manifest.notes || '', url: manifest.url || '',
+      configure: true,
+      current,
+      latest,
+      notes: manifest.notes || '',
+      url: manifest.url || '',
       updateAvailable: comparerVersions(latest, current) > 0,
     };
   } catch (e) {
@@ -71,16 +77,19 @@ export async function appliquerMaj(onLog = () => {}) {
   const buf = Buffer.from(await res.arrayBuffer());
 
   const zip = await JSZip.loadAsync(buf);
-  if (!zip.file('server.js')) throw new Error("Archive invalide (server.js absent) - maj annulee.");
+  if (!zip.file('server.js')) throw new Error('Archive invalide (server.js absent) - maj annulee.');
 
   rmSync(STAGING, { recursive: true, force: true });
   mkdirSync(STAGING, { recursive: true });
   for (const entry of Object.values(zip.files)) {
     const dest = resolve(STAGING, entry.name);
     if (entry.dir) mkdirSync(dest, { recursive: true });
-    else { mkdirSync(dirname(dest), { recursive: true }); writeFileSync(dest, await entry.async('nodebuffer')); }
+    else {
+      mkdirSync(dirname(dest), { recursive: true });
+      writeFileSync(dest, await entry.async('nodebuffer'));
+    }
   }
-  onLog('Mise a jour preparee. Redemarrage de l\'application...');
+  onLog("Mise a jour preparee. Redemarrage de l'application...");
   writeFileSync(RESTART_FLAG, etat.latest, 'utf8');
   setTimeout(() => process.exit(0), 800);
   return { ok: true, version: etat.latest };

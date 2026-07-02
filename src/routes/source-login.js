@@ -38,7 +38,10 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     if (!c) return res.status(404).json({ error: 'Client introuvable.' });
     res.json(c);
   });
-  r.delete('/clients/:id', (req, res) => { db.deleteClient(Number(req.params.id)); res.json({ ok: true }); });
+  r.delete('/clients/:id', (req, res) => {
+    db.deleteClient(Number(req.params.id));
+    res.json({ ok: true });
+  });
   r.get('/clients/:id/documents', (req, res) => {
     if (!db.getClient(Number(req.params.id))) return res.status(404).json({ error: 'Client introuvable.' });
     res.json(db.listDocuments(Number(req.params.id)));
@@ -64,13 +67,22 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     progression.courant = creds.nom;
     try {
       const rr = await scraper(creds, { ...extra, onLog: progLog });
-      if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: !!rr?.ok, message: rr?.ok ? `${rr.docs?.length ?? 0} nouveau(x)${rr.dejaPresents ? ` + ${rr.dejaPresents} déjà présent(s)` : ''}` : (rr?.error || 'erreur'), nb_docs: rr?.docs?.length ?? 0 });
+      if (suiviLocal)
+        progression.resultats.push({
+          nom: creds.nom,
+          ok: !!rr?.ok,
+          message: rr?.ok ? `${rr.docs?.length ?? 0} nouveau(x)${rr.dejaPresents ? ` + ${rr.dejaPresents} déjà présent(s)` : ''}` : rr?.error || 'erreur',
+          nb_docs: rr?.docs?.length ?? 0,
+        });
     } catch (e) {
       progLog(`ERREUR : ${e.message}`);
       if (suiviLocal) progression.resultats.push({ nom: creds.nom, ok: false, message: e.message, nb_docs: 0 });
     } finally {
       enCours.delete(key);
-      if (suiviLocal) { progression.fait = 1; terminerSuivi(); }
+      if (suiviLocal) {
+        progression.fait = 1;
+        terminerSuivi();
+      }
     }
   }
 
@@ -87,20 +99,41 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     (async () => {
       try {
         for (const c of aTraiter) {
-          if (ctx.doitArreter()) { progLog('Arrêt demandé.'); break; }
+          if (ctx.doitArreter()) {
+            progLog('Arrêt demandé.');
+            break;
+          }
           const key = `${source}:${c.id}`;
-          if (enCours.has(key)) { progression.fait++; continue; }
-          enCours.add(key); progression.courant = c.nom;
+          if (enCours.has(key)) {
+            progression.fait++;
+            continue;
+          }
+          enCours.add(key);
+          progression.courant = c.nom;
           try {
             const creds = db.getClientCredentials(c.id);
             if (creds) {
               const rr = await scraper(creds, { ...extra, onLog: progLog });
-              progression.resultats.push({ nom: c.nom, ok: !!rr?.ok, message: rr?.ok ? `${rr.docs?.length ?? 0} nouveau(x)${rr.dejaPresents ? ` + ${rr.dejaPresents} déjà présent(s)` : ''}` : (rr?.error || 'erreur'), nb_docs: rr?.docs?.length ?? 0 });
+              progression.resultats.push({
+                nom: c.nom,
+                ok: !!rr?.ok,
+                message: rr?.ok ? `${rr.docs?.length ?? 0} nouveau(x)${rr.dejaPresents ? ` + ${rr.dejaPresents} déjà présent(s)` : ''}` : rr?.error || 'erreur',
+                nb_docs: rr?.docs?.length ?? 0,
+              });
             }
-          } catch (e) { progLog(`[${c.nom}] ERREUR : ${e.message}`); progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 }); }
-          finally { enCours.delete(key); progression.fait++; }
+          } catch (e) {
+            progLog(`[${c.nom}] ERREUR : ${e.message}`);
+            progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 });
+          } finally {
+            enCours.delete(key);
+            progression.fait++;
+          }
         }
-      } finally { enCours.delete(`${source}:all`); terminerSuivi(); progLog(`Récupération ${SRC} terminée.`); }
+      } finally {
+        enCours.delete(`${source}:all`);
+        terminerSuivi();
+        progLog(`Récupération ${SRC} terminée.`);
+      }
     })();
     return { started: true, total: aTraiter.length, ignores };
   }
@@ -108,7 +141,14 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
   r.post('/clients/:id/scrape', (req, res) => {
     const id = Number(req.params.id);
     const verrou = db.clientVerrouille(id);
-    if (verrou.verrouille && !req.body?.force) return res.status(423).json({ error: 'verrou_mdp', message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige-le ou force la tentative.', detail: verrou.message });
+    if (verrou.verrouille && !req.body?.force)
+      return res
+        .status(423)
+        .json({
+          error: 'verrou_mdp',
+          message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige-le ou force la tentative.',
+          detail: verrou.message,
+        });
     lancerUn(id, res, tousDocuments ? { tousDocuments: !!req.body?.tousDocuments } : {});
   });
   r.post('/scrape-all', (req, res) => {

@@ -7,7 +7,12 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const sanitize = (name) => String(name).replace(/[^\w.\- ]+/g, '_').replace(/\s+/g, '_').trim().slice(0, 120);
+const sanitize = (name) =>
+  String(name)
+    .replace(/[^\w.\- ]+/g, '_')
+    .replace(/\s+/g, '_')
+    .trim()
+    .slice(0, 120);
 const libProfession = (p) => (p === 'sf' ? 'sage-femme' : p === 'cd' ? 'chirurgien-dentiste' : '');
 
 /**
@@ -18,10 +23,20 @@ const libProfession = (p) => (p === 'sf' ? 'sage-femme' : p === 'cd' ? 'chirurgi
 export function creerScraperLiberalWeb(cfg) {
   const { nom, host, sousDossier, picristoken, baseIndex, addDocument, addRun } = cfg;
   const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', sousDossier);
-  const addRunSafe = (clientId, run) => { try { addRun(clientId, run); } catch (e) { console.warn(`(historique ${nom} ${clientId}: ${e.message})`); } };
+  const addRunSafe = (clientId, run) => {
+    try {
+      addRun(clientId, run);
+    } catch (e) {
+      console.warn(`(historique ${nom} ${clientId}: ${e.message})`);
+    }
+  };
 
   return async function scrapeClient(client, opts = {}) {
-    const log = (m) => { const line = `[${client.nom}] ${m}`; console.log(line); opts.onLog?.(line); };
+    const log = (m) => {
+      const line = `[${client.nom}] ${m}`;
+      console.log(line);
+      opts.onLog?.(line);
+    };
     const timeout = Number(process.env.NAV_TIMEOUT ?? 45000);
     const b = typeof baseIndex === 'function' ? baseIndex(client) : baseIndex;
     const API = `${host}/InternetWebServices/${b}`;
@@ -36,14 +51,21 @@ export function creerScraperLiberalWeb(cfg) {
     const docs = [];
     let dejaPresents = 0;
     try {
-      if (!client.password) { const e = new Error('Mot de passe vide pour ce client — re-saisis-le.'); e.kind = 'mdp'; throw e; }
+      if (!client.password) {
+        const e = new Error('Mot de passe vide pour ce client — re-saisis-le.');
+        e.kind = 'mdp';
+        throw e;
+      }
 
       // ---- 1. Connexion ----
       const pro = libProfession(client.profession);
       log(`Connexion ${nom}${pro ? ` (${pro})` : ''}`);
       const corps = JSON.stringify({ pseudo: client.login, pwd: client.password, da: '', description: 'portail-cabinet' });
       const rc = await fetch(`${APINC}/internaute/connexion/V1`, {
-        method: 'POST', headers: { 'content-type': 'application/json', picristoken }, body: corps, signal: AbortSignal.timeout(timeout),
+        method: 'POST',
+        headers: { 'content-type': 'application/json', picristoken },
+        body: corps,
+        signal: AbortSignal.timeout(timeout),
       });
       const jc = await rc.json().catch(() => ({}));
       const authorization = rc.headers.get('authorization');
@@ -61,10 +83,17 @@ export function creerScraperLiberalWeb(cfg) {
 
       const enregistrer = (libelle, nomFichier, b64, annee) => {
         const buf = Buffer.from(b64, 'base64');
-        if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') { log(`(${libelle} : réponse non-PDF, ignoré)`); return; }
+        if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') {
+          log(`(${libelle} : réponse non-PDF, ignoré)`);
+          return;
+        }
         const nomF = sanitize(nomFichier || `${libelle}.pdf`).replace(/\.pdf$/i, '') + '.pdf';
         const dest = resolve(clientDir, `${annee ? annee + '_' : ''}${nomF}`);
-        if (existsSync(dest) && statSync(dest).size > 100) { addDocument(client.id, { libelle, fichier: dest, date_doc: annee }); dejaPresents++; return; }
+        if (existsSync(dest) && statSync(dest).size > 100) {
+          addDocument(client.id, { libelle, fichier: dest, date_doc: annee });
+          dejaPresents++;
+          return;
+        }
         writeFileSync(dest, buf);
         addDocument(client.id, { libelle, fichier: dest, date_doc: annee });
         docs.push({ libelle, fichier: dest });
@@ -79,7 +108,11 @@ export function creerScraperLiberalWeb(cfg) {
 
       // ---- 2. Attestations (generées) ----
       try {
-        const ja = await (await fetch(`${API}/dossier/courrier/V1/${dossier}/1`, { headers: H, signal: AbortSignal.timeout(timeout) })).json().catch(() => ({}));
+        const ja = await (
+          await fetch(`${API}/dossier/courrier/V1/${dossier}/1`, { headers: H, signal: AbortSignal.timeout(timeout) })
+        )
+          .json()
+          .catch(() => ({}));
         const items = ja.liste && typeof ja.liste === 'object' ? Object.values(ja.liste) : [];
         log(`${items.length} attestation(s) trouvée(s).`);
         for (const it of items) {
@@ -89,30 +122,50 @@ export function creerScraperLiberalWeb(cfg) {
             const c = await recupCourrier(`${API}/dossier/courrier/generer/V1/${dossier}/1/${it.noCourrier}`);
             if (c) enregistrer(it.libelle || `Attestation ${it.noCourrier}`, c.nom, c.courrier, annee);
             else log(`(${it.libelle || it.noCourrier} : indisponible)`);
-          } catch (e) { log(`Échec ${it.libelle || it.noCourrier} : ${e.message.split('\n')[0]}`); }
+          } catch (e) {
+            log(`Échec ${it.libelle || it.noCourrier} : ${e.message.split('\n')[0]}`);
+          }
         }
-      } catch (e) { log(`Attestations : ${e.message.split('\n')[0]}`); }
+      } catch (e) {
+        log(`Attestations : ${e.message.split('\n')[0]}`);
+      }
 
       // ---- 3. Courriers enregistrés (cotisations, administratifs) ----
       try {
-        const jl = await (await fetch(`${API}/dossier/courrier/liste/V1/${dossier}/1`, { headers: H, signal: AbortSignal.timeout(timeout) })).json().catch(() => ({}));
+        const jl = await (
+          await fetch(`${API}/dossier/courrier/liste/V1/${dossier}/1`, { headers: H, signal: AbortSignal.timeout(timeout) })
+        )
+          .json()
+          .catch(() => ({}));
         const groupes = jl.liste && typeof jl.liste === 'object' ? jl.liste : {};
-        let nb = 0, ok = 0;
+        let nb = 0,
+          ok = 0;
         for (const [categorie, liste] of Object.entries(groupes)) {
-          for (const it of (Array.isArray(liste) ? liste : [])) {
+          for (const it of Array.isArray(liste) ? liste : []) {
             if (!it || it.identifiantCourrier == null) continue;
             nb++;
             try {
               const c = await recupCourrier(`${API}/dossier/courrier/telecharge/V1/${dossier}/1/${it.identifiantCourrier}`);
-              if (c) { const annee = String(it.date || '').slice(0, 4) || null; enregistrer((it.libelleCourrier || categorie || 'Courrier').trim(), c.nom, c.courrier, annee); ok++; }
-              else log(`(${it.libelleCourrier || it.identifiantCourrier} : indisponible)`);
-            } catch (e) { log(`Échec ${it.libelleCourrier || it.identifiantCourrier} : ${e.message.split('\n')[0]}`); }
+              if (c) {
+                const annee = String(it.date || '').slice(0, 4) || null;
+                enregistrer((it.libelleCourrier || categorie || 'Courrier').trim(), c.nom, c.courrier, annee);
+                ok++;
+              } else log(`(${it.libelleCourrier || it.identifiantCourrier} : indisponible)`);
+            } catch (e) {
+              log(`Échec ${it.libelleCourrier || it.identifiantCourrier} : ${e.message.split('\n')[0]}`);
+            }
           }
         }
         if (nb) log(`Courriers : ${ok}/${nb} récupéré(s).`);
-      } catch (e) { log(`Courriers : ${e.message.split('\n')[0]}`); }
+      } catch (e) {
+        log(`Courriers : ${e.message.split('\n')[0]}`);
+      }
 
-      addRunSafe(client.id, { statut: docs.length + dejaPresents > 0 ? 'succes' : 'echec', message: `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : ''), nb_docs: docs.length });
+      addRunSafe(client.id, {
+        statut: docs.length + dejaPresents > 0 ? 'succes' : 'echec',
+        message: `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : ''),
+        nb_docs: docs.length,
+      });
       log(`Terminé : ${docs.length} nouveau(x), ${dejaPresents} déjà présent(s).`);
       return { ok: true, docs, dejaPresents };
     } catch (err) {

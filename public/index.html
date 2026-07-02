@@ -1,885 +1,1317 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Tarn Compta — Portail de récupération</title>
-  <script>
-    (function () {
-      var t = localStorage.getItem('theme') || 'light';
-      document.documentElement.setAttribute('data-theme', t);
-    })();
-  </script>
-  <link rel="stylesheet" href="vendor/hanken/hanken.css">
-  <link rel="stylesheet" href="vendor/phosphor/regular/style.css">
-  <link rel="stylesheet" href="vendor/phosphor/fill/style.css">
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
-  <!-- ===================== Sidebar ===================== -->
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="logo-dot">TC</div>
-      <div>
-        <div class="brand-name">Tarn Compta</div>
-        <div class="brand-sub">Portail de récupération</div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tarn Compta — Portail de récupération</title>
+    <script>
+      (function () {
+        var t = localStorage.getItem('theme') || 'light';
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
+    <link rel="stylesheet" href="vendor/hanken/hanken.css" />
+    <link rel="stylesheet" href="vendor/phosphor/regular/style.css" />
+    <link rel="stylesheet" href="vendor/phosphor/fill/style.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- ===================== Sidebar ===================== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo-dot">TC</div>
+        <div>
+          <div class="brand-name">Tarn Compta</div>
+          <div class="brand-sub">Portail de récupération</div>
+        </div>
       </div>
-    </div>
 
-    <nav class="nav">
-      <div class="nav-group">Pilotage</div>
-      <button type="button" class="tab-btn nav-item" data-tab="dashboard"><i class="ph-fill ph-squares-four"></i> Tableau de bord</button>
-      <button type="button" class="tab-btn nav-item" data-tab="documents"><i class="ph ph-folders"></i> Documents <span class="nav-tag count" id="nav-docs-count"></span></button>
-      <button type="button" class="tab-btn nav-item" data-tab="messages"><i class="ph ph-chat-text"></i> Messages <span class="nav-tag count" id="nav-messages-count"></span></button>
-      <button type="button" class="tab-btn nav-item" data-tab="par-client"><i class="ph ph-user-list"></i> Clients</button>
-
-      <div class="nav-group">Sources de récupération</div>
-      <button type="button" class="tab-btn nav-item" data-tab="impots"><i class="ph-fill ph-bank"></i> Impôts — CFE / TF <span class="nav-tag count" id="nav-impots-count"></span></button>
-      <button type="button" class="tab-btn nav-item" data-tab="urssaf"><i class="ph ph-buildings"></i> URSSAF <span class="nav-tag count" id="nav-urssaf-count"></span></button>
-      <button type="button" class="tab-btn nav-item" data-tab="carpimko"><i class="ph ph-heartbeat"></i> CARPIMKO <span class="nav-tag count" id="nav-carpimko-count"></span></button>
-      <button type="button" class="tab-btn nav-item" data-tab="carmf"><i class="ph ph-stethoscope"></i> CARMF <span class="nav-tag count" id="nav-carmf-count"></span></button>
-      <button type="button" class="tab-btn nav-item" data-tab="carcdsf"><i class="ph ph-tooth"></i> CARCDSF <span class="nav-tag count" id="nav-carcdsf-count"></span></button>
-      <button type="button" class="tab-btn nav-item" data-tab="carpv"><i class="ph ph-paw-print"></i> CARPV <span class="nav-tag count" id="nav-carpv-count"></span></button>
-    </nav>
-
-    <div class="sidebar-foot">
-      <button type="button" class="tab-btn nav-item" data-tab="parametres"><i class="ph ph-gear-six"></i> Paramètres</button>
-      <span class="userbox user-chip" id="user-chip" hidden>
-        <span class="avatar" id="user-avatar">TC</span>
-        <span style="min-width:0;">
-          <span class="u-name" id="user-email"></span>
-          <span class="u-role">Collaborateur</span>
-        </span>
-        <button id="btn-logout" class="btn small ghost" style="margin-left:auto;">Quitter</button>
-      </span>
-    </div>
-  </aside>
-  <div class="nav-overlay" id="nav-overlay" hidden></div>
-
-  <!-- ===================== Main ===================== -->
-  <main class="app-main">
-    <header class="topbar">
-      <button type="button" class="btn icon-btn menu-toggle" id="btn-menu" aria-label="Menu" title="Menu"><i class="ph ph-list"></i></button>
-      <div class="search">
-        <i class="ph ph-magnifying-glass"></i>
-        <input id="global-search" placeholder="Rechercher un client, un document…" />
-      </div>
-      <div class="topbar-actions">
-        <button id="btn-theme" class="btn icon-btn" title="Clair / sombre" aria-label="Thème">
-          <svg class="ico-sun" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4"/></svg>
-          <svg class="ico-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z"/></svg>
+      <nav class="nav">
+        <div class="nav-group">Pilotage</div>
+        <button type="button" class="tab-btn nav-item" data-tab="dashboard"><i class="ph-fill ph-squares-four"></i> Tableau de bord</button>
+        <button type="button" class="tab-btn nav-item" data-tab="documents">
+          <i class="ph ph-folders"></i> Documents <span class="nav-tag count" id="nav-docs-count"></span>
         </button>
-        <a id="btn-captcha-global" class="btn" href="/vnc/vnc_lite.html?path=vnc/websockify" target="_blank" rel="noopener" title="Ouvre le navigateur du serveur pour saisir la captcha (récupération OU synchronisation)" hidden><i class="ph ph-monitor"></i> Captcha</a>
-      </div>
-    </header>
+        <button type="button" class="tab-btn nav-item" data-tab="messages">
+          <i class="ph ph-chat-text"></i> Messages <span class="nav-tag count" id="nav-messages-count"></span>
+        </button>
+        <button type="button" class="tab-btn nav-item" data-tab="par-client"><i class="ph ph-user-list"></i> Clients</button>
 
-    <div class="content">
+        <div class="nav-group">Sources de récupération</div>
+        <button type="button" class="tab-btn nav-item" data-tab="impots">
+          <i class="ph-fill ph-bank"></i> Impôts — CFE / TF <span class="nav-tag count" id="nav-impots-count"></span>
+        </button>
+        <button type="button" class="tab-btn nav-item" data-tab="urssaf">
+          <i class="ph ph-buildings"></i> URSSAF <span class="nav-tag count" id="nav-urssaf-count"></span>
+        </button>
+        <button type="button" class="tab-btn nav-item" data-tab="carpimko">
+          <i class="ph ph-heartbeat"></i> CARPIMKO <span class="nav-tag count" id="nav-carpimko-count"></span>
+        </button>
+        <button type="button" class="tab-btn nav-item" data-tab="carmf">
+          <i class="ph ph-stethoscope"></i> CARMF <span class="nav-tag count" id="nav-carmf-count"></span>
+        </button>
+        <button type="button" class="tab-btn nav-item" data-tab="carcdsf">
+          <i class="ph ph-tooth"></i> CARCDSF <span class="nav-tag count" id="nav-carcdsf-count"></span>
+        </button>
+        <button type="button" class="tab-btn nav-item" data-tab="carpv">
+          <i class="ph ph-paw-print"></i> CARPV <span class="nav-tag count" id="nav-carpv-count"></span>
+        </button>
+      </nav>
 
-      <!-- Panneau d'avancement (récupération en cours) -->
-      <section class="panel flush progress-panel" id="panel-progress" hidden>
-        <div class="panel-head">
-          <h2 id="progress-titre">Récupération en cours…</h2>
-          <span class="row-actions" style="margin-left:auto;">
-            <a id="btn-voir-navigateur" class="btn small primary" href="/vnc/vnc_lite.html?path=vnc/websockify" target="_blank" rel="noopener" hidden><i class="ph ph-monitor"></i> Voir le navigateur (captcha)</a>
-            <button type="button" class="btn small" id="progress-masquer" hidden>Masquer</button>
+      <div class="sidebar-foot">
+        <button type="button" class="tab-btn nav-item" data-tab="parametres"><i class="ph ph-gear-six"></i> Paramètres</button>
+        <span class="userbox user-chip" id="user-chip" hidden>
+          <span class="avatar" id="user-avatar">TC</span>
+          <span style="min-width: 0">
+            <span class="u-name" id="user-email"></span>
+            <span class="u-role">Collaborateur</span>
           </span>
-        </div>
-        <p class="aide" id="aide-captcha" style="margin:0 22px 8px;" hidden>Une fenêtre impôts s'ouvre côté serveur. Clique sur « Voir le navigateur », <strong>saisis la captcha</strong> puis connecte-toi : le robot enchaîne ensuite tout seul.</p>
-        <div class="progress-resume">
-          <div class="progress-barre"><div class="progress-fill" id="progress-fill"></div></div>
-          <span class="progress-compteur" id="progress-compteur">0 / 0</span>
-        </div>
-        <p class="progress-courant" id="progress-courant"></p>
-        <div class="progress-bilan" id="progress-bilan"></div>
-        <details class="progress-details" id="progress-details" open>
-          <summary>Journal détaillé</summary>
-          <pre class="progress-log" id="progress-log"></pre>
-        </details>
-      </section>
-
-      <!-- ===================== Tableau de bord ===================== -->
-      <div class="tab-pane" id="tab-dashboard">
-        <div class="page-head">
-          <div>
-            <div class="eyebrow" id="dash-date"></div>
-            <h1>Tableau de bord</h1>
-            <p>Vue d'ensemble de la récupération automatique des documents du cabinet.</p>
-          </div>
-        </div>
-
-        <div class="kpi-grid">
-          <div class="kpi">
-            <div class="kpi-top"><div class="kpi-ico tone-accent"><i class="ph ph-users"></i></div></div>
-            <div class="kpi-value" id="kpi-clients">—</div>
-            <div class="kpi-label">Clients</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-top"><div class="kpi-ico tone-success"><i class="ph ph-file-pdf"></i></div></div>
-            <div class="kpi-value" id="kpi-documents">—</div>
-            <div class="kpi-label">Documents récupérés</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-top"><div class="kpi-ico tone-warning"><i class="ph ph-clock-counter-clockwise"></i></div></div>
-            <div class="kpi-value" id="kpi-runs">—</div>
-            <div class="kpi-label">Récupérations (historique)</div>
-          </div>
-          <div class="kpi">
-            <div class="kpi-top"><div class="kpi-ico tone-neutral"><i class="ph ph-bank"></i></div></div>
-            <div class="kpi-value" id="kpi-comptes">—</div>
-            <div class="kpi-label">Comptes espace pro</div>
-          </div>
-        </div>
-
-        <section class="panel">
-          <h2>Sources de récupération</h2>
-          <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr);">
-            <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor:pointer;" data-goto="impots">
-              <div class="kpi-top">
-                <div class="kpi-ico tone-accent"><i class="ph-fill ph-bank"></i></div>
-                <span class="kpi-sub tone-success">Actif</span>
-              </div>
-              <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">Impôts — CFE / IFER &amp; taxe foncière</div>
-              <div class="kpi-label">cfspro.impots.gouv.fr · connexion manuelle (captcha)</div>
-            </div>
-            <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor:pointer;" data-goto="urssaf">
-              <div class="kpi-top">
-                <div class="kpi-ico tone-accent"><i class="ph-fill ph-buildings"></i></div>
-                <span class="kpi-sub tone-success">Actif</span>
-              </div>
-              <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">URSSAF</div>
-              <div class="kpi-label">Tiers déclarant · appels de cotisations (par SIRET)</div>
-            </div>
-            <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor:pointer;" data-goto="carpimko">
-              <div class="kpi-top">
-                <div class="kpi-ico tone-accent"><i class="ph-fill ph-heartbeat"></i></div>
-                <span class="kpi-sub tone-success">Actif</span>
-              </div>
-              <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">CARPIMKO</div>
-              <div class="kpi-label">Retraite des auxiliaires médicaux · appels de cotisations</div>
-            </div>
-            <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor:pointer;" data-goto="carmf">
-              <div class="kpi-top">
-                <div class="kpi-ico tone-accent"><i class="ph-fill ph-stethoscope"></i></div>
-                <span class="kpi-sub tone-success">Actif</span>
-              </div>
-              <div class="kpi-label" style="font-size:15px;font-weight:700;color:var(--ink);margin-top:14px;">CARMF</div>
-              <div class="kpi-label">Retraite des médecins · un identifiant par client</div>
-            </div>
-          </div>
-        </section>
+          <button id="btn-logout" class="btn small ghost" style="margin-left: auto">Quitter</button>
+        </span>
       </div>
+    </aside>
+    <div class="nav-overlay" id="nav-overlay" hidden></div>
 
-      <!-- ===================== Impôts ===================== -->
-      <div class="tab-pane" id="tab-impots" hidden>
-        <div class="page-head">
-          <div>
-            <h1>Impôts — CFE / IFER &amp; taxe foncière</h1>
-            <p>Clients (par SIREN) rattachés à un compte espace pro. Récupération des avis sur impots.gouv.fr.</p>
-          </div>
-          <div class="row-actions" style="align-items:center;">
-            <label style="display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-soft);font-weight:600;cursor:pointer;" title="Récupère aussi le texte des messages (Mes échanges) et leurs pièces jointes, par client">
-              <input type="checkbox" id="chk-messagerie" style="width:16px;height:16px;accent-color:var(--accent);" /> Inclure la messagerie
-            </label>
-            <button type="button" class="btn danger" id="btn-stop-all" hidden>■ Arrêter</button>
-            <button type="button" class="btn primary" id="btn-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
-          </div>
+    <!-- ===================== Main ===================== -->
+    <main class="app-main">
+      <header class="topbar">
+        <button type="button" class="btn icon-btn menu-toggle" id="btn-menu" aria-label="Menu" title="Menu"><i class="ph ph-list"></i></button>
+        <div class="search">
+          <i class="ph ph-magnifying-glass"></i>
+          <input id="global-search" placeholder="Rechercher un client, un document…" />
         </div>
+        <div class="topbar-actions">
+          <button id="btn-theme" class="btn icon-btn" title="Clair / sombre" aria-label="Thème">
+            <svg
+              class="ico-sun"
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="12" r="4" />
+              <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M6.3 17.7l-1.4 1.4M19.1 4.9l-1.4 1.4" />
+            </svg>
+            <svg
+              class="ico-moon"
+              viewBox="0 0 24 24"
+              width="18"
+              height="18"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z" />
+            </svg>
+          </button>
+          <a
+            id="btn-captcha-global"
+            class="btn"
+            href="/vnc/vnc_lite.html?path=vnc/websockify"
+            target="_blank"
+            rel="noopener"
+            title="Ouvre le navigateur du serveur pour saisir la captcha (récupération OU synchronisation)"
+            hidden
+            ><i class="ph ph-monitor"></i> Captcha</a
+          >
+        </div>
+      </header>
 
-        <section class="panel">
-          <h2>Ajouter un client</h2>
-          <form id="form-client">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Nom du client
-                <input name="nom" required placeholder="Ex : DUPONT Marie / SARL ..." />
-              </label>
-              <label>SIREN (9 chiffres)
-                <input name="siret" required placeholder="Ex : 799359856" inputmode="numeric" />
-              </label>
-              <label>Compte de rattachement
-                <select name="cabinet_id" id="client-cabinet"></select>
-              </label>
-              <label class="full">Dossier d'enregistrement de ce client (optionnel)
-                <span class="champ-dossier">
-                  <input name="dossier" placeholder="Vide = dossier global (onglet Paramètres)" />
-                  <button type="button" class="btn" data-pick="dossier">Parcourir…</button>
-                </span>
-              </label>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="btn-submit">Enregistrer</button>
-              <button type="button" class="btn" id="btn-cancel" hidden>Annuler</button>
-            </div>
-          </form>
-        </section>
-
-        <section class="panel flush">
+      <div class="content">
+        <!-- Panneau d'avancement (récupération en cours) -->
+        <section class="panel flush progress-panel" id="panel-progress" hidden>
           <div class="panel-head">
-            <h2>Clients <span id="clients-compte" class="compteur"></span></h2>
+            <h2 id="progress-titre">Récupération en cours…</h2>
+            <span class="row-actions" style="margin-left: auto">
+              <a id="btn-voir-navigateur" class="btn small primary" href="/vnc/vnc_lite.html?path=vnc/websockify" target="_blank" rel="noopener" hidden
+                ><i class="ph ph-monitor"></i> Voir le navigateur (captcha)</a
+              >
+              <button type="button" class="btn small" id="progress-masquer" hidden>Masquer</button>
+            </span>
           </div>
-          <div class="toolbar" style="padding: 0 22px;">
-            <input type="search" id="clients-recherche" placeholder="🔍 Rechercher (nom, SIREN, compte)…" />
-            <select id="clients-filtre-cabinet"><option value="">Tous les comptes</option></select>
-            <button type="button" class="btn" id="btn-export-csv"><i class="ph ph-download-simple"></i> Exporter (CSV)</button>
-            <button type="button" class="btn primary" id="btn-scrape-selection" disabled>Récupérer la sélection (0)</button>
-            <span class="toolbar-spacer"></span>
-            <label class="page-size">Par page
-              <select id="clients-taille"><option>25</option><option selected>50</option><option>100</option><option value="999999">Tous</option></select>
-            </label>
+          <p class="aide" id="aide-captcha" style="margin: 0 22px 8px" hidden>
+            Une fenêtre impôts s'ouvre côté serveur. Clique sur « Voir le navigateur », <strong>saisis la captcha</strong> puis connecte-toi : le robot enchaîne
+            ensuite tout seul.
+          </p>
+          <div class="progress-resume">
+            <div class="progress-barre"><div class="progress-fill" id="progress-fill"></div></div>
+            <span class="progress-compteur" id="progress-compteur">0 / 0</span>
           </div>
-          <table id="table-clients">
-            <thead><tr>
-              <th class="col-check"><input type="checkbox" id="check-all" title="Tout sélectionner (résultat filtré)" /></th>
-              <th class="triable" data-sort="nom">Nom</th>
-              <th class="triable" data-sort="siret">SIREN</th>
-              <th class="triable" data-sort="cabinet">Compte</th>
-              <th class="triable" data-sort="docs">Docs</th>
-              <th class="triable" data-sort="run">Dernier run</th>
-              <th>Actions</th>
-            </tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" style="padding: 0 22px 16px;" hidden>Aucun client. Ajoute un compte espace pro (onglet Paramètres) puis « ↻ Synchroniser » (ou ajoute un client par son SIREN).</p>
-          <div class="pagination" id="clients-pagination" style="padding-bottom: 16px;"></div>
+          <p class="progress-courant" id="progress-courant"></p>
+          <div class="progress-bilan" id="progress-bilan"></div>
+          <details class="progress-details" id="progress-details" open>
+            <summary>Journal détaillé</summary>
+            <pre class="progress-log" id="progress-log"></pre>
+          </details>
         </section>
 
-        <section class="panel flush">
-          <div class="panel-head"><h2>Historique des récupérations</h2></div>
-          <div class="pagination" id="runs-pagination"></div>
-          <table id="table-runs">
-            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </section>
-      </div>
-
-      <!-- ===================== URSSAF ===================== -->
-      <div class="tab-pane" id="tab-urssaf" hidden>
-        <div class="page-head">
-          <div>
-            <h1>URSSAF</h1>
-            <p>Tiers déclarant : un compte cabinet donne accès à tout le portefeuille (par SIRET). Récupération des appels de cotisations.</p>
+        <!-- ===================== Tableau de bord ===================== -->
+        <div class="tab-pane" id="tab-dashboard">
+          <div class="page-head">
+            <div>
+              <div class="eyebrow" id="dash-date"></div>
+              <h1>Tableau de bord</h1>
+              <p>Vue d'ensemble de la récupération automatique des documents du cabinet.</p>
+            </div>
           </div>
-          <div class="row-actions">
-            <button type="button" class="btn danger" id="u-stop" hidden>■ Arrêter</button>
-            <button type="button" class="btn primary" id="u-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
-          </div>
-        </div>
 
-        <p class="aide">Le <strong>compte URSSAF</strong> (identifiants tiers déclarant) et la <strong>synchronisation</strong> du portefeuille se gèrent dans <strong>Paramètres ▸ Comptes URSSAF</strong>.</p>
-
-        <section class="panel flush">
-          <div class="panel-head"><h2>Clients URSSAF <span id="u-compte" class="compteur"></span></h2></div>
-          <div class="toolbar" style="padding:0 22px;">
-            <input type="search" id="u-recherche" placeholder="🔍 Rechercher (nom, SIRET, compte)…" />
-            <select id="u-filtre-cabinet"><option value="">Tous les comptes</option></select>
-          </div>
-          <table id="table-urssaf-clients">
-            <thead><tr><th>Nom</th><th>SIRET / n° compte</th><th>Compte</th><th>Docs</th><th>Dernier run</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="u-vide" style="padding:0 22px 16px;" hidden>Aucun client. Ajoute un compte URSSAF puis « ↻ Synchroniser » pour importer le portefeuille.</p>
-          <div class="pagination" id="u-pagination" style="padding-bottom:16px;"></div>
-          <div style="padding:0 22px 16px;">
-            <details class="sous-form" style="margin-top:0;border-top:none;padding-top:8px;">
-              <summary style="cursor:pointer;font-weight:600;color:var(--ink-soft);">Ajouter / importer des clients manuellement</summary>
-              <form id="form-urssaf-client" style="margin-top:12px;">
-                <input type="hidden" name="id" />
-                <div class="form-grid">
-                  <label>Nom<input name="nom" placeholder="Nom du client" /></label>
-                  <label>SIRET / n° compte URSSAF<input name="siret" placeholder="ex : 12345678900012 ou GQ815739800M01" /></label>
-                  <label>Compte de rattachement<select name="cabinet_id" id="u-client-cabinet"></select></label>
-                </div>
-                <div class="form-actions">
-                  <button type="submit" class="btn primary" id="u-submit">Enregistrer le client</button>
-                  <button type="button" class="btn" id="u-cancel" hidden>Annuler</button>
-                </div>
-              </form>
-              <p class="aide" style="margin-top:14px;">Import en masse (colonnes <strong>nom</strong>, <strong>siret</strong> ; séparateur <code>;</code> <code>,</code> ou tabulation) — rattaché au compte sélectionné ci-dessus :</p>
-              <textarea id="u-import-texte" rows="4" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--mono);font-size:12.5px;background:var(--bg);color:var(--ink);" placeholder="nom;siret&#10;SARL DUPONT;12345678900012"></textarea>
-              <div class="form-actions">
-                <button type="button" class="btn" id="u-import-btn">Importer</button>
-                <span class="aide" id="u-import-bilan" style="margin:0;"></span>
+          <div class="kpi-grid">
+            <div class="kpi">
+              <div class="kpi-top">
+                <div class="kpi-ico tone-accent"><i class="ph ph-users"></i></div>
               </div>
-            </details>
+              <div class="kpi-value" id="kpi-clients">—</div>
+              <div class="kpi-label">Clients</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-top">
+                <div class="kpi-ico tone-success"><i class="ph ph-file-pdf"></i></div>
+              </div>
+              <div class="kpi-value" id="kpi-documents">—</div>
+              <div class="kpi-label">Documents récupérés</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-top">
+                <div class="kpi-ico tone-warning"><i class="ph ph-clock-counter-clockwise"></i></div>
+              </div>
+              <div class="kpi-value" id="kpi-runs">—</div>
+              <div class="kpi-label">Récupérations (historique)</div>
+            </div>
+            <div class="kpi">
+              <div class="kpi-top">
+                <div class="kpi-ico tone-neutral"><i class="ph ph-bank"></i></div>
+              </div>
+              <div class="kpi-value" id="kpi-comptes">—</div>
+              <div class="kpi-label">Comptes espace pro</div>
+            </div>
           </div>
-        </section>
 
-        <section class="panel flush">
-          <div class="panel-head"><h2>Historique des récupérations</h2></div>
-          <table id="table-urssaf-runs">
-            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </section>
-      </div>
-
-      <!-- ===================== CARPIMKO ===================== -->
-      <div class="tab-pane" id="tab-carpimko" hidden>
-        <div class="page-head">
-          <div>
-            <h1>CARPIMKO</h1>
-            <p>Récupération des appels de cotisations (espace adhérent — un identifiant par client).</p>
-          </div>
-          <div class="row-actions">
-            <label class="page-size" title="Récupérer aussi les attestations et autres documents, pas seulement les appels de cotisations">
-              <input type="checkbox" id="cp-tous-docs" style="width:16px;height:16px;accent-color:var(--accent);" /> Tous les documents
-            </label>
-            <button type="button" class="btn danger" id="cp-stop" hidden>■ Arrêter</button>
-            <button type="button" class="btn primary" id="cp-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
-          </div>
+          <section class="panel">
+            <h2>Sources de récupération</h2>
+            <div class="kpi-grid" style="grid-template-columns: repeat(4, 1fr)">
+              <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor: pointer" data-goto="impots">
+                <div class="kpi-top">
+                  <div class="kpi-ico tone-accent"><i class="ph-fill ph-bank"></i></div>
+                  <span class="kpi-sub tone-success">Actif</span>
+                </div>
+                <div class="kpi-label" style="font-size: 15px; font-weight: 700; color: var(--ink); margin-top: 14px">
+                  Impôts — CFE / IFER &amp; taxe foncière
+                </div>
+                <div class="kpi-label">cfspro.impots.gouv.fr · connexion manuelle (captcha)</div>
+              </div>
+              <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor: pointer" data-goto="urssaf">
+                <div class="kpi-top">
+                  <div class="kpi-ico tone-accent"><i class="ph-fill ph-buildings"></i></div>
+                  <span class="kpi-sub tone-success">Actif</span>
+                </div>
+                <div class="kpi-label" style="font-size: 15px; font-weight: 700; color: var(--ink); margin-top: 14px">URSSAF</div>
+                <div class="kpi-label">Tiers déclarant · appels de cotisations (par SIRET)</div>
+              </div>
+              <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor: pointer" data-goto="carpimko">
+                <div class="kpi-top">
+                  <div class="kpi-ico tone-accent"><i class="ph-fill ph-heartbeat"></i></div>
+                  <span class="kpi-sub tone-success">Actif</span>
+                </div>
+                <div class="kpi-label" style="font-size: 15px; font-weight: 700; color: var(--ink); margin-top: 14px">CARPIMKO</div>
+                <div class="kpi-label">Retraite des auxiliaires médicaux · appels de cotisations</div>
+              </div>
+              <div class="kpi" style="border-color: color-mix(in srgb, var(--accent) 30%, var(--border)); cursor: pointer" data-goto="carmf">
+                <div class="kpi-top">
+                  <div class="kpi-ico tone-accent"><i class="ph-fill ph-stethoscope"></i></div>
+                  <span class="kpi-sub tone-success">Actif</span>
+                </div>
+                <div class="kpi-label" style="font-size: 15px; font-weight: 700; color: var(--ink); margin-top: 14px">CARMF</div>
+                <div class="kpi-label">Retraite des médecins · un identifiant par client</div>
+              </div>
+            </div>
+          </section>
         </div>
 
-        <p class="aide" style="background:var(--warn-bg);color:var(--warn);padding:10px 14px;border-radius:var(--radius-sm);">
-          ⚠️ CARPIMKO <strong>verrouille un compte après plusieurs mots de passe erronés</strong>. Les clients dont la
-          dernière connexion a échoué pour mot de passe sont marqués <strong>🔒</strong> et ignorés par « Tout récupérer ».
-          Le verrou se lève dès que tu corriges le client (Modifier).
-        </p>
+        <!-- ===================== Impôts ===================== -->
+        <div class="tab-pane" id="tab-impots" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Impôts — CFE / IFER &amp; taxe foncière</h1>
+              <p>Clients (par SIREN) rattachés à un compte espace pro. Récupération des avis sur impots.gouv.fr.</p>
+            </div>
+            <div class="row-actions" style="align-items: center">
+              <label
+                style="display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-soft); font-weight: 600; cursor: pointer"
+                title="Récupère aussi le texte des messages (Mes échanges) et leurs pièces jointes, par client"
+              >
+                <input type="checkbox" id="chk-messagerie" style="width: 16px; height: 16px; accent-color: var(--accent)" /> Inclure la messagerie
+              </label>
+              <button type="button" class="btn danger" id="btn-stop-all" hidden>■ Arrêter</button>
+              <button type="button" class="btn primary" id="btn-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
+            </div>
+          </div>
 
-        <section class="panel">
-          <h2 id="cp-form-titre">Ajouter un client CARPIMKO</h2>
-          <form id="form-carpimko">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Nom du client
-                <input name="nom" required placeholder="Ex : DUPONT Marie" />
-              </label>
-              <label>Numéro de dossier (7 chiffres)
-                <input name="login" required placeholder="Ex : 1234567" inputmode="numeric" />
-              </label>
-              <label>Mot de passe
-                <input name="password" type="password" placeholder="mot de passe espace CARPIMKO" />
-              </label>
-              <label>Notes (optionnel)
-                <input name="notes" placeholder="ex : kiné, Albi" />
-              </label>
-              <label class="full">Dossier d'enregistrement de ce client (optionnel)
-                <span class="champ-dossier">
-                  <input name="dossier" placeholder="Vide = dossier interne (downloads/carpimko)" />
-                </span>
-              </label>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="cp-submit">Enregistrer</button>
-              <button type="button" class="btn" id="cp-cancel" hidden>Annuler</button>
-            </div>
-          </form>
-          <details class="sous-form">
-            <summary style="cursor:pointer;font-weight:600;color:var(--ink-soft);">Import en masse (CSV / copier-coller Excel)</summary>
-            <p class="aide" style="margin-top:12px;">Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>numéro de dossier</strong>, <strong>mot de passe</strong>, notes. Avec en-tête de préférence ; sinon ordre : nom, n° dossier, mot de passe, notes.</p>
-            <textarea id="cp-import-texte" rows="6" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--mono);font-size:12.5px;background:var(--bg);color:var(--ink);" placeholder="nom;numéro de dossier;mot de passe;notes&#10;DUPONT Marie;1234567;motdepasse;kiné"></textarea>
-            <div class="form-actions">
-              <button type="button" class="btn primary" id="cp-import-btn">Importer</button>
-              <span class="aide" id="cp-import-bilan" style="margin:0;"></span>
-            </div>
-          </details>
-        </section>
+          <section class="panel">
+            <h2>Ajouter un client</h2>
+            <form id="form-client">
+              <input type="hidden" name="id" />
+              <div class="form-grid">
+                <label
+                  >Nom du client
+                  <input name="nom" required placeholder="Ex : DUPONT Marie / SARL ..." />
+                </label>
+                <label
+                  >SIREN (9 chiffres)
+                  <input name="siret" required placeholder="Ex : 799359856" inputmode="numeric" />
+                </label>
+                <label
+                  >Compte de rattachement
+                  <select name="cabinet_id" id="client-cabinet"></select>
+                </label>
+                <label class="full"
+                  >Dossier d'enregistrement de ce client (optionnel)
+                  <span class="champ-dossier">
+                    <input name="dossier" placeholder="Vide = dossier global (onglet Paramètres)" />
+                    <button type="button" class="btn" data-pick="dossier">Parcourir…</button>
+                  </span>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="btn-submit">Enregistrer</button>
+                <button type="button" class="btn" id="btn-cancel" hidden>Annuler</button>
+              </div>
+            </form>
+          </section>
 
-        <section class="panel flush">
-          <div class="panel-head"><h2>Clients CARPIMKO <span id="cp-compte" class="compteur"></span></h2></div>
-          <div class="toolbar" style="padding:0 22px;">
-            <input type="search" id="cp-recherche" placeholder="🔍 Rechercher (nom, n° dossier, notes)…" />
-          </div>
-          <table id="table-carpimko-clients">
-            <thead><tr><th>Nom</th><th>N° dossier</th><th>Notes</th><th>Docs</th><th>Dernier run</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="cp-vide" style="padding:0 22px 16px;" hidden>Aucun client CARPIMKO. Ajoute-en un ci-dessus ou importe une liste.</p>
-          <div class="pagination" id="cp-pagination" style="padding-bottom:16px;"></div>
-        </section>
-
-        <section class="panel flush">
-          <div class="panel-head"><h2>Historique des récupérations</h2></div>
-          <table id="table-carpimko-runs">
-            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </section>
-      </div>
-
-      <!-- ===================== CARMF ===================== -->
-      <div class="tab-pane" id="tab-carmf" hidden>
-        <div class="page-head">
-          <div>
-            <h1>CARMF</h1>
-            <p>Retraite des médecins — récupération des documents (un identifiant par client).</p>
-          </div>
-          <div class="row-actions">
-            <button type="button" class="btn danger" id="cm-stop" hidden>■ Arrêter</button>
-            <button type="button" class="btn primary" id="cm-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
-          </div>
-        </div>
-        <p class="aide" style="background:var(--warn-bg);color:var(--warn);padding:10px 14px;border-radius:var(--radius-sm);">
-          Saisis l'<strong>identifiant CARMF</strong> et le <strong>mot de passe</strong> de chaque client (espace adhérent extranet.carmf.fr). Pas de captcha. Un client dont le mot de passe échoue est marqué 🔒 et ignoré par « Tout récupérer ».
-        </p>
-        <section class="panel">
-          <h2 id="cm-form-titre">Ajouter un client CARMF</h2>
-          <form id="form-carmf">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Nom du client<input name="nom" required placeholder="Ex : Dr DUPONT" /></label>
-              <label>Identifiant CARMF<input name="login" required placeholder="identifiant de connexion CARMF" /></label>
-              <label>Mot de passe<input name="password" type="password" placeholder="mot de passe espace CARMF" /></label>
-              <label>Notes (optionnel)<input name="notes" placeholder="ex : médecin, Albi" /></label>
-              <label class="full">Dossier d'enregistrement de ce client (optionnel)
-                <span class="champ-dossier"><input name="dossier" placeholder="Vide = dossier interne (downloads/carmf)" /></span>
-              </label>
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Clients <span id="clients-compte" class="compteur"></span></h2>
             </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="cm-submit">Enregistrer</button>
-              <button type="button" class="btn" id="cm-cancel" hidden>Annuler</button>
-            </div>
-          </form>
-          <details class="sous-form">
-            <summary style="cursor:pointer;font-weight:600;color:var(--ink-soft);">Import en masse (CSV / copier-coller Excel)</summary>
-            <p class="aide" style="margin-top:12px;">Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>identifiant</strong>, <strong>mot de passe</strong>, notes.</p>
-            <textarea id="cm-import-texte" rows="5" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--mono);font-size:12.5px;background:var(--bg);color:var(--ink);" placeholder="nom;identifiant;mot de passe;notes&#10;Dr DUPONT;123456;motdepasse;médecin"></textarea>
-            <div class="form-actions">
-              <button type="button" class="btn primary" id="cm-import-btn">Importer</button>
-              <span class="aide" id="cm-import-bilan" style="margin:0;"></span>
-            </div>
-          </details>
-        </section>
-        <section class="panel flush">
-          <div class="panel-head"><h2>Clients CARMF <span id="cm-compte" class="compteur"></span></h2></div>
-          <div class="toolbar" style="padding:0 22px;">
-            <input type="search" id="cm-recherche" placeholder="🔍 Rechercher (nom, identifiant, notes)…" />
-          </div>
-          <table id="table-carmf-clients">
-            <thead><tr><th>Nom</th><th>Identifiant</th><th>Notes</th><th>Docs</th><th>Dernier run</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="cm-vide" style="padding:0 22px 16px;" hidden>Aucun client CARMF. Ajoute-en un ci-dessus ou importe une liste.</p>
-          <div class="pagination" id="cm-pagination" style="padding-bottom:16px;"></div>
-        </section>
-        <section class="panel flush">
-          <div class="panel-head"><h2>Historique des récupérations</h2></div>
-          <table id="table-carmf-runs">
-            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </section>
-      </div>
-
-      <div class="tab-pane" id="tab-carcdsf" hidden>
-        <div class="page-head">
-          <div>
-            <h1>CARCDSF</h1>
-            <p>Chirurgiens-dentistes &amp; sages-femmes — récupération des documents (un identifiant par client).</p>
-          </div>
-          <div class="row-actions">
-            <button type="button" class="btn danger" id="cc-stop" hidden>■ Arrêter</button>
-            <button type="button" class="btn primary" id="cc-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
-          </div>
-        </div>
-        <p class="aide" style="background:var(--warn-bg);color:var(--warn);padding:10px 14px;border-radius:var(--radius-sm);">
-          Deux espaces distincts selon la <strong>profession</strong> : chirurgien-dentiste (carcdsf-cd) et sage-femme (carcdsf-sf). Saisis l'<strong>identifiant adhérent</strong> et le <strong>mot de passe</strong> de chaque client. Un client dont le mot de passe échoue est marqué 🔒 et ignoré par « Tout récupérer ».
-        </p>
-        <section class="panel">
-          <h2 id="cc-form-titre">Ajouter un client CARCDSF</h2>
-          <form id="form-carcdsf">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Nom du client<input name="nom" required placeholder="Ex : DUPONT Marie" /></label>
-              <label>Profession
-                <select name="profession">
-                  <option value="cd">Chirurgien-dentiste</option>
-                  <option value="sf">Sage-femme</option>
+            <div class="toolbar" style="padding: 0 22px">
+              <input type="search" id="clients-recherche" placeholder="🔍 Rechercher (nom, SIREN, compte)…" />
+              <select id="clients-filtre-cabinet">
+                <option value="">Tous les comptes</option>
+              </select>
+              <button type="button" class="btn" id="btn-export-csv"><i class="ph ph-download-simple"></i> Exporter (CSV)</button>
+              <button type="button" class="btn primary" id="btn-scrape-selection" disabled>Récupérer la sélection (0)</button>
+              <span class="toolbar-spacer"></span>
+              <label class="page-size"
+                >Par page
+                <select id="clients-taille">
+                  <option>25</option>
+                  <option selected>50</option>
+                  <option>100</option>
+                  <option value="999999">Tous</option>
                 </select>
               </label>
-              <label>Identifiant adhérent<input name="login" required placeholder="identifiant de connexion CARCDSF" /></label>
-              <label>Mot de passe<input name="password" type="password" placeholder="mot de passe espace adhérent" /></label>
-              <label>Notes (optionnel)<input name="notes" placeholder="ex : dentiste, Albi" /></label>
-              <label class="full">Dossier d'enregistrement de ce client (optionnel)
-                <span class="champ-dossier"><input name="dossier" placeholder="Vide = dossier interne (downloads/carcdsf)" /></span>
-              </label>
             </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="cc-submit">Enregistrer</button>
-              <button type="button" class="btn" id="cc-cancel" hidden>Annuler</button>
-            </div>
-          </form>
-          <details class="sous-form">
-            <summary style="cursor:pointer;font-weight:600;color:var(--ink-soft);">Import en masse (CSV / copier-coller Excel)</summary>
-            <p class="aide" style="margin-top:12px;">Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>profession</strong> (cd/sf ou « sage-femme »), <strong>identifiant</strong>, <strong>mot de passe</strong>, notes.</p>
-            <textarea id="cc-import-texte" rows="5" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--mono);font-size:12.5px;background:var(--bg);color:var(--ink);" placeholder="nom;profession;identifiant;mot de passe;notes&#10;DUPONT Marie;sf;123456;motdepasse;sage-femme"></textarea>
-            <div class="form-actions">
-              <button type="button" class="btn primary" id="cc-import-btn">Importer</button>
-              <span class="aide" id="cc-import-bilan" style="margin:0;"></span>
-            </div>
-          </details>
-        </section>
-        <section class="panel flush">
-          <div class="panel-head"><h2>Clients CARCDSF <span id="cc-compte" class="compteur"></span></h2></div>
-          <div class="toolbar" style="padding:0 22px;">
-            <input type="search" id="cc-recherche" placeholder="🔍 Rechercher (nom, profession, identifiant, notes)…" />
-          </div>
-          <table id="table-carcdsf-clients">
-            <thead><tr><th>Nom</th><th>Profession</th><th>Identifiant</th><th>Notes</th><th>Docs</th><th>Dernier run</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="cc-vide" style="padding:0 22px 16px;" hidden>Aucun client CARCDSF. Ajoute-en un ci-dessus ou importe une liste.</p>
-          <div class="pagination" id="cc-pagination" style="padding-bottom:16px;"></div>
-        </section>
-        <section class="panel flush">
-          <div class="panel-head"><h2>Historique des récupérations</h2></div>
-          <table id="table-carcdsf-runs">
-            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </section>
-      </div>
+            <table id="table-clients">
+              <thead>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="check-all" title="Tout sélectionner (résultat filtré)" /></th>
+                  <th class="triable" data-sort="nom">Nom</th>
+                  <th class="triable" data-sort="siret">SIREN</th>
+                  <th class="triable" data-sort="cabinet">Compte</th>
+                  <th class="triable" data-sort="docs">Docs</th>
+                  <th class="triable" data-sort="run">Dernier run</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" style="padding: 0 22px 16px" hidden>
+              Aucun client. Ajoute un compte espace pro (onglet Paramètres) puis « ↻ Synchroniser » (ou ajoute un client par son SIREN).
+            </p>
+            <div class="pagination" id="clients-pagination" style="padding-bottom: 16px"></div>
+          </section>
 
-      <div class="tab-pane" id="tab-carpv" hidden>
-        <div class="page-head">
-          <div>
-            <h1>CARPV</h1>
-            <p>Retraite des vétérinaires — récupération des documents (un identifiant par client).</p>
-          </div>
-          <div class="row-actions">
-            <button type="button" class="btn danger" id="cv-stop" hidden>■ Arrêter</button>
-            <button type="button" class="btn primary" id="cv-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
-          </div>
-        </div>
-        <p class="aide" style="background:var(--warn-bg);color:var(--warn);padding:10px 14px;border-radius:var(--radius-sm);">
-          Saisis l'<strong>identifiant</strong> et le <strong>mot de passe</strong> de l'espace adhérent CARPV de chaque client. Pas de captcha. Un client dont le mot de passe échoue est marqué 🔒 et ignoré par « Tout récupérer ».
-        </p>
-        <section class="panel">
-          <h2 id="cv-form-titre">Ajouter un client CARPV</h2>
-          <form id="form-carpv">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Nom du client<input name="nom" required placeholder="Ex : Dr MARTIN" /></label>
-              <label>Identifiant CARPV<input name="login" required placeholder="identifiant de connexion" /></label>
-              <label>Mot de passe<input name="password" type="password" placeholder="mot de passe espace adhérent" /></label>
-              <label>Notes (optionnel)<input name="notes" placeholder="ex : vétérinaire, Albi" /></label>
-              <label class="full">Dossier d'enregistrement de ce client (optionnel)
-                <span class="champ-dossier"><input name="dossier" placeholder="Vide = dossier interne (downloads/carpv)" /></span>
-              </label>
-            </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="cv-submit">Enregistrer</button>
-              <button type="button" class="btn" id="cv-cancel" hidden>Annuler</button>
-            </div>
-          </form>
-          <details class="sous-form">
-            <summary style="cursor:pointer;font-weight:600;color:var(--ink-soft);">Import en masse (CSV / copier-coller Excel)</summary>
-            <p class="aide" style="margin-top:12px;">Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>identifiant</strong>, <strong>mot de passe</strong>, notes.</p>
-            <textarea id="cv-import-texte" rows="5" style="width:100%;padding:10px 12px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);font-family:var(--mono);font-size:12.5px;background:var(--bg);color:var(--ink);" placeholder="nom;identifiant;mot de passe;notes&#10;Dr MARTIN;123456;motdepasse;vétérinaire"></textarea>
-            <div class="form-actions">
-              <button type="button" class="btn primary" id="cv-import-btn">Importer</button>
-              <span class="aide" id="cv-import-bilan" style="margin:0;"></span>
-            </div>
-          </details>
-        </section>
-        <section class="panel flush">
-          <div class="panel-head"><h2>Clients CARPV <span id="cv-compte" class="compteur"></span></h2></div>
-          <div class="toolbar" style="padding:0 22px;">
-            <input type="search" id="cv-recherche" placeholder="🔍 Rechercher (nom, identifiant, notes)…" />
-          </div>
-          <table id="table-carpv-clients">
-            <thead><tr><th>Nom</th><th>Identifiant</th><th>Notes</th><th>Docs</th><th>Dernier run</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="cv-vide" style="padding:0 22px 16px;" hidden>Aucun client CARPV. Ajoute-en un ci-dessus ou importe une liste.</p>
-          <div class="pagination" id="cv-pagination" style="padding-bottom:16px;"></div>
-        </section>
-        <section class="panel flush">
-          <div class="panel-head"><h2>Historique des récupérations</h2></div>
-          <table id="table-carpv-runs">
-            <thead><tr><th>Date</th><th>Client</th><th>Statut</th><th>Docs</th><th>Message</th></tr></thead>
-            <tbody></tbody>
-          </table>
-        </section>
-      </div>
-
-      <!-- ===================== Documents ===================== -->
-      <div class="tab-pane" id="tab-documents" hidden>
-        <div class="page-head">
-          <div>
-            <h1>Documents</h1>
-            <p>Tous les documents récupérés (Impôts et CARPIMKO), du plus récent au plus ancien.</p>
-          </div>
-        </div>
-        <section class="panel flush">
-          <div class="toolbar" style="padding: 18px 22px 0;">
-            <input type="search" id="search-docs" class="quick-search" style="margin-bottom:0; flex:1; min-width:200px;" placeholder="🔍 Rechercher (client, document, date)…" autocomplete="off" />
-            <select id="docs-filtre-annee" title="Filtrer par année du document"><option value="">Toutes les années</option></select>
-          </div>
-          <table id="table-docs">
-            <thead><tr><th>Année</th><th>Date de récupération</th><th>Client</th><th>Source</th><th>Document</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <div class="pagination" id="pagination-docs" style="padding-bottom:16px;" hidden>
-            <button type="button" class="btn small" id="pag-docs-prev">‹ Précédent</button>
-            <span class="pag-info" id="pag-docs-info"></span>
-            <button type="button" class="btn small" id="pag-docs-next">Suivant ›</button>
-          </div>
-          <p class="vide" id="vide-docs-all" style="padding: 0 22px 16px;" hidden>Aucun document récupéré pour l'instant.</p>
-        </section>
-      </div>
-
-      <!-- ===================== Messages (messagerie impôts) ===================== -->
-      <div class="tab-pane" id="tab-messages" hidden>
-        <div class="page-head">
-          <div>
-            <h1>Messages</h1>
-            <p>Messagerie sécurisée impôts (« Mes échanges ») récupérée, par client — clique un message pour le lire.</p>
-          </div>
-        </div>
-        <section class="panel flush">
-          <div class="toolbar" style="padding:18px 22px 0;">
-            <input type="search" id="msg-search" class="quick-search" style="margin-bottom:0;flex:1;min-width:200px;" placeholder="🔍 Rechercher (client, objet)…" autocomplete="off" />
-          </div>
-          <table id="table-messages">
-            <thead><tr><th>Date</th><th>Client</th><th>Objet</th><th>PJ</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="msg-vide" style="padding:0 22px 16px;" hidden>Aucun message récupéré. Coche « Inclure la messagerie » lors d'une récupération Impôts.</p>
-        </section>
-        <section class="panel" id="msg-lecture" hidden>
-          <div class="panel-head" style="padding:0 0 14px;"><h2 id="msg-lecture-titre" style="margin:0;"></h2></div>
-          <div id="msg-lecture-pj" style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap;"></div>
-          <pre id="msg-lecture-corps" style="white-space:pre-wrap;word-break:break-word;font-family:inherit;font-size:14px;line-height:1.65;color:var(--ink);margin:0;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);padding:16px 18px;"></pre>
-        </section>
-      </div>
-
-      <!-- ===================== Clients (vue transverse) ===================== -->
-      <div class="tab-pane" id="tab-par-client" hidden>
-        <div class="page-head">
-          <div>
-            <h1>Clients</h1>
-            <p>Retrouve tous les documents d'un client, toutes sources confondues (Impôts, URSSAF, CARPIMKO).</p>
-          </div>
-        </div>
-        <section class="panel flush">
-          <div class="toolbar" style="padding:18px 22px 0;">
-            <input type="search" id="pc-recherche" class="quick-search" style="margin-bottom:0; flex:1; min-width:200px;" placeholder="🔍 Rechercher un client (nom, SIREN, n° dossier)…" autocomplete="off" />
-            <button type="button" class="btn primary" id="pc-fusionner" disabled title="Coche au moins 2 clients qui sont en réalité le même, puis fusionne-les">Fusionner la sélection (0)</button>
-          </div>
-          <p class="aide" style="padding:8px 22px 0;">Coche les fiches qui correspondent au <strong>même client</strong> (ex. « EURL TARN COMPTA » et « SARL TARN COMPTA ») puis clique <strong>Fusionner</strong> : leurs documents seront regroupés.</p>
-          <table id="table-par-client">
-            <thead><tr><th class="col-check"></th><th>Client</th><th>Sources</th><th>Documents</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="pc-vide" style="padding:0 22px 16px;" hidden>Aucun client.</p>
-          <div class="pagination" id="pc-pagination" style="padding-bottom:16px;"></div>
-        </section>
-        <section class="panel flush" id="pc-docs-panel" hidden>
-          <div class="panel-head"><h2 id="pc-docs-titre">Documents</h2></div>
-          <table id="table-pc-docs">
-            <thead><tr><th>Année</th><th>Source</th><th>Document</th><th>Récupéré le</th><th></th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide" id="pc-docs-vide" style="padding:0 22px 16px;" hidden>Aucun document pour ce client.</p>
-        </section>
-      </div>
-
-      <!-- ===================== Paramètres ===================== -->
-      <div class="tab-pane" id="tab-parametres" hidden>
-        <div class="page-head">
-          <div>
-            <h1>Paramètres</h1>
-            <p>Identifiants des sources, équipe, dossier d'enregistrement et compte.</p>
-          </div>
+          <section class="panel flush">
+            <div class="panel-head"><h2>Historique des récupérations</h2></div>
+            <div class="pagination" id="runs-pagination"></div>
+            <table id="table-runs">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Statut</th>
+                  <th>Docs</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
         </div>
 
-        <nav class="subtabs">
-          <button type="button" class="subtab-btn active" data-subtab="impots"><i class="ph ph-bank"></i> Comptes Impôts</button>
-          <button type="button" class="subtab-btn" data-subtab="urssaf"><i class="ph ph-buildings"></i> Comptes URSSAF</button>
-          <button type="button" class="subtab-btn" data-subtab="users" id="subtab-btn-users" hidden><i class="ph ph-users-three"></i> Collaborateurs</button>
-          <button type="button" class="subtab-btn" data-subtab="dossier"><i class="ph ph-folder"></i> Dossier</button>
-          <button type="button" class="subtab-btn" data-subtab="planif"><i class="ph ph-clock"></i> Planification</button>
-          <button type="button" class="subtab-btn" data-subtab="moncompte"><i class="ph ph-user"></i> Mon compte</button>
-        </nav>
+        <!-- ===================== URSSAF ===================== -->
+        <div class="tab-pane" id="tab-urssaf" hidden>
+          <div class="page-head">
+            <div>
+              <h1>URSSAF</h1>
+              <p>Tiers déclarant : un compte cabinet donne accès à tout le portefeuille (par SIRET). Récupération des appels de cotisations.</p>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn danger" id="u-stop" hidden>■ Arrêter</button>
+              <button type="button" class="btn primary" id="u-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
+            </div>
+          </div>
 
-        <div class="subtab-pane" id="sp-impots">
-        <section class="panel" id="panel-cabinets">
-          <h2>Comptes espace pro impôts</h2>
           <p class="aide">
-            Ajoute un ou plusieurs comptes « espace professionnel » impots.gouv.fr. Chaque client est rattaché
-            à un compte. ⚠️ À cause du <strong>captcha</strong>, une fenêtre s'ouvre à chaque session : si tu
-            renseignes l'<strong>e-mail et le mot de passe</strong> ci-dessous, ils sont <strong>préremplis
-            automatiquement</strong> et il ne te reste qu'à <strong>saisir la captcha</strong> puis cliquer sur
-            Connexion. Le robot enchaîne ensuite tous les clients. Le mot de passe est stocké chiffré en local.
+            Le <strong>compte URSSAF</strong> (identifiants tiers déclarant) et la <strong>synchronisation</strong> du portefeuille se gèrent dans
+            <strong>Paramètres ▸ Comptes URSSAF</strong>.
           </p>
-          <table id="table-cabinets">
-            <thead><tr><th>Libellé</th><th>Identifiant</th><th>Clients</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide-cab" hidden>Aucun compte cabinet. Ajoutes-en un ci-dessous.</p>
 
-          <form id="form-cabinet" class="sous-form">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Libellé (optionnel)
-                <input name="libelle" placeholder="ex : Cabinet principal" />
-              </label>
-              <label>Identifiant (e-mail)
-                <input name="login" placeholder="ex : contact@cabinet.fr" />
-              </label>
-              <label>Mot de passe (pour préremplissage)
-                <input name="password" type="password" placeholder="prérempli — il ne restera que la captcha" />
-              </label>
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Clients URSSAF <span id="u-compte" class="compteur"></span></h2>
             </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="cab-submit">Ajouter le cabinet</button>
-              <button type="button" class="btn" id="cab-cancel" hidden>Annuler</button>
+            <div class="toolbar" style="padding: 0 22px">
+              <input type="search" id="u-recherche" placeholder="🔍 Rechercher (nom, SIRET, compte)…" />
+              <select id="u-filtre-cabinet">
+                <option value="">Tous les comptes</option>
+              </select>
             </div>
-          </form>
-        </section>
+            <table id="table-urssaf-clients">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>SIRET / n° compte</th>
+                  <th>Compte</th>
+                  <th>Docs</th>
+                  <th>Dernier run</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="u-vide" style="padding: 0 22px 16px" hidden>
+              Aucun client. Ajoute un compte URSSAF puis « ↻ Synchroniser » pour importer le portefeuille.
+            </p>
+            <div class="pagination" id="u-pagination" style="padding-bottom: 16px"></div>
+            <div style="padding: 0 22px 16px">
+              <details class="sous-form" style="margin-top: 0; border-top: none; padding-top: 8px">
+                <summary style="cursor: pointer; font-weight: 600; color: var(--ink-soft)">Ajouter / importer des clients manuellement</summary>
+                <form id="form-urssaf-client" style="margin-top: 12px">
+                  <input type="hidden" name="id" />
+                  <div class="form-grid">
+                    <label>Nom<input name="nom" placeholder="Nom du client" /></label>
+                    <label>SIRET / n° compte URSSAF<input name="siret" placeholder="ex : 12345678900012 ou GQ815739800M01" /></label>
+                    <label>Compte de rattachement<select name="cabinet_id" id="u-client-cabinet"></select></label>
+                  </div>
+                  <div class="form-actions">
+                    <button type="submit" class="btn primary" id="u-submit">Enregistrer le client</button>
+                    <button type="button" class="btn" id="u-cancel" hidden>Annuler</button>
+                  </div>
+                </form>
+                <p class="aide" style="margin-top: 14px">
+                  Import en masse (colonnes <strong>nom</strong>, <strong>siret</strong> ; séparateur <code>;</code> <code>,</code> ou tabulation) — rattaché au
+                  compte sélectionné ci-dessus :
+                </p>
+                <textarea
+                  id="u-import-texte"
+                  rows="4"
+                  style="
+                    width: 100%;
+                    padding: 10px 12px;
+                    border: 1px solid var(--border-strong);
+                    border-radius: var(--radius-sm);
+                    font-family: var(--mono);
+                    font-size: 12.5px;
+                    background: var(--bg);
+                    color: var(--ink);
+                  "
+                  placeholder="nom;siret&#10;SARL DUPONT;12345678900012"
+                ></textarea>
+                <div class="form-actions">
+                  <button type="button" class="btn" id="u-import-btn">Importer</button>
+                  <span class="aide" id="u-import-bilan" style="margin: 0"></span>
+                </div>
+              </details>
+            </div>
+          </section>
+
+          <section class="panel flush">
+            <div class="panel-head"><h2>Historique des récupérations</h2></div>
+            <table id="table-urssaf-runs">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Statut</th>
+                  <th>Docs</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
         </div>
 
-        <div class="subtab-pane" id="sp-urssaf" hidden>
-        <section class="panel" id="panel-urssaf-cabinets">
-          <h2>Comptes URSSAF (tiers déclarant)</h2>
-          <p class="aide">Renseigne l'identifiant (e-mail) et le mot de passe du compte tiers déclarant. ⚠️ L'URSSAF <strong>bloque un compte après plusieurs mots de passe erronés</strong> — vérifie bien les identifiants. Pas de captcha : la récupération est automatique. Le « ↻ Synchroniser » importe tout le portefeuille du compte.</p>
-          <table id="table-urssaf-cabinets">
-            <thead><tr><th>Libellé</th><th>Identifiant</th><th>Clients</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <p class="vide-cab" id="u-cab-vide" hidden>Aucun compte URSSAF. Ajoutes-en un ci-dessous.</p>
-          <form id="form-urssaf-cabinet" class="sous-form">
-            <input type="hidden" name="id" />
-            <div class="form-grid">
-              <label>Libellé (optionnel)<input name="libelle" placeholder="ex : Cabinet principal" /></label>
-              <label>Identifiant (e-mail)<input name="login" placeholder="ex : contact@cabinet.fr" /></label>
-              <label>Mot de passe<input name="password" type="password" placeholder="mot de passe du compte tiers déclarant" /></label>
+        <!-- ===================== CARPIMKO ===================== -->
+        <div class="tab-pane" id="tab-carpimko" hidden>
+          <div class="page-head">
+            <div>
+              <h1>CARPIMKO</h1>
+              <p>Récupération des appels de cotisations (espace adhérent — un identifiant par client).</p>
             </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary" id="ucab-submit">Ajouter le compte</button>
-              <button type="button" class="btn" id="ucab-cancel" hidden>Annuler</button>
+            <div class="row-actions">
+              <label class="page-size" title="Récupérer aussi les attestations et autres documents, pas seulement les appels de cotisations">
+                <input type="checkbox" id="cp-tous-docs" style="width: 16px; height: 16px; accent-color: var(--accent)" /> Tous les documents
+              </label>
+              <button type="button" class="btn danger" id="cp-stop" hidden>■ Arrêter</button>
+              <button type="button" class="btn primary" id="cp-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
             </div>
-          </form>
-        </section>
+          </div>
+
+          <p class="aide" style="background: var(--warn-bg); color: var(--warn); padding: 10px 14px; border-radius: var(--radius-sm)">
+            ⚠️ CARPIMKO <strong>verrouille un compte après plusieurs mots de passe erronés</strong>. Les clients dont la dernière connexion a échoué pour mot de
+            passe sont marqués <strong>🔒</strong> et ignorés par « Tout récupérer ». Le verrou se lève dès que tu corriges le client (Modifier).
+          </p>
+
+          <section class="panel">
+            <h2 id="cp-form-titre">Ajouter un client CARPIMKO</h2>
+            <form id="form-carpimko">
+              <input type="hidden" name="id" />
+              <div class="form-grid">
+                <label
+                  >Nom du client
+                  <input name="nom" required placeholder="Ex : DUPONT Marie" />
+                </label>
+                <label
+                  >Numéro de dossier (7 chiffres)
+                  <input name="login" required placeholder="Ex : 1234567" inputmode="numeric" />
+                </label>
+                <label
+                  >Mot de passe
+                  <input name="password" type="password" placeholder="mot de passe espace CARPIMKO" />
+                </label>
+                <label
+                  >Notes (optionnel)
+                  <input name="notes" placeholder="ex : kiné, Albi" />
+                </label>
+                <label class="full"
+                  >Dossier d'enregistrement de ce client (optionnel)
+                  <span class="champ-dossier">
+                    <input name="dossier" placeholder="Vide = dossier interne (downloads/carpimko)" />
+                  </span>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="cp-submit">Enregistrer</button>
+                <button type="button" class="btn" id="cp-cancel" hidden>Annuler</button>
+              </div>
+            </form>
+            <details class="sous-form">
+              <summary style="cursor: pointer; font-weight: 600; color: var(--ink-soft)">Import en masse (CSV / copier-coller Excel)</summary>
+              <p class="aide" style="margin-top: 12px">
+                Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>numéro de dossier</strong>,
+                <strong>mot de passe</strong>, notes. Avec en-tête de préférence ; sinon ordre : nom, n° dossier, mot de passe, notes.
+              </p>
+              <textarea
+                id="cp-import-texte"
+                rows="6"
+                style="
+                  width: 100%;
+                  padding: 10px 12px;
+                  border: 1px solid var(--border-strong);
+                  border-radius: var(--radius-sm);
+                  font-family: var(--mono);
+                  font-size: 12.5px;
+                  background: var(--bg);
+                  color: var(--ink);
+                "
+                placeholder="nom;numéro de dossier;mot de passe;notes&#10;DUPONT Marie;1234567;motdepasse;kiné"
+              ></textarea>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="cp-import-btn">Importer</button>
+                <span class="aide" id="cp-import-bilan" style="margin: 0"></span>
+              </div>
+            </details>
+          </section>
+
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Clients CARPIMKO <span id="cp-compte" class="compteur"></span></h2>
+            </div>
+            <div class="toolbar" style="padding: 0 22px">
+              <input type="search" id="cp-recherche" placeholder="🔍 Rechercher (nom, n° dossier, notes)…" />
+            </div>
+            <table id="table-carpimko-clients">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>N° dossier</th>
+                  <th>Notes</th>
+                  <th>Docs</th>
+                  <th>Dernier run</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="cp-vide" style="padding: 0 22px 16px" hidden>Aucun client CARPIMKO. Ajoute-en un ci-dessus ou importe une liste.</p>
+            <div class="pagination" id="cp-pagination" style="padding-bottom: 16px"></div>
+          </section>
+
+          <section class="panel flush">
+            <div class="panel-head"><h2>Historique des récupérations</h2></div>
+            <table id="table-carpimko-runs">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Statut</th>
+                  <th>Docs</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
         </div>
 
-        <div class="subtab-pane" id="sp-dossier" hidden>
-        <section class="panel">
-          <h2>Dossier d'enregistrement</h2>
-          <p class="aide">Où ranger les avis (CFE, taxe foncière). Un sous-dossier par client y est créé. Vide = dossier interne.</p>
-          <div class="champ-dossier">
-            <input id="dest-global" placeholder="Ex : D:\Clients\Impots" />
-            <button type="button" class="btn" id="pick-global">Parcourir…</button>
-            <button type="button" class="btn primary" id="save-global">Enregistrer</button>
+        <!-- ===================== CARMF ===================== -->
+        <div class="tab-pane" id="tab-carmf" hidden>
+          <div class="page-head">
+            <div>
+              <h1>CARMF</h1>
+              <p>Retraite des médecins — récupération des documents (un identifiant par client).</p>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn danger" id="cm-stop" hidden>■ Arrêter</button>
+              <button type="button" class="btn primary" id="cm-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
+            </div>
           </div>
-        </section>
+          <p class="aide" style="background: var(--warn-bg); color: var(--warn); padding: 10px 14px; border-radius: var(--radius-sm)">
+            Saisis l'<strong>identifiant CARMF</strong> et le <strong>mot de passe</strong> de chaque client (espace adhérent extranet.carmf.fr). Pas de
+            captcha. Un client dont le mot de passe échoue est marqué 🔒 et ignoré par « Tout récupérer ».
+          </p>
+          <section class="panel">
+            <h2 id="cm-form-titre">Ajouter un client CARMF</h2>
+            <form id="form-carmf">
+              <input type="hidden" name="id" />
+              <div class="form-grid">
+                <label>Nom du client<input name="nom" required placeholder="Ex : Dr DUPONT" /></label>
+                <label>Identifiant CARMF<input name="login" required placeholder="identifiant de connexion CARMF" /></label>
+                <label>Mot de passe<input name="password" type="password" placeholder="mot de passe espace CARMF" /></label>
+                <label>Notes (optionnel)<input name="notes" placeholder="ex : médecin, Albi" /></label>
+                <label class="full"
+                  >Dossier d'enregistrement de ce client (optionnel)
+                  <span class="champ-dossier"><input name="dossier" placeholder="Vide = dossier interne (downloads/carmf)" /></span>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="cm-submit">Enregistrer</button>
+                <button type="button" class="btn" id="cm-cancel" hidden>Annuler</button>
+              </div>
+            </form>
+            <details class="sous-form">
+              <summary style="cursor: pointer; font-weight: 600; color: var(--ink-soft)">Import en masse (CSV / copier-coller Excel)</summary>
+              <p class="aide" style="margin-top: 12px">
+                Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>identifiant</strong>,
+                <strong>mot de passe</strong>, notes.
+              </p>
+              <textarea
+                id="cm-import-texte"
+                rows="5"
+                style="
+                  width: 100%;
+                  padding: 10px 12px;
+                  border: 1px solid var(--border-strong);
+                  border-radius: var(--radius-sm);
+                  font-family: var(--mono);
+                  font-size: 12.5px;
+                  background: var(--bg);
+                  color: var(--ink);
+                "
+                placeholder="nom;identifiant;mot de passe;notes&#10;Dr DUPONT;123456;motdepasse;médecin"
+              ></textarea>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="cm-import-btn">Importer</button>
+                <span class="aide" id="cm-import-bilan" style="margin: 0"></span>
+              </div>
+            </details>
+          </section>
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Clients CARMF <span id="cm-compte" class="compteur"></span></h2>
+            </div>
+            <div class="toolbar" style="padding: 0 22px">
+              <input type="search" id="cm-recherche" placeholder="🔍 Rechercher (nom, identifiant, notes)…" />
+            </div>
+            <table id="table-carmf-clients">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Identifiant</th>
+                  <th>Notes</th>
+                  <th>Docs</th>
+                  <th>Dernier run</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="cm-vide" style="padding: 0 22px 16px" hidden>Aucun client CARMF. Ajoute-en un ci-dessus ou importe une liste.</p>
+            <div class="pagination" id="cm-pagination" style="padding-bottom: 16px"></div>
+          </section>
+          <section class="panel flush">
+            <div class="panel-head"><h2>Historique des récupérations</h2></div>
+            <table id="table-carmf-runs">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Statut</th>
+                  <th>Docs</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
         </div>
 
-        <div class="subtab-pane" id="sp-planif" hidden>
-        <section class="panel">
-          <h2>Planification des récupérations automatiques</h2>
-          <p class="aide">Programme une récupération automatique par organisme : le <strong>serveur l'exécute tout seul</strong> (PC éteint ou non), au jour et à l'heure choisis (fuseau Europe/Paris). Les <strong>Impôts</strong> ne sont pas automatisables (captcha manuel à chaque session).</p>
-          <table id="table-planif">
-            <thead><tr><th>Organisme</th><th>Automatique</th><th>Jour</th><th>Heure</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <div class="form-actions">
-            <button type="button" class="btn primary" id="planif-save">Enregistrer la planification</button>
-            <span class="aide" id="planif-info" style="margin:0;"></span>
+        <div class="tab-pane" id="tab-carcdsf" hidden>
+          <div class="page-head">
+            <div>
+              <h1>CARCDSF</h1>
+              <p>Chirurgiens-dentistes &amp; sages-femmes — récupération des documents (un identifiant par client).</p>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn danger" id="cc-stop" hidden>■ Arrêter</button>
+              <button type="button" class="btn primary" id="cc-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
+            </div>
           </div>
-        </section>
+          <p class="aide" style="background: var(--warn-bg); color: var(--warn); padding: 10px 14px; border-radius: var(--radius-sm)">
+            Deux espaces distincts selon la <strong>profession</strong> : chirurgien-dentiste (carcdsf-cd) et sage-femme (carcdsf-sf). Saisis l'<strong
+              >identifiant adhérent</strong
+            >
+            et le <strong>mot de passe</strong> de chaque client. Un client dont le mot de passe échoue est marqué 🔒 et ignoré par « Tout récupérer ».
+          </p>
+          <section class="panel">
+            <h2 id="cc-form-titre">Ajouter un client CARCDSF</h2>
+            <form id="form-carcdsf">
+              <input type="hidden" name="id" />
+              <div class="form-grid">
+                <label>Nom du client<input name="nom" required placeholder="Ex : DUPONT Marie" /></label>
+                <label
+                  >Profession
+                  <select name="profession">
+                    <option value="cd">Chirurgien-dentiste</option>
+                    <option value="sf">Sage-femme</option>
+                  </select>
+                </label>
+                <label>Identifiant adhérent<input name="login" required placeholder="identifiant de connexion CARCDSF" /></label>
+                <label>Mot de passe<input name="password" type="password" placeholder="mot de passe espace adhérent" /></label>
+                <label>Notes (optionnel)<input name="notes" placeholder="ex : dentiste, Albi" /></label>
+                <label class="full"
+                  >Dossier d'enregistrement de ce client (optionnel)
+                  <span class="champ-dossier"><input name="dossier" placeholder="Vide = dossier interne (downloads/carcdsf)" /></span>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="cc-submit">Enregistrer</button>
+                <button type="button" class="btn" id="cc-cancel" hidden>Annuler</button>
+              </div>
+            </form>
+            <details class="sous-form">
+              <summary style="cursor: pointer; font-weight: 600; color: var(--ink-soft)">Import en masse (CSV / copier-coller Excel)</summary>
+              <p class="aide" style="margin-top: 12px">
+                Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>profession</strong> (cd/sf ou «
+                sage-femme »), <strong>identifiant</strong>, <strong>mot de passe</strong>, notes.
+              </p>
+              <textarea
+                id="cc-import-texte"
+                rows="5"
+                style="
+                  width: 100%;
+                  padding: 10px 12px;
+                  border: 1px solid var(--border-strong);
+                  border-radius: var(--radius-sm);
+                  font-family: var(--mono);
+                  font-size: 12.5px;
+                  background: var(--bg);
+                  color: var(--ink);
+                "
+                placeholder="nom;profession;identifiant;mot de passe;notes&#10;DUPONT Marie;sf;123456;motdepasse;sage-femme"
+              ></textarea>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="cc-import-btn">Importer</button>
+                <span class="aide" id="cc-import-bilan" style="margin: 0"></span>
+              </div>
+            </details>
+          </section>
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Clients CARCDSF <span id="cc-compte" class="compteur"></span></h2>
+            </div>
+            <div class="toolbar" style="padding: 0 22px">
+              <input type="search" id="cc-recherche" placeholder="🔍 Rechercher (nom, profession, identifiant, notes)…" />
+            </div>
+            <table id="table-carcdsf-clients">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Profession</th>
+                  <th>Identifiant</th>
+                  <th>Notes</th>
+                  <th>Docs</th>
+                  <th>Dernier run</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="cc-vide" style="padding: 0 22px 16px" hidden>Aucun client CARCDSF. Ajoute-en un ci-dessus ou importe une liste.</p>
+            <div class="pagination" id="cc-pagination" style="padding-bottom: 16px"></div>
+          </section>
+          <section class="panel flush">
+            <div class="panel-head"><h2>Historique des récupérations</h2></div>
+            <table id="table-carcdsf-runs">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Statut</th>
+                  <th>Docs</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
         </div>
 
-        <div class="subtab-pane" id="sp-moncompte" hidden>
-        <section class="panel" id="panel-moncompte">
-          <h2>Mon compte</h2>
-          <form id="form-moncompte" class="sous-form" style="margin-top:0;border-top:none;padding-top:0;">
-            <div class="form-grid">
-              <label>Nouveau mot de passe
-                <input name="nouveau" type="password" minlength="8" required placeholder="8 caractères minimum" />
-              </label>
+        <div class="tab-pane" id="tab-carpv" hidden>
+          <div class="page-head">
+            <div>
+              <h1>CARPV</h1>
+              <p>Retraite des vétérinaires — récupération des documents (un identifiant par client).</p>
             </div>
-            <div class="form-actions">
-              <button type="submit" class="btn">Changer mon mot de passe</button>
+            <div class="row-actions">
+              <button type="button" class="btn danger" id="cv-stop" hidden>■ Arrêter</button>
+              <button type="button" class="btn primary" id="cv-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
             </div>
-          </form>
-        </section>
-        <p class="aide" style="text-align:right;">Version <span id="pied-version">v1.0.0</span></p>
+          </div>
+          <p class="aide" style="background: var(--warn-bg); color: var(--warn); padding: 10px 14px; border-radius: var(--radius-sm)">
+            Saisis l'<strong>identifiant</strong> et le <strong>mot de passe</strong> de l'espace adhérent CARPV de chaque client. Pas de captcha. Un client
+            dont le mot de passe échoue est marqué 🔒 et ignoré par « Tout récupérer ».
+          </p>
+          <section class="panel">
+            <h2 id="cv-form-titre">Ajouter un client CARPV</h2>
+            <form id="form-carpv">
+              <input type="hidden" name="id" />
+              <div class="form-grid">
+                <label>Nom du client<input name="nom" required placeholder="Ex : Dr MARTIN" /></label>
+                <label>Identifiant CARPV<input name="login" required placeholder="identifiant de connexion" /></label>
+                <label>Mot de passe<input name="password" type="password" placeholder="mot de passe espace adhérent" /></label>
+                <label>Notes (optionnel)<input name="notes" placeholder="ex : vétérinaire, Albi" /></label>
+                <label class="full"
+                  >Dossier d'enregistrement de ce client (optionnel)
+                  <span class="champ-dossier"><input name="dossier" placeholder="Vide = dossier interne (downloads/carpv)" /></span>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="submit" class="btn primary" id="cv-submit">Enregistrer</button>
+                <button type="button" class="btn" id="cv-cancel" hidden>Annuler</button>
+              </div>
+            </form>
+            <details class="sous-form">
+              <summary style="cursor: pointer; font-weight: 600; color: var(--ink-soft)">Import en masse (CSV / copier-coller Excel)</summary>
+              <p class="aide" style="margin-top: 12px">
+                Colonnes reconnues (séparateur <code>;</code> <code>,</code> ou tabulation) : <strong>nom</strong>, <strong>identifiant</strong>,
+                <strong>mot de passe</strong>, notes.
+              </p>
+              <textarea
+                id="cv-import-texte"
+                rows="5"
+                style="
+                  width: 100%;
+                  padding: 10px 12px;
+                  border: 1px solid var(--border-strong);
+                  border-radius: var(--radius-sm);
+                  font-family: var(--mono);
+                  font-size: 12.5px;
+                  background: var(--bg);
+                  color: var(--ink);
+                "
+                placeholder="nom;identifiant;mot de passe;notes&#10;Dr MARTIN;123456;motdepasse;vétérinaire"
+              ></textarea>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="cv-import-btn">Importer</button>
+                <span class="aide" id="cv-import-bilan" style="margin: 0"></span>
+              </div>
+            </details>
+          </section>
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Clients CARPV <span id="cv-compte" class="compteur"></span></h2>
+            </div>
+            <div class="toolbar" style="padding: 0 22px">
+              <input type="search" id="cv-recherche" placeholder="🔍 Rechercher (nom, identifiant, notes)…" />
+            </div>
+            <table id="table-carpv-clients">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Identifiant</th>
+                  <th>Notes</th>
+                  <th>Docs</th>
+                  <th>Dernier run</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="cv-vide" style="padding: 0 22px 16px" hidden>Aucun client CARPV. Ajoute-en un ci-dessus ou importe une liste.</p>
+            <div class="pagination" id="cv-pagination" style="padding-bottom: 16px"></div>
+          </section>
+          <section class="panel flush">
+            <div class="panel-head"><h2>Historique des récupérations</h2></div>
+            <table id="table-carpv-runs">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Statut</th>
+                  <th>Docs</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </section>
         </div>
 
-        <div class="subtab-pane" id="sp-users" hidden>
-        <section class="panel" id="panel-users" hidden>
-          <h2>Collaborateurs <span class="compteur">admin</span></h2>
-          <p class="aide">Gère les accès de l'équipe. Chaque collaborateur se connecte avec son e-mail et son mot de passe.</p>
-          <table id="table-users">
-            <thead><tr><th>E-mail</th><th>Nom</th><th>Rôle</th><th>État</th><th>Dernière connexion</th><th>Actions</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <form id="form-user" class="sous-form">
-            <div class="form-grid">
-              <label>E-mail
-                <input name="email" type="email" required placeholder="collaborateur@cabinet.fr" />
-              </label>
-              <label>Nom
-                <input name="nom" placeholder="Prénom NOM" />
-              </label>
-              <label>Mot de passe
-                <input name="password" type="password" minlength="8" required placeholder="8 caractères minimum" />
-              </label>
-              <label>Rôle
-                <select name="role"><option value="membre">Membre</option><option value="admin">Admin</option></select>
-              </label>
+        <!-- ===================== Documents ===================== -->
+        <div class="tab-pane" id="tab-documents" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Documents</h1>
+              <p>Tous les documents récupérés (Impôts et CARPIMKO), du plus récent au plus ancien.</p>
             </div>
-            <div class="form-actions">
-              <button type="submit" class="btn primary">Ajouter le collaborateur</button>
+          </div>
+          <section class="panel flush">
+            <div class="toolbar" style="padding: 18px 22px 0">
+              <input
+                type="search"
+                id="search-docs"
+                class="quick-search"
+                style="margin-bottom: 0; flex: 1; min-width: 200px"
+                placeholder="🔍 Rechercher (client, document, date)…"
+                autocomplete="off"
+              />
+              <select id="docs-filtre-annee" title="Filtrer par année du document">
+                <option value="">Toutes les années</option>
+              </select>
             </div>
-          </form>
-        </section>
+            <table id="table-docs">
+              <thead>
+                <tr>
+                  <th>Année</th>
+                  <th>Date de récupération</th>
+                  <th>Client</th>
+                  <th>Source</th>
+                  <th>Document</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <div class="pagination" id="pagination-docs" style="padding-bottom: 16px" hidden>
+              <button type="button" class="btn small" id="pag-docs-prev">‹ Précédent</button>
+              <span class="pag-info" id="pag-docs-info"></span>
+              <button type="button" class="btn small" id="pag-docs-next">Suivant ›</button>
+            </div>
+            <p class="vide" id="vide-docs-all" style="padding: 0 22px 16px" hidden>Aucun document récupéré pour l'instant.</p>
+          </section>
+        </div>
 
-        <section class="panel" id="panel-apikey" hidden>
-          <h2>Clé API (MCP) <span class="compteur">admin</span></h2>
-          <p class="aide">Clé d'accès pour le serveur MCP / les accès programmatiques, à la place d'un mot de passe. Elle donne un accès complet : ne la partage pas. Tu peux la révoquer ou la régénérer à tout moment (les anciennes configurations cesseront alors de fonctionner).</p>
-          <div class="form-grid">
-            <label style="grid-column:1 / -1">Clé actuelle
-              <input id="apikey-valeur" type="text" readonly placeholder="Aucune clé définie" />
-            </label>
+        <!-- ===================== Messages (messagerie impôts) ===================== -->
+        <div class="tab-pane" id="tab-messages" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Messages</h1>
+              <p>Messagerie sécurisée impôts (« Mes échanges ») récupérée, par client — clique un message pour le lire.</p>
+            </div>
           </div>
-          <div class="form-actions">
-            <button type="button" class="btn" id="apikey-copier">Copier</button>
-            <button type="button" class="btn primary" id="apikey-regenerer">Régénérer la clé</button>
-            <button type="button" class="btn danger" id="apikey-revoquer">Révoquer</button>
-          </div>
-        </section>
+          <section class="panel flush">
+            <div class="toolbar" style="padding: 18px 22px 0">
+              <input
+                type="search"
+                id="msg-search"
+                class="quick-search"
+                style="margin-bottom: 0; flex: 1; min-width: 200px"
+                placeholder="🔍 Rechercher (client, objet)…"
+                autocomplete="off"
+              />
+            </div>
+            <table id="table-messages">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Client</th>
+                  <th>Objet</th>
+                  <th>PJ</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="msg-vide" style="padding: 0 22px 16px" hidden>
+              Aucun message récupéré. Coche « Inclure la messagerie » lors d'une récupération Impôts.
+            </p>
+          </section>
+          <section class="panel" id="msg-lecture" hidden>
+            <div class="panel-head" style="padding: 0 0 14px"><h2 id="msg-lecture-titre" style="margin: 0"></h2></div>
+            <div id="msg-lecture-pj" style="margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap"></div>
+            <pre
+              id="msg-lecture-corps"
+              style="
+                white-space: pre-wrap;
+                word-break: break-word;
+                font-family: inherit;
+                font-size: 14px;
+                line-height: 1.65;
+                color: var(--ink);
+                margin: 0;
+                background: var(--bg);
+                border: 1px solid var(--border);
+                border-radius: var(--radius-sm);
+                padding: 16px 18px;
+              "
+            ></pre>
+          </section>
+        </div>
 
-        <section class="panel" id="panel-mcp-oauth" hidden>
-          <h2>Connecteur MCP — organisation <span class="compteur">admin</span></h2>
-          <p class="aide">Pour ajouter le portail comme <strong>connecteur personnalisé</strong> dans Claude (niveau organisation / claude.ai). Dans Claude : « Ajouter un connecteur » → colle l'URL, puis dans « Paramètres avancés » colle le Client ID et le Client Secret. La connexion te demandera de t'authentifier avec ton compte du portail (OAuth).</p>
-          <div class="form-grid">
-            <label style="grid-column:1 / -1">URL du serveur MCP
-              <input id="mcpoauth-url" type="text" readonly />
-            </label>
-            <label>Client ID
-              <input id="mcpoauth-id" type="text" readonly />
-            </label>
-            <label>Client Secret
-              <input id="mcpoauth-secret" type="text" readonly />
-            </label>
+        <!-- ===================== Clients (vue transverse) ===================== -->
+        <div class="tab-pane" id="tab-par-client" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Clients</h1>
+              <p>Retrouve tous les documents d'un client, toutes sources confondues (Impôts, URSSAF, CARPIMKO).</p>
+            </div>
           </div>
-          <div class="form-actions">
-            <button type="button" class="btn" id="mcpoauth-copier">Copier les 3 valeurs</button>
-            <button type="button" class="btn danger" id="mcpoauth-regenerer">Régénérer Client ID/Secret</button>
+          <section class="panel flush">
+            <div class="toolbar" style="padding: 18px 22px 0">
+              <input
+                type="search"
+                id="pc-recherche"
+                class="quick-search"
+                style="margin-bottom: 0; flex: 1; min-width: 200px"
+                placeholder="🔍 Rechercher un client (nom, SIREN, n° dossier)…"
+                autocomplete="off"
+              />
+              <button
+                type="button"
+                class="btn primary"
+                id="pc-fusionner"
+                disabled
+                title="Coche au moins 2 clients qui sont en réalité le même, puis fusionne-les"
+              >
+                Fusionner la sélection (0)
+              </button>
+            </div>
+            <p class="aide" style="padding: 8px 22px 0">
+              Coche les fiches qui correspondent au <strong>même client</strong> (ex. « EURL TARN COMPTA » et « SARL TARN COMPTA ») puis clique
+              <strong>Fusionner</strong> : leurs documents seront regroupés.
+            </p>
+            <table id="table-par-client">
+              <thead>
+                <tr>
+                  <th class="col-check"></th>
+                  <th>Client</th>
+                  <th>Sources</th>
+                  <th>Documents</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="pc-vide" style="padding: 0 22px 16px" hidden>Aucun client.</p>
+            <div class="pagination" id="pc-pagination" style="padding-bottom: 16px"></div>
+          </section>
+          <section class="panel flush" id="pc-docs-panel" hidden>
+            <div class="panel-head"><h2 id="pc-docs-titre">Documents</h2></div>
+            <table id="table-pc-docs">
+              <thead>
+                <tr>
+                  <th>Année</th>
+                  <th>Source</th>
+                  <th>Document</th>
+                  <th>Récupéré le</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="pc-docs-vide" style="padding: 0 22px 16px" hidden>Aucun document pour ce client.</p>
+          </section>
+        </div>
+
+        <!-- ===================== Paramètres ===================== -->
+        <div class="tab-pane" id="tab-parametres" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Paramètres</h1>
+              <p>Identifiants des sources, équipe, dossier d'enregistrement et compte.</p>
+            </div>
           </div>
-        </section>
+
+          <nav class="subtabs">
+            <button type="button" class="subtab-btn active" data-subtab="impots"><i class="ph ph-bank"></i> Comptes Impôts</button>
+            <button type="button" class="subtab-btn" data-subtab="urssaf"><i class="ph ph-buildings"></i> Comptes URSSAF</button>
+            <button type="button" class="subtab-btn" data-subtab="users" id="subtab-btn-users" hidden><i class="ph ph-users-three"></i> Collaborateurs</button>
+            <button type="button" class="subtab-btn" data-subtab="dossier"><i class="ph ph-folder"></i> Dossier</button>
+            <button type="button" class="subtab-btn" data-subtab="planif"><i class="ph ph-clock"></i> Planification</button>
+            <button type="button" class="subtab-btn" data-subtab="moncompte"><i class="ph ph-user"></i> Mon compte</button>
+          </nav>
+
+          <div class="subtab-pane" id="sp-impots">
+            <section class="panel" id="panel-cabinets">
+              <h2>Comptes espace pro impôts</h2>
+              <p class="aide">
+                Ajoute un ou plusieurs comptes « espace professionnel » impots.gouv.fr. Chaque client est rattaché à un compte. ⚠️ À cause du
+                <strong>captcha</strong>, une fenêtre s'ouvre à chaque session : si tu renseignes l'<strong>e-mail et le mot de passe</strong> ci-dessous, ils
+                sont <strong>préremplis automatiquement</strong> et il ne te reste qu'à <strong>saisir la captcha</strong> puis cliquer sur Connexion. Le robot
+                enchaîne ensuite tous les clients. Le mot de passe est stocké chiffré en local.
+              </p>
+              <table id="table-cabinets">
+                <thead>
+                  <tr>
+                    <th>Libellé</th>
+                    <th>Identifiant</th>
+                    <th>Clients</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <p class="vide-cab" hidden>Aucun compte cabinet. Ajoutes-en un ci-dessous.</p>
+
+              <form id="form-cabinet" class="sous-form">
+                <input type="hidden" name="id" />
+                <div class="form-grid">
+                  <label
+                    >Libellé (optionnel)
+                    <input name="libelle" placeholder="ex : Cabinet principal" />
+                  </label>
+                  <label
+                    >Identifiant (e-mail)
+                    <input name="login" placeholder="ex : contact@cabinet.fr" />
+                  </label>
+                  <label
+                    >Mot de passe (pour préremplissage)
+                    <input name="password" type="password" placeholder="prérempli — il ne restera que la captcha" />
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn primary" id="cab-submit">Ajouter le cabinet</button>
+                  <button type="button" class="btn" id="cab-cancel" hidden>Annuler</button>
+                </div>
+              </form>
+            </section>
+          </div>
+
+          <div class="subtab-pane" id="sp-urssaf" hidden>
+            <section class="panel" id="panel-urssaf-cabinets">
+              <h2>Comptes URSSAF (tiers déclarant)</h2>
+              <p class="aide">
+                Renseigne l'identifiant (e-mail) et le mot de passe du compte tiers déclarant. ⚠️ L'URSSAF
+                <strong>bloque un compte après plusieurs mots de passe erronés</strong> — vérifie bien les identifiants. Pas de captcha : la récupération est
+                automatique. Le « ↻ Synchroniser » importe tout le portefeuille du compte.
+              </p>
+              <table id="table-urssaf-cabinets">
+                <thead>
+                  <tr>
+                    <th>Libellé</th>
+                    <th>Identifiant</th>
+                    <th>Clients</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <p class="vide-cab" id="u-cab-vide" hidden>Aucun compte URSSAF. Ajoutes-en un ci-dessous.</p>
+              <form id="form-urssaf-cabinet" class="sous-form">
+                <input type="hidden" name="id" />
+                <div class="form-grid">
+                  <label>Libellé (optionnel)<input name="libelle" placeholder="ex : Cabinet principal" /></label>
+                  <label>Identifiant (e-mail)<input name="login" placeholder="ex : contact@cabinet.fr" /></label>
+                  <label>Mot de passe<input name="password" type="password" placeholder="mot de passe du compte tiers déclarant" /></label>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn primary" id="ucab-submit">Ajouter le compte</button>
+                  <button type="button" class="btn" id="ucab-cancel" hidden>Annuler</button>
+                </div>
+              </form>
+            </section>
+          </div>
+
+          <div class="subtab-pane" id="sp-dossier" hidden>
+            <section class="panel">
+              <h2>Dossier d'enregistrement</h2>
+              <p class="aide">Où ranger les avis (CFE, taxe foncière). Un sous-dossier par client y est créé. Vide = dossier interne.</p>
+              <div class="champ-dossier">
+                <input id="dest-global" placeholder="Ex : D:\Clients\Impots" />
+                <button type="button" class="btn" id="pick-global">Parcourir…</button>
+                <button type="button" class="btn primary" id="save-global">Enregistrer</button>
+              </div>
+            </section>
+          </div>
+
+          <div class="subtab-pane" id="sp-planif" hidden>
+            <section class="panel">
+              <h2>Planification des récupérations automatiques</h2>
+              <p class="aide">
+                Programme une récupération automatique par organisme : le <strong>serveur l'exécute tout seul</strong> (PC éteint ou non), au jour et à l'heure
+                choisis (fuseau Europe/Paris). Les <strong>Impôts</strong> ne sont pas automatisables (captcha manuel à chaque session).
+              </p>
+              <table id="table-planif">
+                <thead>
+                  <tr>
+                    <th>Organisme</th>
+                    <th>Automatique</th>
+                    <th>Jour</th>
+                    <th>Heure</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="planif-save">Enregistrer la planification</button>
+                <span class="aide" id="planif-info" style="margin: 0"></span>
+              </div>
+            </section>
+          </div>
+
+          <div class="subtab-pane" id="sp-moncompte" hidden>
+            <section class="panel" id="panel-moncompte">
+              <h2>Mon compte</h2>
+              <form id="form-moncompte" class="sous-form" style="margin-top: 0; border-top: none; padding-top: 0">
+                <div class="form-grid">
+                  <label
+                    >Nouveau mot de passe
+                    <input name="nouveau" type="password" minlength="8" required placeholder="8 caractères minimum" />
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn">Changer mon mot de passe</button>
+                </div>
+              </form>
+            </section>
+            <p class="aide" style="text-align: right">Version <span id="pied-version">v1.0.0</span></p>
+          </div>
+
+          <div class="subtab-pane" id="sp-users" hidden>
+            <section class="panel" id="panel-users" hidden>
+              <h2>Collaborateurs <span class="compteur">admin</span></h2>
+              <p class="aide">Gère les accès de l'équipe. Chaque collaborateur se connecte avec son e-mail et son mot de passe.</p>
+              <table id="table-users">
+                <thead>
+                  <tr>
+                    <th>E-mail</th>
+                    <th>Nom</th>
+                    <th>Rôle</th>
+                    <th>État</th>
+                    <th>Dernière connexion</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+              <form id="form-user" class="sous-form">
+                <div class="form-grid">
+                  <label
+                    >E-mail
+                    <input name="email" type="email" required placeholder="collaborateur@cabinet.fr" />
+                  </label>
+                  <label
+                    >Nom
+                    <input name="nom" placeholder="Prénom NOM" />
+                  </label>
+                  <label
+                    >Mot de passe
+                    <input name="password" type="password" minlength="8" required placeholder="8 caractères minimum" />
+                  </label>
+                  <label
+                    >Rôle
+                    <select name="role">
+                      <option value="membre">Membre</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button type="submit" class="btn primary">Ajouter le collaborateur</button>
+                </div>
+              </form>
+            </section>
+
+            <section class="panel" id="panel-apikey" hidden>
+              <h2>Clé API (MCP) <span class="compteur">admin</span></h2>
+              <p class="aide">
+                Clé d'accès pour le serveur MCP / les accès programmatiques, à la place d'un mot de passe. Elle donne un accès complet : ne la partage pas. Tu
+                peux la révoquer ou la régénérer à tout moment (les anciennes configurations cesseront alors de fonctionner).
+              </p>
+              <div class="form-grid">
+                <label style="grid-column: 1 / -1"
+                  >Clé actuelle
+                  <input id="apikey-valeur" type="text" readonly placeholder="Aucune clé définie" />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn" id="apikey-copier">Copier</button>
+                <button type="button" class="btn primary" id="apikey-regenerer">Régénérer la clé</button>
+                <button type="button" class="btn danger" id="apikey-revoquer">Révoquer</button>
+              </div>
+            </section>
+
+            <section class="panel" id="panel-mcp-oauth" hidden>
+              <h2>Connecteur MCP — organisation <span class="compteur">admin</span></h2>
+              <p class="aide">
+                Pour ajouter le portail comme <strong>connecteur personnalisé</strong> dans Claude (niveau organisation / claude.ai). Dans Claude : « Ajouter un
+                connecteur » → colle l'URL, puis dans « Paramètres avancés » colle le Client ID et le Client Secret. La connexion te demandera de t'authentifier
+                avec ton compte du portail (OAuth).
+              </p>
+              <div class="form-grid">
+                <label style="grid-column: 1 / -1"
+                  >URL du serveur MCP
+                  <input id="mcpoauth-url" type="text" readonly />
+                </label>
+                <label
+                  >Client ID
+                  <input id="mcpoauth-id" type="text" readonly />
+                </label>
+                <label
+                  >Client Secret
+                  <input id="mcpoauth-secret" type="text" readonly />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn" id="mcpoauth-copier">Copier les 3 valeurs</button>
+                <button type="button" class="btn danger" id="mcpoauth-regenerer">Régénérer Client ID/Secret</button>
+              </div>
+            </section>
+          </div>
         </div>
       </div>
+    </main>
 
-    </div>
-  </main>
+    <dialog id="dialog-docs">
+      <h3 id="docs-titre">Documents</h3>
+      <ul id="docs-liste"></ul>
+      <div class="form-actions"><button class="btn" id="docs-fermer">Fermer</button></div>
+    </dialog>
 
-  <dialog id="dialog-docs">
-    <h3 id="docs-titre">Documents</h3>
-    <ul id="docs-liste"></ul>
-    <div class="form-actions"><button class="btn" id="docs-fermer">Fermer</button></div>
-  </dialog>
-
-  <div id="toast"></div>
-  <script src="app.js"></script>
-  <script src="source-ui.js"></script>
-  <script src="carpimko.js"></script>
-  <script src="urssaf.js"></script>
-  <script src="carmf.js"></script>
-  <script src="carcdsf.js"></script>
-  <script src="carpv.js"></script>
-</body>
+    <div id="toast"></div>
+    <script src="app.js"></script>
+    <script src="source-ui.js"></script>
+    <script src="carpimko.js"></script>
+    <script src="urssaf.js"></script>
+    <script src="carmf.js"></script>
+    <script src="carcdsf.js"></script>
+    <script src="carpv.js"></script>
+  </body>
 </html>

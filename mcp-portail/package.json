@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "description": "Serveur MCP pour piloter le Portail Cabinet (clients + récupérations) depuis un chat Claude.",
-  "bin": { "portail-cabinet-mcp": "index.mjs" },
+  "bin": {
+    "portail-cabinet-mcp": "index.mjs"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.10.0",
     "zod": "^3.23.8"

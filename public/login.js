@@ -2,7 +2,10 @@
 (async () => {
   try {
     const r = await fetch('/api/auth/me', { credentials: 'same-origin' });
-    if (r.ok) { location.replace('/'); return; }
+    if (r.ok) {
+      location.replace('/');
+      return;
+    }
   } catch {}
 })();
 

@@ -1,17 +1,22 @@
 // Authentification des collaborateurs du cabinet (multi-utilisateurs).
 // Mots de passe haches (scrypt), sessions par cookie httpOnly stockees en base.
 import crypto from 'node:crypto';
-import {
-  getUserByEmail, touchUserLogin, createSession, getSessionUser, deleteSession,
-  getSetting, setSetting,
-} from './db.js';
+import { getUserByEmail, touchUserLogin, createSession, getSessionUser, deleteSession, getSetting, setSetting } from './db.js';
 
 // ---- Clé API (pour le MCP / accès programmatique) ----
 // Une clé revocable, distincte des mots de passe des comptes. Donne un accès
 // "service" (role admin) via l'en-tete X-API-Key (ou Authorization: Bearer).
-export function getApiKey() { return getSetting('api_key', '') || ''; }
-export function regenererApiKey() { const k = crypto.randomBytes(24).toString('hex'); setSetting('api_key', k); return k; }
-export function revoquerApiKey() { setSetting('api_key', ''); }
+export function getApiKey() {
+  return getSetting('api_key', '') || '';
+}
+export function regenererApiKey() {
+  const k = crypto.randomBytes(24).toString('hex');
+  setSetting('api_key', k);
+  return k;
+}
+export function revoquerApiKey() {
+  setSetting('api_key', '');
+}
 function cleDeRequete(req) {
   const h = req.headers['x-api-key'];
   if (h) return String(h).trim();
@@ -34,15 +39,24 @@ export function verifyPassword(pwd, stored) {
     const dk = crypto.scryptSync(String(pwd), Buffer.from(saltHex, 'hex'), 64);
     const ref = Buffer.from(hashHex, 'hex');
     return ref.length === dk.length && crypto.timingSafeEqual(ref, dk);
-  } catch { return false; }
+  } catch {
+    return false;
+  }
 }
 
 function parseCookies(req) {
-  const out = {}; const h = req.headers.cookie; if (!h) return out;
-  for (const p of h.split(';')) { const i = p.indexOf('='); if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim()); }
+  const out = {};
+  const h = req.headers.cookie;
+  if (!h) return out;
+  for (const p of h.split(';')) {
+    const i = p.indexOf('=');
+    if (i > 0) out[p.slice(0, i).trim()] = decodeURIComponent(p.slice(i + 1).trim());
+  }
   return out;
 }
-function secureReq(req) { return req.secure || req.headers['x-forwarded-proto'] === 'https'; }
+function secureReq(req) {
+  return req.secure || req.headers['x-forwarded-proto'] === 'https';
+}
 function setCookie(req, res, token, maxAgeMs) {
   const parts = [`${COOKIE}=${token}`, 'Path=/', 'HttpOnly', 'SameSite=Lax', `Max-Age=${Math.floor(maxAgeMs / 1000)}`];
   if (secureReq(req)) parts.push('Secure');
@@ -62,12 +76,15 @@ export function currentUser(req) {
 // Routes publiques d'authentification (connexion / deconnexion / qui-suis-je).
 // ---- Anti-brute-force : throttle des connexions par IP (en memoire) ----
 const _echecs = new Map(); // ip -> { n, resetAt }
-const LOGIN_MAX = 10;                 // essais avant blocage temporaire
+const LOGIN_MAX = 10; // essais avant blocage temporaire
 const LOGIN_FENETRE = 15 * 60 * 1000; // fenetre de 15 min
 function loginBloque(ip) {
   const e = _echecs.get(ip);
   if (!e) return false;
-  if (Date.now() > e.resetAt) { _echecs.delete(ip); return false; }
+  if (Date.now() > e.resetAt) {
+    _echecs.delete(ip);
+    return false;
+  }
   return e.n >= LOGIN_MAX;
 }
 function loginEchec(ip) {
@@ -80,7 +97,9 @@ export function installAuthRoutes(app) {
   app.post('/api/auth/login', (req, res) => {
     const ip = req.ip || req.socket?.remoteAddress || 'inconnu';
     if (loginBloque(ip)) return res.status(429).json({ error: 'Trop de tentatives. Réessaie dans 15 minutes.' });
-    const email = String(req.body?.email || '').trim().toLowerCase();
+    const email = String(req.body?.email || '')
+      .trim()
+      .toLowerCase();
     const pwd = String(req.body?.password || '');
     const u = getUserByEmail(email);
     if (!u || !u.actif || !verifyPassword(pwd, u.password_hash)) {
@@ -114,8 +133,7 @@ export function requireAuth(req, res, next) {
   // Accès par clé API (MCP / programmatique) : en-tete X-API-Key ou Bearer.
   const cle = getApiKey();
   const fournie = cleDeRequete(req);
-  if (cle && fournie.length === cle.length
-      && crypto.timingSafeEqual(Buffer.from(fournie), Buffer.from(cle))) {
+  if (cle && fournie.length === cle.length && crypto.timingSafeEqual(Buffer.from(fournie), Buffer.from(cle))) {
     req.user = { id: 0, email: 'api', nom: 'Accès API', role: 'admin', viaApiKey: true };
     return next();
   }

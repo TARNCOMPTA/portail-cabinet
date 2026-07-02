@@ -5,12 +5,36 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import {
-  listClients, getClient, createClient, updateClient, deleteClient, getClientBySiret,
-  importClients, listDocuments, listAllDocuments, listRuns, getSetting, setSetting,
+  listClients,
+  getClient,
+  createClient,
+  updateClient,
+  deleteClient,
+  getClientBySiret,
+  importClients,
+  listDocuments,
+  listAllDocuments,
+  listRuns,
+  getSetting,
+  setSetting,
   documentAvecChemin,
-  listCabinets, getCabinetFull, createCabinet, getCabinetByLogin, updateCabinet, deleteCabinet, cabinetsConfigure,
-  listUsers, getUserByEmail, getUserById, createUser, updateUserPassword,
-  setUserActif, setUserRole, deleteUser, deleteUserSessions, purgerSessionsExpirees,
+  listCabinets,
+  getCabinetFull,
+  createCabinet,
+  getCabinetByLogin,
+  updateCabinet,
+  deleteCabinet,
+  cabinetsConfigure,
+  listUsers,
+  getUserByEmail,
+  getUserById,
+  createUser,
+  updateUserPassword,
+  setUserActif,
+  setUserRole,
+  deleteUser,
+  deleteUserSessions,
+  purgerSessionsExpirees,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
 import * as carpimko from './src/carpimko-db.js';
@@ -47,7 +71,11 @@ app.use(express.json());
 
 // --- Assets accessibles SANS connexion (page de login) ---
 for (const f of ['login.html', 'login.js', 'style.css', 'favicon.ico']) {
-  app.get('/' + f, (req, res) => res.sendFile(resolve(PUBLIC_DIR, f), (e) => { if (e) res.status(404).end(); }));
+  app.get('/' + f, (req, res) =>
+    res.sendFile(resolve(PUBLIC_DIR, f), (e) => {
+      if (e) res.status(404).end();
+    }),
+  );
 }
 // Polices + icônes hébergées localement : non sensibles, accessibles sans session
 // (la page de login en a besoin elle aussi). Cache long (les fichiers sont versionnés).
@@ -80,20 +108,33 @@ let stopAll = false;
 
 // ---- Suivi d'avancement (en memoire, lu par l'interface via /api/progress) --
 const progression = {
-  actif: false, total: 0, fait: 0, courant: null,
-  demarre_le: null, fini_le: null, resultats: [], logs: [],
+  actif: false,
+  total: 0,
+  fait: 0,
+  courant: null,
+  demarre_le: null,
+  fini_le: null,
+  resultats: [],
+  logs: [],
 };
 function progLog(ligne) {
   progression.logs.push(`${new Date().toLocaleTimeString('fr-FR')}  ${ligne}`);
   if (progression.logs.length > 400) progression.logs.splice(0, progression.logs.length - 400);
 }
 function demarrerSuivi(total) {
-  progression.actif = true; progression.total = total; progression.fait = 0;
-  progression.courant = null; progression.resultats = []; progression.logs = [];
-  progression.demarre_le = new Date().toISOString(); progression.fini_le = null;
+  progression.actif = true;
+  progression.total = total;
+  progression.fait = 0;
+  progression.courant = null;
+  progression.resultats = [];
+  progression.logs = [];
+  progression.demarre_le = new Date().toISOString();
+  progression.fini_le = null;
 }
 function terminerSuivi() {
-  progression.actif = false; progression.courant = null; progression.fini_le = new Date().toISOString();
+  progression.actif = false;
+  progression.courant = null;
+  progression.fini_le = new Date().toISOString();
 }
 
 // ---- Utilisateurs (collaborateurs) ----------------------------------------
@@ -110,7 +151,9 @@ app.post('/api/me/password', (req, res) => {
 app.get('/api/users', requireAdmin, (req, res) => res.json(listUsers()));
 
 app.post('/api/users', requireAdmin, (req, res) => {
-  const email = String(req.body?.email || '').trim().toLowerCase();
+  const email = String(req.body?.email || '')
+    .trim()
+    .toLowerCase();
   const nom = String(req.body?.nom || '').trim();
   const pwd = String(req.body?.password || '');
   const role = req.body?.role === 'admin' ? 'admin' : 'membre';
@@ -189,7 +232,10 @@ app.put('/api/cabinets/:id', (req, res) => {
   res.json(c);
 });
 
-app.delete('/api/cabinets/:id', (req, res) => { deleteCabinet(Number(req.params.id)); res.json({ ok: true }); });
+app.delete('/api/cabinets/:id', (req, res) => {
+  deleteCabinet(Number(req.params.id));
+  res.json({ ok: true });
+});
 
 // Synchronise le portefeuille d'UN cabinet (importe ses clients, rattaches a ce cabinet).
 app.post('/api/cabinets/:id/sync', async (req, res) => {
@@ -233,7 +279,10 @@ app.put('/api/clients/:id', (req, res) => {
   res.json(c);
 });
 
-app.delete('/api/clients/:id', (req, res) => { deleteClient(Number(req.params.id)); res.json({ ok: true }); });
+app.delete('/api/clients/:id', (req, res) => {
+  deleteClient(Number(req.params.id));
+  res.json({ ok: true });
+});
 
 app.get('/api/clients/:id/documents', (req, res) => res.json(listDocuments(Number(req.params.id))));
 
@@ -252,19 +301,26 @@ app.get('/api/documents/file', (req, res) => {
 app.get('/api/messages', (req, res) => {
   const docs = listAllDocuments();
   const messages = docs.filter((d) => /^MSG_\d+$/.test(d.eventid || ''));
-  const out = messages.map((m) => {
-    const prefixe = `${m.eventid}_PJ`;
-    const pjs = docs.filter((d) => (d.eventid || '').startsWith(prefixe))
-      .map((p) => ({ id: p.id, nom: (p.fichier || '').split(/[\\/]/).pop(), fichier: p.fichier }));
-    return { id: m.id, client_id: m.client_id, client_nom: m.client_nom, libelle: m.libelle, recupere_le: m.recupere_le, fichier: m.fichier, pieces: pjs };
-  }).sort((a, b) => String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
+  const out = messages
+    .map((m) => {
+      const prefixe = `${m.eventid}_PJ`;
+      const pjs = docs
+        .filter((d) => (d.eventid || '').startsWith(prefixe))
+        .map((p) => ({ id: p.id, nom: (p.fichier || '').split(/[\\/]/).pop(), fichier: p.fichier }));
+      return { id: m.id, client_id: m.client_id, client_nom: m.client_nom, libelle: m.libelle, recupere_le: m.recupere_le, fichier: m.fichier, pieces: pjs };
+    })
+    .sort((a, b) => String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
   res.json(out);
 });
 app.get('/api/messages/:id/texte', (req, res) => {
   const doc = listAllDocuments().find((d) => d.id === Number(req.params.id));
   if (!doc || !doc.fichier || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Message introuvable.' });
   let texte = '';
-  try { texte = readFileSync(doc.fichier, 'utf8'); } catch (e) { return res.status(500).json({ error: 'Lecture impossible.' }); }
+  try {
+    texte = readFileSync(doc.fichier, 'utf8');
+  } catch (e) {
+    return res.status(500).json({ error: 'Lecture impossible.' });
+  }
   res.json({ id: doc.id, libelle: doc.libelle, client_nom: doc.client_nom, texte });
 });
 
@@ -272,9 +328,12 @@ app.get('/api/messages/:id/texte', (req, res) => {
 // d'une source donnee. Resolu cote serveur via l'id (pas de chemin arbitraire).
 app.post('/api/documents/lien', (req, res) => {
   const sources = {
-    impots: listAllDocuments, carpimko: carpimko.listAllDocuments,
-    carmf: carmf.listAllDocuments, urssaf: urssafDb.listAllDocuments,
-    carcdsf: carcdsf.listAllDocuments, carpv: carpv.listAllDocuments,
+    impots: listAllDocuments,
+    carpimko: carpimko.listAllDocuments,
+    carmf: carmf.listAllDocuments,
+    urssaf: urssafDb.listAllDocuments,
+    carcdsf: carcdsf.listAllDocuments,
+    carpv: carpv.listAllDocuments,
   };
   const fn = sources[String(req.body?.source || '')];
   if (!fn) return res.status(400).json({ error: 'Source inconnue.' });
@@ -296,7 +355,11 @@ app.post('/api/settings', (req, res) => {
 // Selecteur de dossier natif Windows
 app.post('/api/pick-folder', (req, res) => {
   if (process.platform !== 'win32') {
-    return res.json({ folder: null, indisponible: true, message: 'Sélecteur natif indisponible sur le serveur : saisis le chemin à la main (ou laisse vide pour le dossier interne).' });
+    return res.json({
+      folder: null,
+      indisponible: true,
+      message: 'Sélecteur natif indisponible sur le serveur : saisis le chemin à la main (ou laisse vide pour le dossier interne).',
+    });
   }
   const script =
     'Add-Type -AssemblyName System.Windows.Forms;' +
@@ -308,28 +371,47 @@ app.post('/api/pick-folder', (req, res) => {
   let out = '';
   const t = setTimeout(() => ps.kill(), 120000);
   ps.stdout.on('data', (d) => (out += d));
-  ps.on('close', () => { clearTimeout(t); const p = out.trim(); res.json(p ? { folder: p } : { folder: null, annule: true }); });
-  ps.on('error', (e) => { clearTimeout(t); res.status(500).json({ error: e.message }); });
+  ps.on('close', () => {
+    clearTimeout(t);
+    const p = out.trim();
+    res.json(p ? { folder: p } : { folder: null, annule: true });
+  });
+  ps.on('error', (e) => {
+    clearTimeout(t);
+    res.status(500).json({ error: e.message });
+  });
 });
 
 // ---- Recuperation ---------------------------------------------------------
 async function lancer(clientId, res, messagerie = false) {
   const c = getClient(clientId);
   if (!c) return res?.status(404).json({ error: 'Client introuvable.' });
-  if (!c.cabinet_id) return res?.status(400).json({ error: 'Ce client n\'est rattaché à aucun cabinet.' });
+  if (!c.cabinet_id) return res?.status(400).json({ error: "Ce client n'est rattaché à aucun cabinet." });
   const cab = getCabinetFull(c.cabinet_id);
   if (!cab) return res?.status(400).json({ error: 'Le cabinet de ce client est introuvable.' });
   if (enCours.has(clientId)) return res?.status(409).json({ error: 'Récupération déjà en cours pour ce client.' });
   enCours.add(clientId);
   res?.json({ started: true, client: c.nom });
   const suiviLocal = !progression.actif; // ne pas ecraser un suivi de lot deja en cours
-  if (suiviLocal) { demarrerSuivi(1); progression.courant = c.nom; }
+  if (suiviLocal) {
+    demarrerSuivi(1);
+    progression.courant = c.nom;
+  }
   try {
     const r = await scrapeClient(c, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog, messagerie });
-    if (suiviLocal) progression.resultats.push({ nom: c.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+    if (suiviLocal)
+      progression.resultats.push({
+        nom: c.nom,
+        ok: !!r?.ok,
+        message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : r?.error || 'erreur',
+        nb_docs: r?.docs?.length ?? 0,
+      });
   } finally {
     enCours.delete(clientId);
-    if (suiviLocal) { progression.fait = 1; terminerSuivi(); }
+    if (suiviLocal) {
+      progression.fait = 1;
+      terminerSuivi();
+    }
   }
 }
 
@@ -349,17 +431,25 @@ async function lancerLot(clients, messagerie = false) {
     const cab = getCabinetFull(cabinetId);
     if (!cab) continue;
     await scrapeAll(sousClients, {
-      cabinet: cab, baseFolder, shouldStop: () => stopAll, messagerie,
+      cabinet: cab,
+      baseFolder,
+      shouldStop: () => stopAll,
+      messagerie,
       onLog: progLog,
-      onClient: (nom) => { progression.courant = nom; },
-      onResult: (r) => { progression.resultats.push(r); progression.fait++; },
+      onClient: (nom) => {
+        progression.courant = nom;
+      },
+      onResult: (r) => {
+        progression.resultats.push(r);
+        progression.fait++;
+      },
     });
   }
 }
 
 // Tout recuperer : tous les clients de tous les cabinets.
 app.post('/api/scrape-all', async (req, res) => {
-  if (!cabinetsConfigure()) return res.status(400).json({ error: 'Configure d\'abord au moins un compte cabinet.' });
+  if (!cabinetsConfigure()) return res.status(400).json({ error: "Configure d'abord au moins un compte cabinet." });
   if (enCours.has('all')) return res.status(409).json({ error: 'Une récupération globale est déjà en cours.' });
   const clients = listClients();
   const total = clients.filter((c) => c.cabinet_id).length;
@@ -367,31 +457,47 @@ app.post('/api/scrape-all', async (req, res) => {
   stopAll = false;
   demarrerSuivi(total);
   res.json({ started: true, total });
-  try { await lancerLot(clients, !!req.body?.messagerie); } finally { enCours.delete('all'); terminerSuivi(); }
+  try {
+    await lancerLot(clients, !!req.body?.messagerie);
+  } finally {
+    enCours.delete('all');
+    terminerSuivi();
+  }
 });
 
 // Recuperer une SELECTION de clients (par ids).
 app.post('/api/scrape-selection', async (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : [];
   if (!ids.length) return res.status(400).json({ error: 'Aucun client sélectionné.' });
-  if (!cabinetsConfigure()) return res.status(400).json({ error: 'Configure d\'abord au moins un compte cabinet.' });
+  if (!cabinetsConfigure()) return res.status(400).json({ error: "Configure d'abord au moins un compte cabinet." });
   if (enCours.has('all')) return res.status(409).json({ error: 'Une récupération est déjà en cours.' });
   const clients = ids.map((id) => getClient(id)).filter(Boolean);
   enCours.add('all');
   stopAll = false;
   demarrerSuivi(clients.filter((c) => c.cabinet_id).length);
   res.json({ started: true, total: clients.filter((c) => c.cabinet_id).length });
-  try { await lancerLot(clients, !!req.body?.messagerie); } finally { enCours.delete('all'); terminerSuivi(); }
+  try {
+    await lancerLot(clients, !!req.body?.messagerie);
+  } finally {
+    enCours.delete('all');
+    terminerSuivi();
+  }
 });
 
-app.post('/api/scrape-all/stop', (req, res) => { stopAll = true; res.json({ ok: true }); });
+app.post('/api/scrape-all/stop', (req, res) => {
+  stopAll = true;
+  res.json({ ok: true });
+});
 
 // ---- Mise a jour ----------------------------------------------------------
 app.get('/api/version', (req, res) => res.json({ version: versionLocale() }));
 app.get('/api/update/check', async (req, res) => res.json(await verifierMaj()));
 app.post('/api/update/apply', async (req, res) => {
-  try { res.json(await appliquerMaj()); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    res.json(await appliquerMaj());
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ---- Historique -----------------------------------------------------------
@@ -404,16 +510,25 @@ app.get('/api/config', (req, res) => res.json({ remoteBrowser: !!process.env.REM
 // ---- Fusions de clients (vue « Clients » transverse) ----------------------
 app.get('/api/fusions', (req, res) => res.json(fusions.listFusions()));
 app.post('/api/fusions', (req, res) => {
-  try { res.status(201).json(fusions.createFusion(req.body?.nom, req.body?.membres)); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    res.status(201).json(fusions.createFusion(req.body?.nom, req.body?.membres));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
-app.delete('/api/fusions/:id', (req, res) => { fusions.deleteFusion(Number(req.params.id)); res.json({ ok: true }); });
+app.delete('/api/fusions/:id', (req, res) => {
+  fusions.deleteFusion(Number(req.params.id));
+  res.json({ ok: true });
+});
 
 // ---- Planification des recuperations automatiques (par organisme) ---------
 app.get('/api/planifications', (req, res) => res.json(planif.listPlanifs()));
 app.put('/api/planifications/:source', (req, res) => {
-  try { res.json(planif.setPlanif(req.params.source, req.body || {})); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  try {
+    res.json(planif.setPlanif(req.params.source, req.body || {}));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 });
 
 // ---- Captures de debug (diagnostic scraping) ------------------------------
@@ -428,11 +543,21 @@ function listerCaptures(base) {
   const out = [];
   const walk = (d) => {
     let entrees = [];
-    try { entrees = readdirSync(d, { withFileTypes: true }); } catch { return; }
+    try {
+      entrees = readdirSync(d, { withFileTypes: true });
+    } catch {
+      return;
+    }
     for (const e of entrees) {
       const p = resolve(d, e.name);
       if (e.isDirectory()) walk(p);
-      else if (/\.png$/i.test(e.name)) { try { out.push({ path: p, mtime: statSync(p).mtimeMs }); } catch { /* ignore */ } }
+      else if (/\.png$/i.test(e.name)) {
+        try {
+          out.push({ path: p, mtime: statSync(p).mtimeMs });
+        } catch {
+          /* ignore */
+        }
+      }
     }
   };
   walk(base);
@@ -440,7 +565,11 @@ function listerCaptures(base) {
 }
 app.get('/api/debug/captures', (req, res) => {
   const base = DEBUG_DIRS[String(req.query.source || '').toLowerCase()] || DEBUG_DIRS.carpimko;
-  res.json(listerCaptures(base).slice(0, 50).map((c) => ({ fichier: c.path.split(/[\\/]/).pop(), date: new Date(c.mtime).toISOString(), path: c.path })));
+  res.json(
+    listerCaptures(base)
+      .slice(0, 50)
+      .map((c) => ({ fichier: c.path.split(/[\\/]/).pop(), date: new Date(c.mtime).toISOString(), path: c.path })),
+  );
 });
 app.get('/api/debug/last', (req, res) => {
   const base = DEBUG_DIRS[String(req.query.source || '').toLowerCase()] || DEBUG_DIRS.carpimko;
@@ -462,9 +591,15 @@ app.get('/api/debug/file', (req, res) => {
 //  partage via ctxSource. Ajouter une caisse = une entree dans routeursSources.
 // ===========================================================================
 const ctxSource = {
-  enCours, progression, progLog, demarrerSuivi, terminerSuivi,
+  enCours,
+  progression,
+  progLog,
+  demarrerSuivi,
+  terminerSuivi,
   doitArreter: () => stopAll,
-  resetArret: () => { stopAll = false; },
+  resetArret: () => {
+    stopAll = false;
+  },
 };
 const routeursSources = {
   carpimko: creerRouteurSourceLogin('carpimko', { db: carpimko, scraper: scrapeClientCarpimko, tousDocuments: true, ctx: ctxSource }),
@@ -491,7 +626,10 @@ app.put('/api/urssaf/cabinets/:id', (req, res) => {
   if (!c) return res.status(404).json({ error: 'Compte introuvable.' });
   res.json(c);
 });
-app.delete('/api/urssaf/cabinets/:id', (req, res) => { urssafDb.deleteCabinet(Number(req.params.id)); res.json({ ok: true }); });
+app.delete('/api/urssaf/cabinets/:id', (req, res) => {
+  urssafDb.deleteCabinet(Number(req.params.id));
+  res.json({ ok: true });
+});
 
 // Synchronise le portefeuille d'UN compte cabinet (importe ses clients par SIRET).
 app.post('/api/urssaf/cabinets/:id/sync', async (req, res) => {
@@ -505,8 +643,11 @@ app.post('/api/urssaf/cabinets/:id/sync', async (req, res) => {
     const rows = await listerClientsUrssaf(cab, { onLog: progLog });
     const bilan = urssafDb.importClients(rows, id);
     res.json({ ...bilan, total: rows.length });
-  } catch (e) { res.status(500).json({ error: e.message }); }
-  finally { enCours.delete(key); }
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    enCours.delete(key);
+  }
 });
 
 app.get('/api/urssaf/clients', (req, res) => res.json(urssafDb.listClients()));
@@ -527,7 +668,10 @@ app.put('/api/urssaf/clients/:id', (req, res) => {
   if (!c) return res.status(404).json({ error: 'Client introuvable.' });
   res.json(c);
 });
-app.delete('/api/urssaf/clients/:id', (req, res) => { urssafDb.deleteClient(Number(req.params.id)); res.json({ ok: true }); });
+app.delete('/api/urssaf/clients/:id', (req, res) => {
+  urssafDb.deleteClient(Number(req.params.id));
+  res.json({ ok: true });
+});
 app.get('/api/urssaf/clients/:id/documents', (req, res) => {
   if (!urssafDb.getClient(Number(req.params.id))) return res.status(404).json({ error: 'Client introuvable.' });
   res.json(urssafDb.listDocuments(Number(req.params.id)));
@@ -545,22 +689,34 @@ app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
   const client = urssafDb.getClient(id);
   if (!client) return res.status(404).json({ error: 'Client introuvable.' });
   const cab = urssafDb.getCabinetFullByClient(id);
-  if (!cab) return res.status(400).json({ error: 'Ce client n\'est rattaché à aucun compte URSSAF.' });
+  if (!cab) return res.status(400).json({ error: "Ce client n'est rattaché à aucun compte URSSAF." });
   const key = 'urssaf:' + id;
   if (enCours.has(key)) return res.status(409).json({ error: 'Une récupération est déjà en cours pour ce client.' });
   enCours.add(key);
   res.json({ started: true, client: client.nom });
   const suiviLocal = !progression.actif;
-  if (suiviLocal) { demarrerSuivi(1); progression.courant = client.nom; }
+  if (suiviLocal) {
+    demarrerSuivi(1);
+    progression.courant = client.nom;
+  }
   try {
     const r = await scrapeClientUrssaf(client, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog });
-    if (suiviLocal) progression.resultats.push({ nom: client.nom, ok: !!r?.ok, message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : (r?.error || 'erreur'), nb_docs: r?.docs?.length ?? 0 });
+    if (suiviLocal)
+      progression.resultats.push({
+        nom: client.nom,
+        ok: !!r?.ok,
+        message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : r?.error || 'erreur',
+        nb_docs: r?.docs?.length ?? 0,
+      });
   } catch (e) {
     progLog(`ERREUR : ${e.message}`);
     if (suiviLocal) progression.resultats.push({ nom: client.nom, ok: false, message: e.message, nb_docs: 0 });
   } finally {
     enCours.delete(key);
-    if (suiviLocal) { progression.fait = 1; terminerSuivi(); }
+    if (suiviLocal) {
+      progression.fait = 1;
+      terminerSuivi();
+    }
   }
 });
 
@@ -570,7 +726,11 @@ function lancerUrssafTous() {
   if (enCours.has('urssaf:all')) return { started: false };
   const clients = urssafDb.listClients();
   const parCabinet = new Map();
-  for (const c of clients) { if (!c.cabinet_id) continue; if (!parCabinet.has(c.cabinet_id)) parCabinet.set(c.cabinet_id, []); parCabinet.get(c.cabinet_id).push(c); }
+  for (const c of clients) {
+    if (!c.cabinet_id) continue;
+    if (!parCabinet.has(c.cabinet_id)) parCabinet.set(c.cabinet_id, []);
+    parCabinet.get(c.cabinet_id).push(c);
+  }
   const total = [...parCabinet.values()].reduce((n, arr) => n + arr.length, 0);
   enCours.add('urssaf:all');
   stopAll = false;
@@ -582,18 +742,30 @@ function lancerUrssafTous() {
         const cab = urssafDb.getCabinetFull(cabinetId);
         if (!cab) continue;
         await scrapeAllUrssaf(sousClients, {
-          cabinet: cab, baseFolder: getSetting('destination_folder'), shouldStop: () => stopAll, onLog: progLog,
-          onClient: (nom) => { progression.courant = nom; },
-          onResult: (r) => { progression.resultats.push(r); progression.fait++; },
+          cabinet: cab,
+          baseFolder: getSetting('destination_folder'),
+          shouldStop: () => stopAll,
+          onLog: progLog,
+          onClient: (nom) => {
+            progression.courant = nom;
+          },
+          onResult: (r) => {
+            progression.resultats.push(r);
+            progression.fait++;
+          },
         });
       }
-    } finally { enCours.delete('urssaf:all'); terminerSuivi(); progLog('Récupération URSSAF terminée.'); }
+    } finally {
+      enCours.delete('urssaf:all');
+      terminerSuivi();
+      progLog('Récupération URSSAF terminée.');
+    }
   })();
   return { started: true, total };
 }
 app.post('/api/urssaf/scrape-all', (req, res) => {
   const r = lancerUrssafTous();
-  if (r.raison === 'compte') return res.status(400).json({ error: 'Configure d\'abord au moins un compte URSSAF.' });
+  if (r.raison === 'compte') return res.status(400).json({ error: "Configure d'abord au moins un compte URSSAF." });
   if (!r.started) return res.status(409).json({ error: 'Une récupération URSSAF globale est déjà en cours.' });
   res.json(r);
 });
@@ -601,7 +773,14 @@ app.post('/api/urssaf/scrape-all', (req, res) => {
 // ---- Planificateur des recuperations automatiques (config en base, par organisme) ----
 // Tourne sur le serveur (active par une variable SCHEDULE*). Lit chaque minute la config
 // definie dans Parametres ▸ Planification (organisme actif, jour, heure ; fuseau Europe/Paris).
-if (process.env.SCHEDULE || process.env.SCHEDULE_CARPIMKO || process.env.SCHEDULE_CARMF || process.env.SCHEDULE_URSSAF || process.env.SCHEDULE_CARCDSF || process.env.SCHEDULE_CARPV) {
+if (
+  process.env.SCHEDULE ||
+  process.env.SCHEDULE_CARPIMKO ||
+  process.env.SCHEDULE_CARMF ||
+  process.env.SCHEDULE_URSSAF ||
+  process.env.SCHEDULE_CARCDSF ||
+  process.env.SCHEDULE_CARPV
+) {
   const LANCEURS = {
     urssaf: () => lancerUrssafTous(),
     carpimko: () => routeursSources.carpimko.lancerTous(),
@@ -614,8 +793,17 @@ if (process.env.SCHEDULE || process.env.SCHEDULE_CARPIMKO || process.env.SCHEDUL
   setInterval(() => {
     try {
       const p = Object.fromEntries(
-        new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Paris', weekday: 'long', hour: '2-digit', day: '2-digit', month: '2-digit', year: 'numeric', hour12: false })
-          .formatToParts(new Date()).map((x) => [x.type, x.value]),
+        new Intl.DateTimeFormat('en-GB', {
+          timeZone: 'Europe/Paris',
+          weekday: 'long',
+          hour: '2-digit',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour12: false,
+        })
+          .formatToParts(new Date())
+          .map((x) => [x.type, x.value]),
       );
       const jourCle = `${p.year}-${p.month}-${p.day}`;
       const heure = Number(p.hour);
@@ -628,7 +816,9 @@ if (process.env.SCHEDULE || process.env.SCHEDULE_CARPIMKO || process.env.SCHEDUL
           LANCEURS[pl.source]();
         }
       }
-    } catch (e) { console.warn('[planif] ' + e.message); }
+    } catch (e) {
+      console.warn('[planif] ' + e.message);
+    }
   }, 60000);
   console.log('  Planificateur actif (config : Paramètres ▸ Planification).');
 }
