@@ -383,7 +383,7 @@ app.post('/api/pick-folder', (req, res) => {
 });
 
 // ---- Recuperation ---------------------------------------------------------
-async function lancer(clientId, res, messagerie = false) {
+async function lancer(clientId, res, messagerie = true) {
   const c = getClient(clientId);
   if (!c) return res?.status(404).json({ error: 'Client introuvable.' });
   if (!c.cabinet_id) return res?.status(400).json({ error: "Ce client n'est rattaché à aucun cabinet." });
@@ -415,10 +415,11 @@ async function lancer(clientId, res, messagerie = false) {
   }
 }
 
-app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), res, !!req.body?.messagerie));
+// Messagerie incluse par defaut ; envoyer { messagerie: false } pour la sauter.
+app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), res, req.body?.messagerie !== false));
 
 // Traite un lot de clients : groupe par cabinet, UNE session par cabinet.
-async function lancerLot(clients, messagerie = false) {
+async function lancerLot(clients, messagerie = true) {
   const baseFolder = getSetting('destination_folder');
   const parCabinet = new Map();
   for (const c of clients) {
@@ -458,7 +459,7 @@ app.post('/api/scrape-all', async (req, res) => {
   demarrerSuivi(total);
   res.json({ started: true, total });
   try {
-    await lancerLot(clients, !!req.body?.messagerie);
+    await lancerLot(clients, req.body?.messagerie !== false);
   } finally {
     enCours.delete('all');
     terminerSuivi();
@@ -477,7 +478,7 @@ app.post('/api/scrape-selection', async (req, res) => {
   demarrerSuivi(clients.filter((c) => c.cabinet_id).length);
   res.json({ started: true, total: clients.filter((c) => c.cabinet_id).length });
   try {
-    await lancerLot(clients, !!req.body?.messagerie);
+    await lancerLot(clients, req.body?.messagerie !== false);
   } finally {
     enCours.delete('all');
     terminerSuivi();
