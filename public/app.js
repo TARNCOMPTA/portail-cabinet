@@ -794,18 +794,28 @@ async function chargerMessages() {
   if (nav) nav.textContent = tousMessages.length || '';
   afficherMessages();
 }
+// Libellé stocké = « Message JJ/MM/AAAA objet » : on en extrait la date du message
+// (celle des impôts, pas celle de la récupération) et l'objet nettoyé.
+function infoMessage(m) {
+  const brut = (m.libelle || '').replace(/^Message\s*/, '');
+  const md = brut.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*(.*)$/);
+  if (md) return { date: `${md[1]}/${md[2]}/${md[3]}`, cle: `${md[3]}-${md[2]}-${md[1]}`, objet: md[4] || brut };
+  return { date: m.recupere_le ? new Date(m.recupere_le + 'Z').toLocaleDateString('fr-FR') : '—', cle: String(m.recupere_le || ''), objet: brut };
+}
 function afficherMessages() {
   const q = norm($('#msg-search')?.value || '');
-  const liste = q ? tousMessages.filter((m) => norm(`${m.client_nom || ''} ${m.libelle || ''}`).includes(q)) : tousMessages;
+  const liste = (q ? tousMessages.filter((m) => norm(`${m.client_nom || ''} ${m.libelle || ''}`).includes(q)) : tousMessages)
+    .map((m) => ({ ...m, ...infoMessage(m) }))
+    .sort((a, b) => b.cle.localeCompare(a.cle));
   const tb = $('#table-messages tbody');
   if (!tb) return;
   tb.innerHTML = liste
     .map(
       (m) => `
     <tr data-msg="${m.id}" style="cursor:pointer;">
-      <td>${m.recupere_le ? new Date(m.recupere_le + 'Z').toLocaleDateString('fr-FR') : '—'}</td>
+      <td>${m.date}</td>
       <td>${esc(m.client_nom || '—')}</td>
-      <td>${esc((m.libelle || '').replace(/^Message\s*/, ''))}</td>
+      <td>${esc(m.objet)}</td>
       <td>${m.pieces?.length ? `<span class="badge cab">${m.pieces.length} PJ</span>` : ''}</td>
     </tr>`,
     )
@@ -822,7 +832,8 @@ $('#table-messages')?.addEventListener('click', async (e) => {
   const m = tousMessages.find((x) => x.id === id);
   try {
     const r = await api(`/api/messages/${id}/texte`);
-    $('#msg-lecture-titre').textContent = `${m?.client_nom || ''} — ${(m?.libelle || '').replace(/^Message\s*/, '')}`;
+    const inf = m ? infoMessage(m) : { date: '', objet: '' };
+    $('#msg-lecture-titre').textContent = `${m?.client_nom || ''} — ${inf.objet}${inf.date ? ` (${inf.date})` : ''}`;
     $('#msg-lecture-corps').textContent = r.texte || '(vide)';
     $('#msg-lecture-pj').innerHTML = (m?.pieces || [])
       .map(
