@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "notes": "Pack d'installation pour nouveaux cabinets : script d'installation VPS en une commande + notice complète (installation/NOTICE-INSTALLATION.md). Configuration du domaine par fichier .env.",
+  "version": "1.2.1",
+  "notes": "Messagerie impôts : les messages très courts (ou dont le texte ne peut pas être extrait) sont désormais enregistrés quand même et apparaissent dans l'onglet Messages avec leurs pièces jointes.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "9772c601e3a598bbdb55bd9ecbc09c1fea33160e25fbc9a44189cda202521532"
+  "sha256": "668e0dee60c6a8c0c7f20510d076e746617f0991dc7ad4f4bea00dba3eb60ce9"
 }
