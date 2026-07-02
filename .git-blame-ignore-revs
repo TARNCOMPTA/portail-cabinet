@@ -1,0 +1,3 @@
+# Reformatage Prettier initial — ignore par git blame.
+# Usage : git config blame.ignoreRevsFile .git-blame-ignore-revs
+cbcae0962fa9a4a716ec9a39fa3d47aa0ce25f12
