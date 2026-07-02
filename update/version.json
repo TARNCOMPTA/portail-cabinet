@@ -1,6 +1,6 @@
 {
-  "version": "1.1.4",
-  "notes": "L'onglet Messages est paginé par 10 (recherche remise à la première page).",
+  "version": "1.2.0",
+  "notes": "Pack d'installation pour nouveaux cabinets : script d'installation VPS en une commande + notice complète (installation/NOTICE-INSTALLATION.md). Configuration du domaine par fichier .env.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "f0cfb3c9e32284d48f8672b7f95e0cc54fb0a192f3a9067afd13a08fca346d8b"
+  "sha256": "9772c601e3a598bbdb55bd9ecbc09c1fea33160e25fbc9a44189cda202521532"
 }
