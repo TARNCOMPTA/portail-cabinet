@@ -233,35 +233,52 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
           .catch(() => {});
         await gaia.waitForTimeout(1400);
         // Texte du message : plus petit element contenant "Objet :" + "De :/A :"
-        const texte = await gaia
-          .evaluate(() => {
-            let best = null,
-              len = 1e9;
-            for (const el of document.querySelectorAll('td,div,fieldset,section')) {
-              const t = el.innerText || '';
-              if (/Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 120 && t.length < len) {
-                best = el;
-                len = t.length;
-              }
-            }
-            return best
-              ? best.innerText
+        // (repli : "Objet :" seul — certains messages tres courts n'ont pas le reste).
+        const extraireTexte = () =>
+          gaia
+            .evaluate(() => {
+              const nettoyer = (el) =>
+                el.innerText
                   .replace(/[ \t]+\n/g, '\n')
                   .replace(/\n{3,}/g, '\n\n')
-                  .trim()
-              : '';
-          })
-          .catch(() => '');
-        if (texte) {
-          writeFileSync(dest, `N° ${e.num} — ${e.objet}\nService : ${e.service}\nDate : ${e.date}\n${'-'.repeat(60)}\n\n${texte}\n`, 'utf8');
-          try {
-            addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid });
-          } catch {}
-          docs.push({ libelle: `Message ${e.date}`, fichier: dest });
-          log(`OK : ${base}.txt`);
-        } else {
-          log(`(message ${e.num} : texte introuvable)`);
+                  .trim();
+              let best = null,
+                len = 1e9;
+              for (const el of document.querySelectorAll('td,div,fieldset,section')) {
+                const t = el.innerText || '';
+                if (/Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 40 && t.length < len) {
+                  best = el;
+                  len = t.length;
+                }
+              }
+              if (!best) {
+                for (const el of document.querySelectorAll('td,div,fieldset,section')) {
+                  const t = el.innerText || '';
+                  if (/Objet\s*:/.test(t) && t.length > 20 && t.length < len) {
+                    best = el;
+                    len = t.length;
+                  }
+                }
+              }
+              return best ? nettoyer(best) : '';
+            })
+            .catch(() => '');
+        let texte = await extraireTexte();
+        if (!texte) {
+          // L'AJAX PrimeFaces peut etre lent a deplier le message : seconde chance.
+          await gaia.waitForTimeout(2000);
+          texte = await extraireTexte();
         }
+        // Filet de securite : MEME sans texte extrait, on enregistre le message (sinon
+        // il n'apparait pas dans l'onglet Messages alors que ses PJ sont recuperees).
+        const corps =
+          texte || '(Texte non extrait automatiquement — consulter la messagerie sur impots.gouv.fr. Pièces jointes récupérées ci-dessous le cas échéant.)';
+        writeFileSync(dest, `N° ${e.num} — ${e.objet}\nService : ${e.service}\nDate : ${e.date}\n${'-'.repeat(60)}\n\n${corps}\n`, 'utf8');
+        try {
+          addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid });
+        } catch {}
+        docs.push({ libelle: `Message ${e.date}`, fichier: dest });
+        log(texte ? `OK : ${base}.txt` : `OK (texte non extrait, message enregistré quand même) : ${base}.txt`);
         // Pieces jointes : liens PrimeFaces (id finissant par ":downloadFile", texte = nom
         // du fichier), limites a la ligne du message ouvert (index de la datatable).
         const idx = (e.id.match(/listeDemandes:(\d+):/) || [])[1];
