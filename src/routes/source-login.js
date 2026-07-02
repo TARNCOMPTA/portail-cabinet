@@ -142,13 +142,11 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     const id = Number(req.params.id);
     const verrou = db.clientVerrouille(id);
     if (verrou.verrouille && !req.body?.force)
-      return res
-        .status(423)
-        .json({
-          error: 'verrou_mdp',
-          message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige-le ou force la tentative.',
-          detail: verrou.message,
-        });
+      return res.status(423).json({
+        error: 'verrou_mdp',
+        message: 'Compte verrouillé : la dernière connexion a échoué (mot de passe). Corrige-le ou force la tentative.',
+        detail: verrou.message,
+      });
     lancerUn(id, res, tousDocuments ? { tousDocuments: !!req.body?.tousDocuments } : {});
   });
   r.post('/scrape-all', (req, res) => {
