@@ -5,3 +5,4 @@ downloads/
 app_update/
 *.db
 *.log
+*.svg
