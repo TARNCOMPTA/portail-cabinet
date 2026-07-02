@@ -1,6 +1,6 @@
 {
-  "version": "1.1.0",
-  "notes": "Mise à jour en ligne en un clic, reprise automatique des récupérations interrompues, messagerie impôts incluse par défaut, sécurité renforcée des clés (visibles uniquement à la génération), dates des documents et messages, compteurs sidebar, favicon.",
+  "version": "1.1.1",
+  "notes": "Téléchargement en masse des documents (ZIP par client, sélection ou tout le filtre) depuis l'onglet Documents. L'onglet Paramètres ▸ Dossier disparaît.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "304446025b668307075a95197056ab8dbb14ac8ce23cd6e43ce1f38a4f3e9ba4"
+  "sha256": "b2d2cf2da2664afa09e3c552e1d42313872c22d9d888c49d3c68af8ede33eb8c"
 }
