@@ -1187,13 +1187,42 @@ async function chargerDashboard() {
   }
 }
 
-// ---- Version (pied de page) -----------------------------------------------
+// ---- Marque blanche : nom du cabinet ----------------------------------------
+async function chargerBranding() {
+  try {
+    const b = await fetch('/api/branding').then((r) => r.json());
+    appliquerBranding(b);
+    const champ = $('#branding-nom');
+    if (champ && !champ.value) champ.placeholder = b.nom;
+  } catch {
+    /* ignore */
+  }
+}
+function appliquerBranding(b) {
+  if (!b?.nom) return;
+  document.title = `${b.nom} — Portail de récupération`;
+  $('#brand-nom').textContent = b.nom;
+  $('#brand-initiales').textContent = b.initiales || 'PC';
+}
+$('#branding-enregistrer')?.addEventListener('click', async () => {
+  try {
+    const b = await api('/api/branding', { method: 'POST', body: JSON.stringify({ nom: $('#branding-nom').value.trim() }) });
+    appliquerBranding(b);
+    toast('Nom du cabinet enregistré.', 'ok');
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+// ---- Version (pied de page + sidebar) ---------------------------------------
 // La mise a jour est desormais installee AUTOMATIQUEMENT au demarrage du serveur
 // (cote server.js) : plus de bandeau ni de bouton « Installer » dans l'interface.
 async function afficherVersion() {
   try {
     const v = await api('/api/version');
     $('#pied-version').textContent = 'v' + v.version;
+    const bv = $('#brand-version');
+    if (bv) bv.textContent = ` · v${v.version}`;
   } catch {
     /* ignore */
   }
@@ -1223,6 +1252,7 @@ async function chargerMoi() {
     chargerMcpOAuth();
     $('#panel-maj').hidden = false;
     chargerMaj();
+    $('#panel-branding').hidden = false;
   }
 }
 
@@ -1469,6 +1499,7 @@ rafraichir();
 chargerDashboard();
 chargerParClient(); // au demarrage aussi : alimente le compteur « Clients » de la sidebar
 chargerMessages(); // idem pour le compteur « Messages »
+chargerBranding();
 suivreEtat();
 afficherVersion();
 suivreProgression();

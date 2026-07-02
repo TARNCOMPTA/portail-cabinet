@@ -6,7 +6,9 @@ import crypto from 'node:crypto';
 import express from 'express';
 import * as oauthDb from './oauth-db.js';
 import { verifyPassword } from './auth.js';
-import { getUserByEmail } from './db.js';
+import { getUserByEmail, getSetting } from './db.js';
+
+const nomCabinet = () => (getSetting('nom_cabinet', '') || 'Portail Cabinet').trim();
 
 const CODE_TTL = 5 * 60 * 1000; // code d'autorisation : 5 min
 const ACCESS_TTL = 60 * 60 * 1000; // jeton d'acces : 1 h
@@ -49,7 +51,7 @@ function pageAutorisation(req, params, erreur = '') {
     .join('');
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Autoriser le connecteur — Portail Cabinet</title>
+<title>Autoriser le connecteur — ${nomCabinet()}</title>
 <style>
   :root{--accent:#7c2d5e;--bg:#f7f3f0;--card:#fff;--bord:#ece5e0;--txt:#2c2329;--txt2:#6b5f64;}
   *{box-sizing:border-box} body{font-family:system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--txt);margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
@@ -62,8 +64,8 @@ function pageAutorisation(req, params, erreur = '') {
   .app{font-weight:600;color:var(--accent)}
 </style></head><body>
 <form class="card" method="post" action="/oauth/authorize">
-  <h1>Connecter <span class="app">Claude</span> au Portail Cabinet</h1>
-  <p>Claude demande l'accès à ton Portail Cabinet (clients & récupérations). Connecte-toi avec ton compte collaborateur pour autoriser.</p>
+  <h1>Connecter <span class="app">Claude</span> à ${nomCabinet()}</h1>
+  <p>Claude demande l'accès au portail ${nomCabinet()} (clients & récupérations). Connecte-toi avec ton compte collaborateur pour autoriser.</p>
   ${erreur ? `<div class="err">${erreur}</div>` : ''}
   ${champs}
   <label>E-mail<input type="email" name="email" required autofocus placeholder="collaborateur@cabinet.fr"></label>

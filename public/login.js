@@ -9,6 +9,18 @@
   } catch {}
 })();
 
+// Marque blanche : nom du cabinet (endpoint public).
+(async () => {
+  try {
+    const b = await fetch('/api/branding').then((r) => r.json());
+    if (b.nom) {
+      document.title = `Connexion — ${b.nom}`;
+      document.getElementById('brand-nom').textContent = b.nom;
+      document.getElementById('brand-initiales').textContent = b.initiales || 'PC';
+    }
+  } catch {}
+})();
+
 const form = document.getElementById('form-login');
 const err = document.getElementById('login-err');
 const btn = document.getElementById('login-submit');

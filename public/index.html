@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Tarn Compta — Portail de récupération</title>
+    <title>Portail de récupération</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <script>
       (function () {
@@ -20,10 +20,10 @@
     <!-- ===================== Sidebar ===================== -->
     <aside class="sidebar">
       <div class="brand">
-        <div class="logo-dot">TC</div>
+        <div class="logo-dot" id="brand-initiales">PC</div>
         <div>
-          <div class="brand-name">Tarn Compta</div>
-          <div class="brand-sub">Portail de récupération</div>
+          <div class="brand-name" id="brand-nom">Portail Cabinet</div>
+          <div class="brand-sub">Portail de récupération<span id="brand-version"></span></div>
         </div>
       </div>
 
@@ -1204,6 +1204,20 @@
           </div>
 
           <div class="subtab-pane" id="sp-users" hidden>
+            <section class="panel" id="panel-branding" hidden>
+              <h2>Personnalisation <span class="compteur">admin</span></h2>
+              <p class="aide">Nom du cabinet affiché partout : barre latérale, page de connexion, icône d'onglet, page d'autorisation du connecteur Claude.</p>
+              <div class="form-grid">
+                <label
+                  >Nom du cabinet
+                  <input id="branding-nom" maxlength="60" placeholder="ex : Tarn Compta" />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="branding-enregistrer">Enregistrer</button>
+              </div>
+            </section>
+
             <section class="panel" id="panel-users" hidden>
               <h2>Collaborateurs <span class="compteur">admin</span></h2>
               <p class="aide">Gère les accès de l'équipe. Chaque collaborateur se connecte avec son e-mail et son mot de passe.</p>

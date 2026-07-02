@@ -71,8 +71,25 @@ app.use((req, res, next) => {
 });
 app.use(express.json());
 
+// --- Marque blanche : nom du cabinet configurable (Paramètres ▸ Collaborateurs) ---
+const nomCabinet = () => (getSetting('nom_cabinet', '') || 'Portail Cabinet').trim();
+const initialesCabinet = () => {
+  const mots = nomCabinet().split(/\s+/).filter(Boolean);
+  return ((mots[0]?.[0] || 'P') + (mots[1]?.[0] || mots[0]?.[1] || 'C')).toUpperCase();
+};
+// Endpoint PUBLIC (la page de login en a besoin) : nom + initiales, rien de sensible.
+app.get('/api/branding', (req, res) => res.json({ nom: nomCabinet(), initiales: initialesCabinet() }));
+// Favicon genere a la volee avec les initiales du cabinet (meme style que le logo).
+app.get('/favicon.svg', (req, res) => {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="17" fill="#7c2d5e"/>
+  <text x="32" y="43" font-family="'Hanken Grotesk', system-ui, 'Segoe UI', sans-serif" font-size="30" font-weight="800" fill="#fff" text-anchor="middle" letter-spacing="-1">${initialesCabinet()}</text>
+</svg>`;
+  res.set('Content-Type', 'image/svg+xml').set('Cache-Control', 'max-age=3600').send(svg);
+});
+
 // --- Assets accessibles SANS connexion (page de login) ---
-for (const f of ['login.html', 'login.js', 'style.css', 'favicon.ico', 'favicon.svg']) {
+for (const f of ['login.html', 'login.js', 'style.css', 'favicon.ico']) {
   app.get('/' + f, (req, res) =>
     res.sendFile(resolve(PUBLIC_DIR, f), (e) => {
       if (e) res.status(404).end();
@@ -392,6 +409,14 @@ app.post('/api/documents/zip', async (req, res) => {
 });
 
 // ---- Reglages -------------------------------------------------------------
+// Nom du cabinet (marque blanche) — lecture publique via /api/branding (avant auth).
+app.post('/api/branding', requireAdmin, (req, res) => {
+  const nom = String(req.body?.nom || '')
+    .trim()
+    .slice(0, 60);
+  setSetting('nom_cabinet', nom);
+  res.json({ nom: nomCabinet(), initiales: initialesCabinet() });
+});
 app.get('/api/settings', (req, res) => res.json({ destinationFolder: getSetting('destination_folder', '') }));
 app.post('/api/settings', (req, res) => {
   if (typeof req.body?.destinationFolder === 'string') setSetting('destination_folder', req.body.destinationFolder.trim());
