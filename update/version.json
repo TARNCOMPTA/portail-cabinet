@@ -1,6 +1,6 @@
 {
-  "version": "1.1.1",
-  "notes": "Téléchargement en masse des documents (ZIP par client, sélection ou tout le filtre) depuis l'onglet Documents. L'onglet Paramètres ▸ Dossier disparaît.",
+  "version": "1.1.2",
+  "notes": "Le nom du cabinet est configurable (Paramètres ▸ Collaborateurs ▸ Personnalisation) et s'affiche partout : barre latérale, page de connexion, icône d'onglet, page Claude. Numéro de version visible sous le logo.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "b2d2cf2da2664afa09e3c552e1d42313872c22d9d888c49d3c68af8ede33eb8c"
+  "sha256": "3cf99e6ca92f3179d8efd5261214aaf6b5621ef524fd47251a42c5fe2b2c63b7"
 }
