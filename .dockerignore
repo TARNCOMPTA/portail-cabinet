@@ -8,3 +8,5 @@ restart.flag
 *.log
 update
 mcp-portail
+installation
+.env.exemple

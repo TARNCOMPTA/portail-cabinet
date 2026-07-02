@@ -1,9 +1,11 @@
 # HTTPS automatique (Let's Encrypt) pour le portail.
+# Domaine et e-mail injectés par docker-compose (variables DOMAIN / ACME_EMAIL du .env),
+# avec repli sur les valeurs par défaut ci-dessous.
 {
-	email aymeric@tarncompta.fr
+	email {$ACME_EMAIL:aymeric@tarncompta.fr}
 }
 
-portail.tarncompta.fr {
+{$DOMAIN:portail.tarncompta.fr} {
 	# Vue du navigateur du serveur (noVNC) pour saisir la captcha — protégée par la session
 	# du portail : Caddy vérifie le cookie auprès de /api/me avant de laisser passer.
 	handle_path /vnc/* {

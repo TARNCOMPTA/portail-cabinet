@@ -1,4 +1,6 @@
 # Portail Cabinet — déploiement (app + reverse proxy HTTPS automatique).
+# Personnalisation par cabinet : fichier .env à côté (voir .env.exemple) avec
+# DOMAIN / PUBLIC_URL / ACME_EMAIL. Sans .env, les défauts ci-dessous s'appliquent.
 services:
   app:
     build: .
@@ -6,13 +8,14 @@ services:
     init: true # tini comme PID 1 : reape les process Chromium fermes (sinon zombies <defunct>)
     environment:
       - PORT=3000
-      - PUBLIC_URL=https://portail.tarncompta.fr # base publique (OAuth/MCP : issuer + URL du connecteur)
+      - PUBLIC_URL=${PUBLIC_URL:-https://portail.tarncompta.fr} # base publique (OAuth/MCP : issuer + URL du connecteur)
       - NAV_TIMEOUT=60000
       # Mise à jour EN LIGNE activée : bouton « Mettre à jour » (Paramètres, admin) ou auto au boot.
       # Pour revenir au mode "git pull + rebuild" uniquement : remettre UPDATE_DISABLED=1.
       - REMOTE_BROWSER=1 # active la vue navigateur à distance (noVNC) pour la captcha
-      - SCHEDULE_CARPIMKO=1 # récupération CARPIMKO automatique chaque mardi à 02:00 (Europe/Paris)
-      - SCHEDULE_CARMF=1 # récupération CARMF automatique chaque mercredi à 02:00 (Europe/Paris)
+      - SCHEDULE=1 # active le planificateur (jours/heures configurables : Paramètres ▸ Planification)
+      - SCHEDULE_CARPIMKO=${SCHEDULE_CARPIMKO:-1}
+      - SCHEDULE_CARMF=${SCHEDULE_CARMF:-1}
     volumes:
       - ./data:/app/data # base SQLite + clé de chiffrement (à conserver/sauvegarder)
       - ./downloads:/app/downloads # documents récupérés
@@ -23,6 +26,9 @@ services:
   caddy:
     image: caddy:2
     restart: unless-stopped
+    environment:
+      - DOMAIN=${DOMAIN:-portail.tarncompta.fr}
+      - ACME_EMAIL=${ACME_EMAIL:-aymeric@tarncompta.fr}
     ports:
       - '80:80'
       - '443:443'

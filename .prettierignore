@@ -7,3 +7,5 @@ app_update/
 *.log
 *.svg
 update/
+install.sh
+.env.exemple

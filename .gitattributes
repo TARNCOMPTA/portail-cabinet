@@ -12,3 +12,4 @@ update export-ignore
 eslint.config.js export-ignore
 test export-ignore
 scripts export-ignore
+installation export-ignore
