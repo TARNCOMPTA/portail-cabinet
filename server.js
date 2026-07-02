@@ -70,7 +70,7 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // --- Assets accessibles SANS connexion (page de login) ---
-for (const f of ['login.html', 'login.js', 'style.css', 'favicon.ico']) {
+for (const f of ['login.html', 'login.js', 'style.css', 'favicon.ico', 'favicon.svg']) {
   app.get('/' + f, (req, res) =>
     res.sendFile(resolve(PUBLIC_DIR, f), (e) => {
       if (e) res.status(404).end();
