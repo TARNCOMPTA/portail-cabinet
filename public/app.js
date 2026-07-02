@@ -858,6 +858,8 @@ function infoMessage(m) {
   if (md) return { date: `${md[1]}/${md[2]}/${md[3]}`, cle: `${md[3]}-${md[2]}-${md[1]}`, objet: md[4] || brut };
   return { date: m.recupere_le ? new Date(m.recupere_le + 'Z').toLocaleDateString('fr-FR') : '—', cle: String(m.recupere_le || ''), objet: brut };
 }
+let msgPage = 1;
+const MSG_PAR_PAGE = 10;
 function afficherMessages() {
   const q = norm($('#msg-search')?.value || '');
   const liste = (q ? tousMessages.filter((m) => norm(`${m.client_nom || ''} ${m.libelle || ''}`).includes(q)) : tousMessages)
@@ -865,7 +867,12 @@ function afficherMessages() {
     .sort((a, b) => b.cle.localeCompare(a.cle));
   const tb = $('#table-messages tbody');
   if (!tb) return;
+  const totalPages = Math.max(1, Math.ceil(liste.length / MSG_PAR_PAGE));
+  if (msgPage > totalPages) msgPage = totalPages;
+  if (msgPage < 1) msgPage = 1;
+  const debut = (msgPage - 1) * MSG_PAR_PAGE;
   tb.innerHTML = liste
+    .slice(debut, debut + MSG_PAR_PAGE)
     .map(
       (m) => `
     <tr data-msg="${m.id}" style="cursor:pointer;">
@@ -879,8 +886,23 @@ function afficherMessages() {
   $('#table-messages').hidden = liste.length === 0;
   const vide = $('#msg-vide');
   if (vide) vide.hidden = liste.length !== 0;
+  const pag = $('#msg-pagination');
+  if (pag)
+    renderPagination(
+      pag,
+      msgPage,
+      totalPages,
+      (p) => {
+        msgPage = p;
+        afficherMessages();
+      },
+      liste.length,
+    );
 }
-$('#msg-search')?.addEventListener('input', afficherMessages);
+$('#msg-search')?.addEventListener('input', () => {
+  msgPage = 1;
+  afficherMessages();
+});
 $('#table-messages')?.addEventListener('click', async (e) => {
   const tr = e.target.closest('tr[data-msg]');
   if (!tr) return;
