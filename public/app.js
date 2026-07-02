@@ -500,24 +500,22 @@ function remplirAnnees() {
 
 function norm(s) { return String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''); }
 
+// Liste centrale des sources agrégées (Documents, Clients, Tableau de bord).
+// Ajouter une caisse ici suffit pour qu'elle apparaisse dans toutes les vues transverses.
+const SOURCES = [
+  { key: 'impots', label: 'Impôts', clients: '/api/clients', docs: '/api/documents', runs: '/api/runs', cleId: 'siret', hrefDoc: (d) => `/api/documents/file?path=${encodeURIComponent(d.fichier)}` },
+  { key: 'urssaf', label: 'URSSAF', clients: '/api/urssaf/clients', docs: '/api/urssaf/documents', runs: '/api/urssaf/runs', cleId: 'siret', hrefDoc: (d) => `/api/urssaf/documents/${d.id}/file` },
+  { key: 'carpimko', label: 'CARPIMKO', clients: '/api/carpimko/clients', docs: '/api/carpimko/documents', runs: '/api/carpimko/runs', cleId: 'login', hrefDoc: (d) => `/api/carpimko/documents/${d.id}/file` },
+  { key: 'carmf', label: 'CARMF', clients: '/api/carmf/clients', docs: '/api/carmf/documents', runs: '/api/carmf/runs', cleId: 'login', hrefDoc: (d) => `/api/carmf/documents/${d.id}/file` },
+  { key: 'carcdsf', label: 'CARCDSF', clients: '/api/carcdsf/clients', docs: '/api/carcdsf/documents', runs: '/api/carcdsf/runs', cleId: 'login', hrefDoc: (d) => `/api/carcdsf/documents/${d.id}/file` },
+  { key: 'carpv', label: 'CARPV', clients: '/api/carpv/clients', docs: '/api/carpv/documents', runs: '/api/carpv/runs', cleId: 'login', hrefDoc: (d) => `/api/carpv/documents/${d.id}/file` },
+];
+
 async function chargerDocuments() {
   try {
-    const [imp, urs, cp, cm, cc, cv] = await Promise.all([
-      api('/api/documents').catch(() => []),
-      api('/api/urssaf/documents').catch(() => []),
-      api('/api/carpimko/documents').catch(() => []),
-      api('/api/carmf/documents').catch(() => []),
-      api('/api/carcdsf/documents').catch(() => []),
-      api('/api/carpv/documents').catch(() => []),
-    ]);
-    tousDocs = [
-      ...imp.map((d) => ({ ...d, source: 'Impôts', _href: `/api/documents/file?path=${encodeURIComponent(d.fichier)}` })),
-      ...urs.map((d) => ({ ...d, source: 'URSSAF', _href: `/api/urssaf/documents/${d.id}/file` })),
-      ...cp.map((d) => ({ ...d, source: 'CARPIMKO', _href: `/api/carpimko/documents/${d.id}/file` })),
-      ...cm.map((d) => ({ ...d, source: 'CARMF', _href: `/api/carmf/documents/${d.id}/file` })),
-      ...cc.map((d) => ({ ...d, source: 'CARCDSF', _href: `/api/carcdsf/documents/${d.id}/file` })),
-      ...cv.map((d) => ({ ...d, source: 'CARPV', _href: `/api/carpv/documents/${d.id}/file` })),
-    ].map((d) => ({ ...d, _annee: anneeDoc(d) }));
+    const listesDocs = await Promise.all(SOURCES.map((s) => api(s.docs).catch(() => [])));
+    tousDocs = SOURCES.flatMap((s, i) => listesDocs[i].map((d) => ({ ...d, source: s.label, _href: s.hrefDoc(d) })))
+      .map((d) => ({ ...d, _annee: anneeDoc(d) }));
     // Classement par année (du plus récent au plus ancien), puis par date au sein de l'année.
     tousDocs.sort((a, b) => b._annee.localeCompare(a._annee) || String(b.recupere_le || '').localeCompare(String(a.recupere_le || '')));
     remplirAnnees();
@@ -617,35 +615,23 @@ let pcFiltre = '';
 let pcPage = 1;
 const pcSelection = new Set();
 const PC_PAR_PAGE = 20;
-const PC_ENDPOINTS = { 'Impôts': '/api/clients', 'URSSAF': '/api/urssaf/clients', 'CARPIMKO': '/api/carpimko/clients', 'CARMF': '/api/carmf/clients', 'CARCDSF': '/api/carcdsf/clients', 'CARPV': '/api/carpv/clients' };
+const PC_ENDPOINTS = Object.fromEntries(SOURCES.map((s) => [s.label, s.clients]));
 function hrefDoc(source, d) {
-  if (source === 'Impôts') return `/api/documents/file?path=${encodeURIComponent(d.fichier)}`;
-  if (source === 'URSSAF') return `/api/urssaf/documents/${d.id}/file`;
-  if (source === 'CARMF') return `/api/carmf/documents/${d.id}/file`;
-  if (source === 'CARCDSF') return `/api/carcdsf/documents/${d.id}/file`;
-  if (source === 'CARPV') return `/api/carpv/documents/${d.id}/file`;
-  return `/api/carpimko/documents/${d.id}/file`;
+  const s = SOURCES.find((x) => x.label === source);
+  return s ? s.hrefDoc(d) : '#';
 }
 async function chargerParClient() {
-  let imp = [], urs = [], cp = [], cm = [], cc = [], cv = [], fus = [];
+  let listes = SOURCES.map(() => []);
+  let fus = [];
   try {
-    [imp, urs, cp, cm, cc, cv, fus] = await Promise.all([
-      api('/api/clients').catch(() => []),
-      api('/api/urssaf/clients').catch(() => []),
-      api('/api/carpimko/clients').catch(() => []),
-      api('/api/carmf/clients').catch(() => []),
-      api('/api/carcdsf/clients').catch(() => []),
-      api('/api/carpv/clients').catch(() => []),
-      api('/api/fusions').catch(() => []),
-    ]);
+    const rep = await Promise.all([...SOURCES.map((s) => api(s.clients).catch(() => [])), api('/api/fusions').catch(() => [])]);
+    listes = rep.slice(0, SOURCES.length);
+    fus = rep[SOURCES.length] || [];
   } catch { /* ignore */ }
   const units = [];
-  imp.forEach((c) => units.push({ source: 'Impôts', id: c.id, nom: c.nom, ident: c.siret || '', nb: c.nb_docs || 0 }));
-  urs.forEach((c) => units.push({ source: 'URSSAF', id: c.id, nom: c.nom, ident: c.siret || '', nb: c.nb_docs || 0 }));
-  cp.forEach((c) => units.push({ source: 'CARPIMKO', id: c.id, nom: c.nom, ident: c.login || '', nb: c.nb_docs || 0 }));
-  cm.forEach((c) => units.push({ source: 'CARMF', id: c.id, nom: c.nom, ident: c.login || '', nb: c.nb_docs || 0 }));
-  cc.forEach((c) => units.push({ source: 'CARCDSF', id: c.id, nom: c.nom, ident: c.login || '', nb: c.nb_docs || 0 }));
-  cv.forEach((c) => units.push({ source: 'CARPV', id: c.id, nom: c.nom, ident: c.login || '', nb: c.nb_docs || 0 }));
+  SOURCES.forEach((s, i) => {
+    for (const c of listes[i]) units.push({ source: s.label, id: c.id, nom: c.nom, ident: c[s.cleId] || '', nb: c.nb_docs || 0 });
+  });
   // Une fusion manuelle prime sur le regroupement par nom.
   const fusionDe = new Map();
   for (const f of fus) for (const m of f.membres) fusionDe.set(`${m.source}:${m.client_id}`, f);
@@ -824,35 +810,21 @@ $('#planif-save')?.addEventListener('click', async () => {
 // ---- Tableau de bord (indicateurs) ----------------------------------------
 async function chargerDashboard() {
   try {
-    const [clients, documents, runs, cabinets, uClients, uDocs, uRuns, uCab, cpClients, cpDocs, cpRuns, cmClients, cmDocs, cmRuns, ccClients, ccDocs, ccRuns, cvClients, cvDocs, cvRuns] = await Promise.all([
-      api('/api/clients').catch(() => []),
-      api('/api/documents').catch(() => []),
-      api('/api/runs').catch(() => []),
+    const [clientsParSrc, docsParSrc, runsParSrc, cabinets, uCab] = await Promise.all([
+      Promise.all(SOURCES.map((s) => api(s.clients).catch(() => []))),
+      Promise.all(SOURCES.map((s) => api(s.docs).catch(() => []))),
+      Promise.all(SOURCES.map((s) => api(s.runs).catch(() => []))),
       api('/api/cabinets').catch(() => []),
-      api('/api/urssaf/clients').catch(() => []),
-      api('/api/urssaf/documents').catch(() => []),
-      api('/api/urssaf/runs').catch(() => []),
       api('/api/urssaf/cabinets').catch(() => []),
-      api('/api/carpimko/clients').catch(() => []),
-      api('/api/carpimko/documents').catch(() => []),
-      api('/api/carpimko/runs').catch(() => []),
-      api('/api/carmf/clients').catch(() => []),
-      api('/api/carmf/documents').catch(() => []),
-      api('/api/carmf/runs').catch(() => []),
-      api('/api/carcdsf/clients').catch(() => []),
-      api('/api/carcdsf/documents').catch(() => []),
-      api('/api/carcdsf/runs').catch(() => []),
-      api('/api/carpv/clients').catch(() => []),
-      api('/api/carpv/documents').catch(() => []),
-      api('/api/carpv/runs').catch(() => []),
     ]);
+    const somme = (arr) => arr.reduce((n, l) => n + l.length, 0);
     const set = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
-    // Indicateurs agreges sur toutes les sources (Impots + URSSAF + CARPIMKO + CARMF + CARCDSF + CARPV).
-    set('kpi-clients', clients.length + uClients.length + cpClients.length + cmClients.length + ccClients.length + cvClients.length);
-    set('kpi-documents', documents.length + uDocs.length + cpDocs.length + cmDocs.length + ccDocs.length + cvDocs.length);
-    set('kpi-runs', runs.length + uRuns.length + cpRuns.length + cmRuns.length + ccRuns.length + cvRuns.length);
+    // Indicateurs agreges sur toutes les sources (liste SOURCES).
+    set('kpi-clients', somme(clientsParSrc));
+    set('kpi-documents', somme(docsParSrc));
+    set('kpi-runs', somme(runsParSrc));
     set('kpi-comptes', cabinets.length + uCab.length);
-    const totalDocs = documents.length + uDocs.length + cpDocs.length + cmDocs.length + ccDocs.length + cvDocs.length;
+    const totalDocs = somme(docsParSrc);
     const nav = document.getElementById('nav-docs-count'); if (nav) nav.textContent = totalDocs || '';
     const d = document.getElementById('dash-date');
     if (d) d.textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
