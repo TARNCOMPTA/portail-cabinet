@@ -16,6 +16,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './urssaf-db.js';
+import { launchArgs } from './navigateur.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'urssaf');
@@ -297,7 +298,7 @@ export async function listerClients(cabinet, opts = {}) {
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
   if (!cabinet?.login || !cabinet?.password) throw new Error('Compte cabinet URSSAF non configure.');
 
-  const browser = await chromium.launch({ headless, args: process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [] });
+  const browser = await chromium.launch({ headless, args: launchArgs() });
   const context = await browser.newContext({ userAgent: UA, viewport: { width: 1600, height: 1000 }, locale: 'fr-FR' });
   const page = await context.newPage();
   page.setDefaultTimeout(navTimeout);
@@ -660,7 +661,7 @@ export async function scrapeClient(client, opts = {}) {
     addRunSafe(client.id, { statut: 'echec', message: 'Compte cabinet URSSAF non configure (Reglages).', nb_docs: 0 });
     return { ok: false, error: 'Compte cabinet URSSAF manquant. Renseigne-le dans les reglages.' };
   }
-  const browser = await chromium.launch({ headless, args: process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [] });
+  const browser = await chromium.launch({ headless, args: launchArgs() });
   const context = await browser.newContext({ acceptDownloads: true, userAgent: UA, viewport: { width: 1600, height: 1000 }, locale: 'fr-FR' });
   const page = await context.newPage();
   page.setDefaultTimeout(navTimeout);
@@ -696,7 +697,7 @@ export async function scrapeAll(clients, opts = {}) {
   const resume = { total: clients.length, traites: 0, avecDocs: 0, docs: 0, echecs: 0 };
   if (!cabinet?.login || !cabinet?.password) return { ok: false, error: 'Compte cabinet URSSAF manquant.', resume };
 
-  const browser = await chromium.launch({ headless, args: process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [] });
+  const browser = await chromium.launch({ headless, args: launchArgs() });
   const context = await browser.newContext({ acceptDownloads: true, userAgent: UA, viewport: { width: 1600, height: 1000 }, locale: 'fr-FR' });
   const page = await context.newPage();
   page.setDefaultTimeout(navTimeout);

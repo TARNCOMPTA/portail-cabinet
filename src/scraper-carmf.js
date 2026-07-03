@@ -10,6 +10,7 @@ import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun } from './carmf-db.js';
+import { launchArgs } from './navigateur.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'carmf');
@@ -28,9 +29,6 @@ function addRunSafe(clientId, run) {
   } catch (e) {
     console.warn(`(historique CARMF ${clientId}: ${e.message})`);
   }
-}
-function launchArgs() {
-  return process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
 }
 
 /**

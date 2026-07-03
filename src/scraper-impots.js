@@ -15,6 +15,7 @@ import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './db.js';
+import { launchArgs } from './navigateur.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads');
@@ -430,10 +431,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
 // hors de vue, mais avec la session intacte (impots refuse une session headless).
 async function ouvrirSession() {
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 60000);
-  // Sur serveur Linux (Docker, root), Chromium exige --no-sandbox ; --disable-dev-shm-usage evite
-  // les plantages lies a la petite taille de /dev/shm en conteneur.
-  const args = process.platform === 'linux' ? ['--no-sandbox', '--disable-dev-shm-usage'] : [];
-  const browser = await chromium.launch({ headless: false, args }); // visible (captcha manuel)
+  const browser = await chromium.launch({ headless: false, args: launchArgs() }); // visible (captcha manuel)
   const context = await browser.newContext({ acceptDownloads: true, locale: 'fr-FR', viewport: { width: 1500, height: 950 } });
   const page = await context.newPage();
   page.setDefaultTimeout(navTimeout);

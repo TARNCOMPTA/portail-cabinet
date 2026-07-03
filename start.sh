@@ -50,5 +50,7 @@ x11vnc -display :99 -nopw -forever -shared -noxdamage -rfbport 5900 -localhost -
 # 3) Pont noVNC (websocket) + fichiers web noVNC sur le port 6080
 websockify --web=/usr/share/novnc 6080 localhost:5900 >/tmp/websockify.log 2>&1 &
 
-# 4) Application (au premier plan : c'est le processus principal du conteneur)
-exec node --disable-warning=ExperimentalWarning server.js
+# 4) Application (au premier plan : c'est le processus principal du conteneur).
+# --max-old-space-size : plafonne le tas V8 (512 Mo largement suffisant) — sans lui,
+# V8 garde durablement la memoire des pics (gros lots, zips) et le RSS gonfle.
+exec node --disable-warning=ExperimentalWarning --max-old-space-size=512 server.js
