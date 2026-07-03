@@ -231,12 +231,22 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
       if (popup) await popup.close().catch(() => {});
       return { docs, existants };
     }
+    // Comparaison IMMEDIATE des numeros avec la base : si aucun nouveau, on passe
+    // au dossier suivant sans derouler la liste (les connus ne sont jamais rouverts).
+    const nouveauxEchanges = echanges.filter((e) => !getDocumentByEventid(client.id, `MSG_${e.num}`));
+    if (!nouveauxEchanges.length) {
+      existants += echanges.length;
+      log(`Messagerie : ${echanges.length} échange(s), aucun nouveau — passage au suivant.`);
+      if (popup) await popup.close().catch(() => {});
+      return { docs, existants };
+    }
+    existants += echanges.length - nouveauxEchanges.length;
     // ordre chronologique (date de création croissante)
     const cle = (d) => (d || '').split('/').reverse().join('');
-    echanges.sort((a, b) => cle(a.date).localeCompare(cle(b.date)));
-    log(`Messagerie : ${echanges.length} échange(s).`);
+    nouveauxEchanges.sort((a, b) => cle(a.date).localeCompare(cle(b.date)));
+    log(`Messagerie : ${echanges.length} échange(s), ${nouveauxEchanges.length} nouveau(x).`);
 
-    for (const e of echanges) {
+    for (const e of nouveauxEchanges) {
       const base = sanitize(`${(e.date || '').replace(/\//g, '-')}_${e.num}_${e.objet}`).slice(0, 110);
       const dest = resolve(dir, `${base}.txt`);
       const eid = `MSG_${e.num}`;
