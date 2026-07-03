@@ -226,19 +226,22 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
         continue;
       }
       try {
+        // Texte de la page AVANT ouverture : sert au repli « diff » (le texte apparu
+        // apres le clic est le contenu du message, quel que soit le markup gaia2).
+        const avantClic = await gaia.evaluate(() => document.body.innerText || '').catch(() => '');
         await gaia
           .locator(`[id="${e.id}"]`)
           .first()
           .click({ timeout: navTimeout })
           .catch(() => {});
         await gaia.waitForTimeout(1400);
-        // Texte du message : plus petit element contenant "Objet :" + "De :/A :"
-        // (repli : "Objet :" seul — certains messages tres courts n'ont pas le reste).
+        // Extraction en cascade : 1) bloc "Objet :" + "De :/A :" ; 2) "Objet :" seul ;
+        // 3) ligne de detail depliee PrimeFaces (row expansion) ; 4) dialogue visible.
         const extraireTexte = () =>
           gaia
             .evaluate(() => {
-              const nettoyer = (el) =>
-                el.innerText
+              const nettoyer = (t) =>
+                String(t || '')
                   .replace(/[ \t]+\n/g, '\n')
                   .replace(/\n{3,}/g, '\n\n')
                   .trim();
@@ -260,7 +263,20 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
                   }
                 }
               }
-              return best ? nettoyer(best) : '';
+              if (best) return nettoyer(best.innerText);
+              let detail = '';
+              for (const tr of document.querySelectorAll('tr.ui-expanded-row-content')) {
+                const t = (tr.innerText || '').trim();
+                if (t.length > detail.length) detail = t;
+              }
+              if (detail.length > 10) return nettoyer(detail);
+              for (const d of document.querySelectorAll('.ui-dialog')) {
+                if (d.offsetParent !== null) {
+                  const t = (d.querySelector('.ui-dialog-content')?.innerText || '').trim();
+                  if (t.length > 10) return nettoyer(t);
+                }
+              }
+              return '';
             })
             .catch(() => '');
         let texte = await extraireTexte();
@@ -268,6 +284,20 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
           // L'AJAX PrimeFaces peut etre lent a deplier le message : seconde chance.
           await gaia.waitForTimeout(2000);
           texte = await extraireTexte();
+        }
+        if (!texte && avantClic) {
+          // Dernier repli : les lignes APPARUES depuis le clic = contenu du message.
+          const apresClic = await gaia.evaluate(() => document.body.innerText || '').catch(() => '');
+          const connues = new Set(avantClic.split('\n').map((l) => l.trim()));
+          const nouvelles = apresClic
+            .split('\n')
+            .map((l) => l.trim())
+            .filter((l) => l && !connues.has(l));
+          if (nouvelles.join('').length > 10) texte = nouvelles.slice(0, 200).join('\n');
+        }
+        if (!texte) {
+          // Diagnostic : capture de l'ecran pour comprendre l'affichage de ce type de message.
+          await gaia.screenshot({ path: resolve(dir, `_diag_msg_${e.num}.png`), fullPage: true }).catch(() => {});
         }
         // Filet de securite : MEME sans texte extrait, on enregistre le message (sinon
         // il n'apparait pas dans l'onglet Messages alors que ses PJ sont recuperees).
