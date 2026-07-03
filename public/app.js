@@ -386,7 +386,6 @@ async function remplir(id) {
   form.id.value = c.id;
   form.nom.value = c.nom;
   form.siret.value = c.siret;
-  form.dossier.value = c.dossier || '';
   remplirSelectCabinets();
   if (c.cabinet_id) form.cabinet_id.value = c.cabinet_id;
   $('#btn-submit').textContent = 'Mettre à jour';
@@ -406,7 +405,6 @@ form.addEventListener('submit', async (e) => {
   const payload = {
     nom: form.nom.value.trim(),
     siret: form.siret.value.replace(/\s+/g, ''),
-    dossier: form.dossier.value.trim(),
     cabinet_id: form.cabinet_id.value ? Number(form.cabinet_id.value) : null,
   };
   if (!/^\d{9,14}$/.test(payload.siret)) return toast('SIREN invalide (9 chiffres — ou un SIRET, on garde le SIREN).', 'err');
@@ -427,24 +425,6 @@ form.addEventListener('submit', async (e) => {
   }
 });
 
-// ---- Dossier de destination + sélecteur natif ----
-async function choisirDossier() {
-  const r = await api('/api/pick-folder', { method: 'POST' });
-  return r.folder || null;
-}
-document.addEventListener('click', async (e) => {
-  const btn = e.target.closest('button[data-pick]');
-  if (!btn) return;
-  try {
-    const f = await choisirDossier();
-    if (f) {
-      const champ = form[btn.dataset.pick];
-      if (champ) champ.value = f;
-    }
-  } catch (err) {
-    toast(err.message, 'err');
-  }
-});
 // ---- Tout récupérer (une session par cabinet) ----
 $('#btn-scrape-all').addEventListener('click', async () => {
   if (!confirm('Lancer la récupération pour TOUS les clients ?\n(Une connexion par cabinet, puis enchaînement de ses clients.)')) return;

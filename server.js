@@ -4,7 +4,6 @@ import JSZip from 'jszip';
 import { dirname, resolve, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
-import { spawn } from 'node:child_process';
 import {
   listClients,
   getClient,
@@ -421,36 +420,6 @@ app.get('/api/settings', (req, res) => res.json({ destinationFolder: getSetting(
 app.post('/api/settings', (req, res) => {
   if (typeof req.body?.destinationFolder === 'string') setSetting('destination_folder', req.body.destinationFolder.trim());
   res.json({ destinationFolder: getSetting('destination_folder', '') });
-});
-
-// Selecteur de dossier natif Windows
-app.post('/api/pick-folder', (req, res) => {
-  if (process.platform !== 'win32') {
-    return res.json({
-      folder: null,
-      indisponible: true,
-      message: 'Sélecteur natif indisponible sur le serveur : saisis le chemin à la main (ou laisse vide pour le dossier interne).',
-    });
-  }
-  const script =
-    'Add-Type -AssemblyName System.Windows.Forms;' +
-    '$f = New-Object System.Windows.Forms.FolderBrowserDialog;' +
-    '$f.Description = "Dossier de destination des appels de cotisations";' +
-    '$top = New-Object System.Windows.Forms.Form; $top.TopMost = $true; $top.ShowInTaskbar = $false;' +
-    'if ($f.ShowDialog($top) -eq [System.Windows.Forms.DialogResult]::OK) { [Console]::Out.Write($f.SelectedPath) }';
-  const ps = spawn('powershell.exe', ['-NoProfile', '-STA', '-NonInteractive', '-Command', script], { windowsHide: true });
-  let out = '';
-  const t = setTimeout(() => ps.kill(), 120000);
-  ps.stdout.on('data', (d) => (out += d));
-  ps.on('close', () => {
-    clearTimeout(t);
-    const p = out.trim();
-    res.json(p ? { folder: p } : { folder: null, annule: true });
-  });
-  ps.on('error', (e) => {
-    clearTimeout(t);
-    res.status(500).json({ error: e.message });
-  });
 });
 
 // ---- Recuperation ---------------------------------------------------------

@@ -124,7 +124,6 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
       login: form.login.value.trim(),
       password: form.password.value,
       notes: form.notes.value.trim(),
-      dossier: form.dossier.value.trim(),
     };
     if (profession) payload.profession = form.profession.value;
     if (!payload.nom || !payload.login) return toast('Nom et identifiant requis.', 'err');
@@ -169,7 +168,6 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
     form.login.value = c.login;
     if (profession) form.profession.value = c.profession || 'cd';
     form.notes.value = c.notes || '';
-    form.dossier.value = c.dossier || '';
     form.password.value = '';
     form.password.required = false;
     if (el('form-titre')) el('form-titre').textContent = `Modifier — ${c.nom}`;
