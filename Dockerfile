@@ -4,8 +4,10 @@ FROM node:24-bookworm
 # Ecran virtuel (Xvfb) + serveur VNC (x11vnc) + pont noVNC (novnc/websockify) :
 # permet de VOIR et piloter a distance le navigateur du robot (saisie de la captcha).
 # xdpyinfo (paquet x11-utils) sert a attendre que l'ecran soit pret au demarrage.
+# numlockx : active le verrouillage numerique de l'ecran virtuel (sinon le pave
+# numerique arrive comme fleches/Debut/Fin dans noVNC lors de la saisie captcha).
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    xvfb x11vnc x11-utils novnc websockify \
+    xvfb x11vnc x11-utils novnc websockify numlockx \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

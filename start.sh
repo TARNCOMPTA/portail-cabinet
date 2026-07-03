@@ -29,6 +29,18 @@ for i in $(seq 1 20); do
   sleep 0.3
 done
 
+# 1bis) Verrouillage numerique de l'ecran virtuel : sans lui, le pave numerique
+# tape via noVNC envoie fleches/Debut/Fin au lieu des chiffres (saisie captcha).
+# Installe a la volee si l'image ne l'a pas encore (maj en ligne sans rebuild).
+if ! command -v numlockx >/dev/null 2>&1; then
+  echo "[numlock] installation de numlockx..."
+  apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq numlockx >/dev/null 2>&1 || echo "[numlock] installation impossible (pave numerique inactif dans noVNC)"
+fi
+if command -v numlockx >/dev/null 2>&1; then
+  DISPLAY=:99 numlockx on || true
+  echo "[numlock] verrouillage numerique actif sur :99."
+fi
+
 # 2) Serveur VNC sur l'ecran :99 (accessible uniquement en local, expose via noVNC/Caddy)
 # -noxdamage : sous Xvfb l'extension XDAMAGE ne remonte pas les changements -> x11vnc
 #   resterait bloque sur l'image grise initiale (fenetre Chromium jamais affichee dans noVNC).
