@@ -1,6 +1,6 @@
 {
-  "version": "1.3.4",
-  "notes": "Filtre par état sur les listes clients de toutes les sources : succès, échec, bloqué (mot de passe), jamais récupéré.",
+  "version": "1.3.5",
+  "notes": "Consommation mémoire réduite : navigateurs de récupération allégés (GPU/extensions/audio désactivés, tas JS plafonné) et mémoire du serveur plafonnée.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "0b746d0ffe1efc2c455be3e8ee985bdb83d9ab0cf91cb6c267304b3428e84dfc"
+  "sha256": "cce41de280d2b4e4ce655d1a994054864da9d27c62c24111c6369c989128d6dc"
 }
