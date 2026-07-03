@@ -1,6 +1,6 @@
 {
-  "version": "1.4.1",
-  "notes": "Liste noire : un client supprimé ne réapparaît plus à la synchronisation (Impôts et URSSAF) — section dédiée avec bouton Réintégrer. Correctif : fenêtre captcha potentiellement noire.",
+  "version": "1.4.2",
+  "notes": "Récupération impôts plus rapide : les dossiers sans habilitation messagerie et sans aucune demande sont détectés immédiatement et passés.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "cc4dd3f9fa745305ee8a4f58b8ac16de135da4ddfbec06d301c383aba5f8b59a"
+  "sha256": "8f291db8c778bd683b6276685289ab62340d2026b959ea630abd2e0476cc14f8"
 }
