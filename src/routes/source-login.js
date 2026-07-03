@@ -6,7 +6,7 @@
 import express from 'express';
 import { existsSync } from 'node:fs';
 import { basename } from 'node:path';
-import { filtrerReprise, REPRISE_HEURES } from '../reprise.js';
+import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from '../reprise.js';
 
 /**
  * @param {string} source  identifiant court (ex 'carmf') = prefixe d'URL et de verrou.
@@ -100,11 +100,20 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     demarrerSuivi(aTraiter.length);
     if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
     if (reprise.ignores) progLog(`Reprise : ${reprise.ignores} client(s) ${SRC} déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
+    // Disjoncteur : N echecs consecutifs = site de la caisse indisponible -> arret du lot
+    // (la reprise repartira du premier client non recupere au prochain lancement).
+    const disj = creerDisjoncteur();
     (async () => {
       try {
         for (const c of aTraiter) {
           if (ctx.doitArreter()) {
             progLog('Arrêt demandé.');
+            break;
+          }
+          if (disj.declenche()) {
+            progLog(
+              `⚠ ${ECHECS_CONSECUTIFS_MAX} échecs consécutifs : le site ${SRC} semble indisponible — arrêt du lot. La prochaine récupération reprendra au premier client non récupéré.`,
+            );
             break;
           }
           const key = `${source}:${c.id}`;
@@ -118,6 +127,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
             const creds = db.getClientCredentials(c.id);
             if (creds) {
               const rr = await scraper(creds, { ...extra, onLog: progLog });
+              disj.noter(!!rr?.ok);
               progression.resultats.push({
                 nom: c.nom,
                 ok: !!rr?.ok,
@@ -126,6 +136,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
               });
             }
           } catch (e) {
+            disj.noter(false);
             progLog(`[${c.nom}] ERREUR : ${e.message}`);
             progression.resultats.push({ nom: c.nom, ok: false, message: e.message, nb_docs: 0 });
           } finally {

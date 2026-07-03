@@ -17,3 +17,21 @@ export function filtrerReprise(clients) {
   const aFaire = [...restants].sort((a, b) => String(a.dernier_run || '').localeCompare(String(b.dernier_run || '')));
   return { aFaire, ignores: clients.length - restants.length };
 }
+
+// Disjoncteur de lot : quand N clients échouent D'AFFILÉE, le site source est
+// très probablement indisponible (panne, session déconnectée) — inutile (et
+// contre-productif) d'enchaîner les centaines de clients restants. Le lot
+// s'arrête ; la reprise ci-dessus repartira du premier dossier non récupéré
+// au prochain lancement. Un succès remet le compteur à zéro.
+export const ECHECS_CONSECUTIFS_MAX = 5;
+export function creerDisjoncteur(seuil = ECHECS_CONSECUTIFS_MAX) {
+  let echecs = 0;
+  return {
+    noter(ok) {
+      echecs = ok ? 0 : echecs + 1;
+    },
+    declenche() {
+      return echecs >= seuil;
+    },
+  };
+}

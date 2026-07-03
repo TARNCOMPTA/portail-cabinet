@@ -38,7 +38,7 @@ import {
   purgerSessionsExpirees,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
-import { filtrerReprise, REPRISE_HEURES } from './src/reprise.js';
+import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
 import * as carpimko from './src/carpimko-db.js';
 import { scrapeClient as scrapeClientCarpimko } from './src/scraper-carpimko.js';
 import * as carmf from './src/carmf-db.js';
@@ -490,8 +490,12 @@ async function lancer(clientId, res, messagerie = true) {
 app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), res, req.body?.messagerie !== false));
 
 // Traite un lot de clients : groupe par cabinet, UNE session par cabinet.
+// Disjoncteur : N echecs consecutifs = site impots indisponible/session perdue -> arret
+// du lot (la reprise repartira du premier dossier non recupere au prochain lancement).
 async function lancerLot(clients, messagerie = true) {
   const baseFolder = getSetting('destination_folder');
+  const disj = creerDisjoncteur();
+  let arretAuto = false;
   const parCabinet = new Map();
   for (const c of clients) {
     if (!c.cabinet_id) continue;
@@ -499,13 +503,13 @@ async function lancerLot(clients, messagerie = true) {
     parCabinet.get(c.cabinet_id).push(c);
   }
   for (const [cabinetId, sousClients] of parCabinet) {
-    if (stopAll) break;
+    if (stopAll || arretAuto) break;
     const cab = getCabinetFull(cabinetId);
     if (!cab) continue;
     await scrapeAll(sousClients, {
       cabinet: cab,
       baseFolder,
-      shouldStop: () => stopAll,
+      shouldStop: () => stopAll || arretAuto,
       messagerie,
       onLog: progLog,
       onClient: (nom) => {
@@ -514,6 +518,13 @@ async function lancerLot(clients, messagerie = true) {
       onResult: (r) => {
         progression.resultats.push(r);
         progression.fait++;
+        disj.noter(!!r.ok);
+        if (disj.declenche() && !arretAuto) {
+          arretAuto = true;
+          progLog(
+            `⚠ ${ECHECS_CONSECUTIFS_MAX} échecs consécutifs : le site des impôts semble indisponible ou la session déconnectée — arrêt du lot. La prochaine récupération reprendra au premier dossier non récupéré.`,
+          );
+        }
       },
     });
   }
@@ -811,16 +822,18 @@ function lancerUrssafTous() {
   stopAll = false;
   demarrerSuivi(total);
   if (ignores) progLog(`Reprise : ${ignores} client(s) URSSAF déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
+  const disj = creerDisjoncteur();
+  let arretAuto = false;
   (async () => {
     try {
       for (const [cabinetId, sousClients] of parCabinet) {
-        if (stopAll) break;
+        if (stopAll || arretAuto) break;
         const cab = urssafDb.getCabinetFull(cabinetId);
         if (!cab) continue;
         await scrapeAllUrssaf(sousClients, {
           cabinet: cab,
           baseFolder: getSetting('destination_folder'),
-          shouldStop: () => stopAll,
+          shouldStop: () => stopAll || arretAuto,
           onLog: progLog,
           onClient: (nom) => {
             progression.courant = nom;
@@ -828,6 +841,13 @@ function lancerUrssafTous() {
           onResult: (r) => {
             progression.resultats.push(r);
             progression.fait++;
+            disj.noter(!!r.ok);
+            if (disj.declenche() && !arretAuto) {
+              arretAuto = true;
+              progLog(
+                `⚠ ${ECHECS_CONSECUTIFS_MAX} échecs consécutifs : le site URSSAF semble indisponible ou la session déconnectée — arrêt du lot. La prochaine récupération reprendra au premier dossier non récupéré.`,
+              );
+            }
           },
         });
       }

@@ -1,7 +1,7 @@
 // Tests de la reprise des récupérations interrompues (src/reprise.js).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { filtrerReprise, REPRISE_HEURES } from '../src/reprise.js';
+import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from '../src/reprise.js';
 
 // dernier_run au format SQLite (UTC) : « AAAA-MM-JJ HH:MM:SS ».
 const ilYa = (heures) => new Date(Date.now() - heures * 3600 * 1000).toISOString().slice(0, 19).replace('T', ' ');
@@ -45,4 +45,24 @@ test('filtrerReprise : liste vide', () => {
   const { aFaire, ignores } = filtrerReprise([]);
   assert.deepEqual(aFaire, []);
   assert.equal(ignores, 0);
+});
+
+test('disjoncteur : se déclenche après N échecs consécutifs', () => {
+  const d = creerDisjoncteur();
+  for (let i = 0; i < ECHECS_CONSECUTIFS_MAX - 1; i++) d.noter(false);
+  assert.equal(d.declenche(), false, 'pas encore au seuil');
+  d.noter(false);
+  assert.equal(d.declenche(), true, 'seuil atteint');
+});
+
+test('disjoncteur : un succès remet le compteur à zéro', () => {
+  const d = creerDisjoncteur(3);
+  d.noter(false);
+  d.noter(false);
+  d.noter(true);
+  d.noter(false);
+  d.noter(false);
+  assert.equal(d.declenche(), false, 'la série a été interrompue par un succès');
+  d.noter(false);
+  assert.equal(d.declenche(), true);
 });
