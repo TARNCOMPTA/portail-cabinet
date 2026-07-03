@@ -1,6 +1,6 @@
 {
-  "version": "1.3.5",
-  "notes": "Consommation mémoire réduite : navigateurs de récupération allégés (GPU/extensions/audio désactivés, tas JS plafonné) et mémoire du serveur plafonnée.",
+  "version": "1.4.0",
+  "notes": "La récupération des impôts se découpe en trois phases au choix : avis CFE, taxe foncière, messagerie — trois cases à cocher sur l'onglet Impôts pour des passages plus courts.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "cce41de280d2b4e4ce655d1a994054864da9d27c62c24111c6369c989128d6dc"
+  "sha256": "e308c5a77d081d2eb6047eaa6c092f9caef8745c806cc81eaa4ef0d2636e0852"
 }
