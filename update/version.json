@@ -1,6 +1,6 @@
 {
-  "version": "1.3.3",
-  "notes": "L'historique des récupérations est présenté comme le panneau « récupération en cours » : une carte par récupération avec barre de réussite, badges succès/échecs et détail des échecs.",
+  "version": "1.3.4",
+  "notes": "Filtre par état sur les listes clients de toutes les sources : succès, échec, bloqué (mot de passe), jamais récupéré.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "2ebd9dbf95897adc478befd31e5043b3abd260b263826752638d64a7d50cd6aa"
+  "sha256": "0b746d0ffe1efc2c455be3e8ee985bdb83d9ab0cf91cb6c267304b3428e84dfc"
 }
