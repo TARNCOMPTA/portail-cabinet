@@ -576,11 +576,12 @@ app.delete('/api/fusions/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// ---- Planification des recuperations automatiques (par organisme) ---------
+// ---- Planification des recuperations automatiques (plusieurs horaires/organisme) ----
 app.get('/api/planifications', (req, res) => res.json(planif.listPlanifs()));
-app.put('/api/planifications/:source', (req, res) => {
+// L'interface envoie l'etat COMPLET du tableau (ajouts/modifs/suppressions en une fois).
+app.put('/api/planifications', (req, res) => {
   try {
-    res.json(planif.setPlanif(req.params.source, req.body || {}));
+    res.json(planif.setToutesPlanifs(req.body?.lignes));
   } catch (e) {
     res.status(400).json({ error: e.message });
   }
@@ -874,8 +875,11 @@ if (
       const heure = Number(p.hour);
       for (const pl of planif.listPlanifs()) {
         if (!pl.actif || !LANCEURS[pl.source]) continue;
-        if (JOURS_EN[pl.jour] === p.weekday && heure === pl.heure && dernier[pl.source] !== jourCle) {
-          dernier[pl.source] = jourCle; // une seule fois par jour
+        // Plusieurs horaires par organisme : anti-redeclenchement par LIGNE (cle stable
+        // source+jour+heure, valable meme si la planification est re-enregistree).
+        const cle = `${pl.source}:${pl.jour}:${pl.heure}`;
+        if (JOURS_EN[pl.jour] === p.weekday && heure === pl.heure && dernier[cle] !== jourCle) {
+          dernier[cle] = jourCle; // une seule fois par jour
           console.log(`\n  [planif] Récupération ${pl.source.toUpperCase()} automatique — ${jourCle}`);
           progLog(`Récupération ${pl.source.toUpperCase()} automatique (planifiée).`);
           LANCEURS[pl.source]();
