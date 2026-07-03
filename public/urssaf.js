@@ -4,6 +4,7 @@
   let clients = [];
   let filtre = '';
   let filtreCab = '';
+  let filtreEtat = '';
   let page = 1;
   const PAR_PAGE = 20;
 
@@ -143,6 +144,7 @@
     const q = filtre.toLowerCase();
     let liste = clients;
     if (filtreCab) liste = liste.filter((c) => String(c.cabinet_id) === filtreCab);
+    if (filtreEtat) liste = liste.filter((c) => filtreEtatClient(c, filtreEtat));
     if (q) liste = liste.filter((c) => `${c.nom} ${c.siret} ${c.cabinet_libelle || ''}`.toLowerCase().includes(q));
     const totalPages = Math.max(1, Math.ceil(liste.length / PAR_PAGE));
     if (page > totalPages) page = totalPages;
@@ -352,6 +354,11 @@
   });
   $('#u-filtre-cabinet').addEventListener('change', (e) => {
     filtreCab = e.target.value;
+    page = 1;
+    rendre();
+  });
+  $('#u-filtre-etat')?.addEventListener('change', (e) => {
+    filtreEtat = e.target.value;
     page = 1;
     rendre();
   });

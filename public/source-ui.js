@@ -5,6 +5,7 @@
 function initSourceUI({ prefix: P, source, label, profession = false, tousDocuments = false }) {
   let clients = [];
   let filtre = '';
+  let filtreEtat = '';
   let page = 1;
   const PAR_PAGE = 20;
   const PRO = { cd: 'Chirurgien-dentiste', sf: 'Sage-femme' };
@@ -45,9 +46,10 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
   }
   function rendre() {
     const q = filtre.toLowerCase();
-    const liste = q
+    let liste = q
       ? clients.filter((c) => `${c.nom} ${c.login} ${profession ? PRO[c.profession] || '' : ''} ${c.notes || ''}`.toLowerCase().includes(q))
       : clients;
+    if (filtreEtat) liste = liste.filter((c) => filtreEtatClient(c, filtreEtat));
     const totalPages = Math.max(1, Math.ceil(liste.length / PAR_PAGE));
     if (page > totalPages) page = totalPages;
     if (page < 1) page = 1;
@@ -287,6 +289,11 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
 
   el('recherche')?.addEventListener('input', (e) => {
     filtre = e.target.value.trim();
+    page = 1;
+    rendre();
+  });
+  el('filtre-etat')?.addEventListener('change', (e) => {
+    filtreEtat = e.target.value;
     page = 1;
     rendre();
   });

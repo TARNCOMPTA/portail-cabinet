@@ -289,6 +289,13 @@
               <select id="clients-filtre-cabinet">
                 <option value="">Tous les comptes</option>
               </select>
+              <select id="clients-filtre-etat" title="Filtrer par état de la dernière récupération">
+                <option value="">Tous les états</option>
+                <option value="succes">✔ Succès</option>
+                <option value="echec">✘ Échec</option>
+                <option value="bloque">🔒 Bloqué (mot de passe)</option>
+                <option value="jamais">Jamais récupéré</option>
+              </select>
               <button type="button" class="btn" id="btn-export-csv"><i class="ph ph-download-simple"></i> Exporter (CSV)</button>
               <button type="button" class="btn primary" id="btn-scrape-selection" disabled>Récupérer la sélection (0)</button>
               <span class="toolbar-spacer"></span>
@@ -354,6 +361,13 @@
               <input type="search" id="u-recherche" placeholder="🔍 Rechercher (nom, SIRET, compte)…" />
               <select id="u-filtre-cabinet">
                 <option value="">Tous les comptes</option>
+              </select>
+              <select id="u-filtre-etat" title="Filtrer par état de la dernière récupération">
+                <option value="">Tous les états</option>
+                <option value="succes">✔ Succès</option>
+                <option value="echec">✘ Échec</option>
+                <option value="bloque">🔒 Bloqué (mot de passe)</option>
+                <option value="jamais">Jamais récupéré</option>
               </select>
             </div>
             <table id="table-urssaf-clients">
@@ -503,6 +517,13 @@
             </div>
             <div class="toolbar" style="padding: 0 22px">
               <input type="search" id="cp-recherche" placeholder="🔍 Rechercher (nom, n° dossier, notes)…" />
+              <select id="cp-filtre-etat" title="Filtrer par état de la dernière récupération">
+                <option value="">Tous les états</option>
+                <option value="succes">✔ Succès</option>
+                <option value="echec">✘ Échec</option>
+                <option value="bloque">🔒 Bloqué (mot de passe)</option>
+                <option value="jamais">Jamais récupéré</option>
+              </select>
             </div>
             <table id="table-carpimko-clients">
               <thead>
@@ -591,6 +612,13 @@
             </div>
             <div class="toolbar" style="padding: 0 22px">
               <input type="search" id="cm-recherche" placeholder="🔍 Rechercher (nom, identifiant, notes)…" />
+              <select id="cm-filtre-etat" title="Filtrer par état de la dernière récupération">
+                <option value="">Tous les états</option>
+                <option value="succes">✔ Succès</option>
+                <option value="echec">✘ Échec</option>
+                <option value="bloque">🔒 Bloqué (mot de passe)</option>
+                <option value="jamais">Jamais récupéré</option>
+              </select>
             </div>
             <table id="table-carmf-clients">
               <thead>
@@ -686,6 +714,13 @@
             </div>
             <div class="toolbar" style="padding: 0 22px">
               <input type="search" id="cc-recherche" placeholder="🔍 Rechercher (nom, profession, identifiant, notes)…" />
+              <select id="cc-filtre-etat" title="Filtrer par état de la dernière récupération">
+                <option value="">Tous les états</option>
+                <option value="succes">✔ Succès</option>
+                <option value="echec">✘ Échec</option>
+                <option value="bloque">🔒 Bloqué (mot de passe)</option>
+                <option value="jamais">Jamais récupéré</option>
+              </select>
             </div>
             <table id="table-carcdsf-clients">
               <thead>
@@ -773,6 +808,13 @@
             </div>
             <div class="toolbar" style="padding: 0 22px">
               <input type="search" id="cv-recherche" placeholder="🔍 Rechercher (nom, identifiant, notes)…" />
+              <select id="cv-filtre-etat" title="Filtrer par état de la dernière récupération">
+                <option value="">Tous les états</option>
+                <option value="succes">✔ Succès</option>
+                <option value="echec">✘ Échec</option>
+                <option value="bloque">🔒 Bloqué (mot de passe)</option>
+                <option value="jamais">Jamais récupéré</option>
+              </select>
             </div>
             <table id="table-carpv-clients">
               <thead>

@@ -168,12 +168,25 @@ let clientsPage = 1;
 let clientsTri = { col: 'nom', dir: 1 };
 const selection = new Set();
 
+// État de la dernière récupération d'un client — helper GLOBAL, utilisé par les
+// filtres « état » des listes clients de toutes les sources (source-ui.js, urssaf.js).
+function filtreEtatClient(c, etat) {
+  if (!etat) return true;
+  if (etat === 'succes') return c.dernier_statut === 'succes';
+  if (etat === 'echec') return c.dernier_statut === 'echec';
+  if (etat === 'bloque') return c.dernier_statut === 'echec_mdp' || !!c.verrouille;
+  if (etat === 'jamais') return !c.dernier_statut;
+  return true;
+}
+
 // Renvoie la liste filtree + triee (sans pagination).
 function clientsFiltres() {
   const q = ($('#clients-recherche').value || '').toLowerCase().trim();
   const cabFiltre = $('#clients-filtre-cabinet').value;
+  const etat = $('#clients-filtre-etat')?.value || '';
   let liste = clientsAll.slice();
   if (cabFiltre) liste = liste.filter((c) => String(c.cabinet_id) === cabFiltre);
+  if (etat) liste = liste.filter((c) => filtreEtatClient(c, etat));
   if (q) liste = liste.filter((c) => `${c.nom} ${c.siret} ${c.cabinet_libelle || ''}`.toLowerCase().includes(q));
   const { col, dir } = clientsTri;
   const val = (c) =>
@@ -275,6 +288,10 @@ $('#clients-recherche').addEventListener('input', () => {
   renderClients();
 });
 $('#clients-filtre-cabinet').addEventListener('change', () => {
+  clientsPage = 1;
+  renderClients();
+});
+$('#clients-filtre-etat')?.addEventListener('change', () => {
   clientsPage = 1;
   renderClients();
 });
