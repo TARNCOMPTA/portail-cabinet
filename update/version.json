@@ -1,6 +1,6 @@
 {
-  "version": "1.4.2",
-  "notes": "Récupération impôts plus rapide : les dossiers sans habilitation messagerie et sans aucune demande sont détectés immédiatement et passés.",
+  "version": "1.4.3",
+  "notes": "Messagerie impôts encore plus rapide : dès l'affichage de la liste, les numéros de demandes sont comparés à la base — aucun nouveau message = passage immédiat au dossier suivant.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "8f291db8c778bd683b6276685289ab62340d2026b959ea630abd2e0476cc14f8"
+  "sha256": "be441893069e7dde0834d110d003b4d212a24172c5dcb2d11f57adca6a51d92b"
 }
