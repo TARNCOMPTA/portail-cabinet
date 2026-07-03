@@ -168,33 +168,54 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
       const b = page.locator(`#siren${i}`);
       if (await b.count()) await b.fill(siren[i] || '');
     }
-    let popup = null;
-    [popup] = await Promise.all([
-      context.waitForEvent('page', { timeout: 8000 }).catch(() => null),
+    // Detection rapide « Vous n'avez aucune habilitation... » : la page d'erreur revient
+    // immediatement apres le clic ACCEDER -> inutile d'attendre le popup gaia (8 s x2).
+    const sansHabilitation = () =>
       page
-        .locator('input[name="button.submitValider"], input[type="image"]')
-        .first()
-        .click()
-        .catch(() => {}),
-    ]);
-    await page.waitForTimeout(2500);
+        .waitForFunction(() => /aucune habilitation/i.test(document.body?.innerText || ''), null, { timeout: 2500 })
+        .then(() => true)
+        .catch(() => false);
+    let popup = null;
+    const popupAttendu = context.waitForEvent('page', { timeout: 8000 }).catch(() => null);
+    await page
+      .locator('input[name="button.submitValider"], input[type="image"]')
+      .first()
+      .click()
+      .catch(() => {});
+    if (await sansHabilitation()) {
+      log('Messagerie : pas d’habilitation pour ce dossier — passage au suivant.');
+      return { docs, existants, info: 'sans habilitation messagerie' };
+    }
+    popup = await popupAttendu;
     if (/rechercherDossiers/i.test(page.url())) {
       const radio = page.locator('input[name="idDossier"], #sel0').first();
       if ((await radio.count()) && !(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
-      [popup] = await Promise.all([
-        context.waitForEvent('page', { timeout: 8000 }).catch(() => popup),
-        page
-          .locator('input[name="button.submitValider"], input[type="image"]')
-          .first()
-          .click()
-          .catch(() => {}),
-      ]);
-      await page.waitForTimeout(2500);
+      const popupAttendu2 = context.waitForEvent('page', { timeout: 8000 }).catch(() => popup);
+      await page
+        .locator('input[name="button.submitValider"], input[type="image"]')
+        .first()
+        .click()
+        .catch(() => {});
+      if (await sansHabilitation()) {
+        log('Messagerie : pas d’habilitation pour ce dossier — passage au suivant.');
+        return { docs, existants, info: 'sans habilitation messagerie' };
+      }
+      popup = await popupAttendu2;
     }
     const gaia = popup || page;
     if (popup) await popup.waitForLoadState('domcontentloaded').catch(() => {});
     else if (!/gaia2/i.test(page.url())) await page.goto(GAIA_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await gaia.waitForTimeout(2000);
+    // Attendre le rendu de la datatable : liens de demandes OU « Aucune demande trouvée »
+    // (sortie des que l'un apparait — plus rapide ET plus fiable qu'un delai fixe).
+    await gaia
+      .waitForFunction(
+        () =>
+          !!document.querySelector('a[id^="listeDemandesForm:listeDemandes:"][id$=":numDemande"]') ||
+          /aucune demande trouv/i.test(document.body?.innerText || ''),
+        null,
+        { timeout: 12000 },
+      )
+      .catch(() => {});
 
     // 2. Enumeration des echanges (num + objet + date)
     const echanges = await gaia
@@ -206,7 +227,7 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
       )
       .catch(() => []);
     if (!echanges.length) {
-      log('Messagerie : aucun échange.');
+      log('Messagerie : aucune demande — passage au suivant.');
       if (popup) await popup.close().catch(() => {});
       return { docs, existants };
     }
@@ -430,7 +451,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     const parts = [];
     if (phases.cfe) parts.push(`${cfe.docs.length} CFE`);
     if (phases.tf) parts.push(`${tf.docs.length} taxe fonciere`);
-    if (phases.messagerie) parts.push(`${msg.docs.length} message(s)`);
+    if (phases.messagerie) parts.push(msg.info ? `messagerie : ${msg.info}` : `${msg.docs.length} message(s)`);
     addRunSafe(client.id, {
       statut: 'succes',
       message: `${parts.join(' + ')} recupere(s)` + (existants ? `, ${existants} deja present(s)` : ''),
