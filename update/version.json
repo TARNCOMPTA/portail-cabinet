@@ -1,6 +1,6 @@
 {
-  "version": "1.2.4",
-  "notes": "Le panneau « Récupération en cours » ne s'affiche plus que sur le tableau de bord.",
+  "version": "1.3.0",
+  "notes": "Planification enrichie : plusieurs horaires par organisme (ex. URSSAF deux fois par semaine) — bouton « Ajouter un horaire » et suppression par ligne dans Paramètres ▸ Planification.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "fc93add1bc9cc790867ed2fb69d1c394e021f5e3428139b32ca0b9d8d1918d05"
+  "sha256": "78e7ea4ed881d6783fdc5440a984744cd4ee8ef083d1d21b8e626518a1974ebe"
 }
