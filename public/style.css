@@ -940,6 +940,61 @@ td .row-actions {
   font-size: 13px;
   color: var(--ink-soft);
 }
+
+/* ---- Historique des récupérations : sessions façon panneau d'avancement ---- */
+.hist-session {
+  padding: 14px 22px 16px;
+  border-top: 1px solid var(--border);
+}
+.hist-session:first-child {
+  border-top: none;
+}
+.hist-tete {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.hist-tete strong {
+  font-size: 14px;
+}
+.hist-tete span {
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.hist-resume {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 10px 0 8px;
+}
+.hist-bilan {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.hist-echecs {
+  margin-top: 8px;
+}
+.hist-echecs summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.hist-echecs ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+.hist-echecs li {
+  margin-bottom: 3px;
+}
+.hist-plus {
+  padding: 12px 22px 16px;
+  border-top: 1px solid var(--border);
+}
 .progress-details {
   margin: 6px 22px 16px;
 }

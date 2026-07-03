@@ -479,42 +479,83 @@ async function ouvrirDocs(id, nom) {
 }
 $('#docs-fermer').addEventListener('click', () => dialogDocs.close());
 
-// ---- Historique ----
-let runsAll = [];
-let runsPage = 1;
-const RUNS_TAILLE = 25;
-
-function renderRuns() {
-  const totalPages = Math.max(1, Math.ceil(runsAll.length / RUNS_TAILLE));
-  if (runsPage > totalPages) runsPage = totalPages;
-  const debut = (runsPage - 1) * RUNS_TAILLE;
-  const slice = runsAll.slice(debut, debut + RUNS_TAILLE);
-  const tbody = $('#table-runs tbody');
-  tbody.innerHTML = '';
-  for (const r of slice) {
-    const cls = r.statut === 'succes' ? 'ok' : 'err';
-    const lib = { succes: 'succès', echec: 'échec', echec_mdp: '🔒 mot de passe' }[r.statut] || r.statut;
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${new Date(r.lance_le + 'Z').toLocaleString('fr-FR')}</td>
-      <td>${esc(r.client_nom || '—')}</td><td><span class="badge ${cls}">${lib}</span></td>
-      <td>${r.nb_docs}</td><td>${esc(r.message || '')}</td>`;
-    tbody.appendChild(tr);
+// ---- Historique des récupérations -------------------------------------------
+// Présentation façon « récupération en cours » : les lignes (1 par client) sont
+// regroupées en SESSIONS (écart > 30 min = nouvelle récupération), chacune rendue
+// comme le panneau d'avancement : barre, compteur, badges succès/échecs, détail.
+// Helper GLOBAL : utilisé aussi par source-ui.js et urssaf.js.
+const HIST_PAUSE_MIN = 30;
+const HIST_PAR_PAGE = 8;
+function renderHistorique(el, runs) {
+  if (!el) return;
+  const limite = Number(el.dataset.limite) || HIST_PAR_PAGE;
+  const tries = [...runs].sort((a, b) => String(b.lance_le || '').localeCompare(String(a.lance_le || '')));
+  const sessions = [];
+  let s = null;
+  for (const r of tries) {
+    const t = new Date(String(r.lance_le || '').replace(' ', 'T') + 'Z').getTime() || 0;
+    if (!s || s.minMs - t > HIST_PAUSE_MIN * 60 * 1000) {
+      s = { runs: [], minMs: t, maxMs: t };
+      sessions.push(s);
+    }
+    s.runs.push(r);
+    s.minMs = Math.min(s.minMs, t);
+    s.maxMs = Math.max(s.maxMs, t);
   }
-  renderPagination(
-    $('#runs-pagination'),
-    runsPage,
-    totalPages,
-    (p) => {
-      runsPage = p;
-      renderRuns();
-    },
-    runsAll.length,
-  );
+  if (!sessions.length) {
+    el.innerHTML = '<p class="vide" style="padding: 0 22px 16px">Aucune récupération pour l\'instant.</p>';
+    return;
+  }
+  const libStatut = (r) => ({ echec: 'échec', echec_mdp: '🔒 mot de passe' })[r.statut] || r.statut;
+  const html = sessions
+    .slice(0, limite)
+    .map((se) => {
+      const ok = se.runs.filter((r) => r.statut === 'succes');
+      const ko = se.runs.filter((r) => r.statut !== 'succes');
+      const docs = se.runs.reduce((n, r) => n + (r.nb_docs || 0), 0);
+      const pct = Math.round((ok.length / se.runs.length) * 100);
+      const dureeMin = Math.round((se.maxMs - se.minMs) / 60000);
+      const duree = dureeMin >= 60 ? ` · ${Math.floor(dureeMin / 60)} h ${String(dureeMin % 60).padStart(2, '0')}` : dureeMin > 0 ? ` · ${dureeMin} min` : '';
+      return `
+    <div class="hist-session">
+      <div class="hist-tete">
+        <strong>${new Date(se.minMs).toLocaleString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</strong>
+        <span>${se.runs.length} client(s) · ${docs} nouveau(x) document(s)${duree}</span>
+      </div>
+      <div class="hist-resume">
+        <div class="progress-barre"><div class="progress-fill" style="width:${pct}%"></div></div>
+        <span class="progress-compteur">${ok.length} / ${se.runs.length}</span>
+      </div>
+      <div class="hist-bilan">
+        <span class="badge ok">✔ ${ok.length} succès</span>
+        ${ko.length ? `<span class="badge err">✘ ${ko.length} échec(s)</span>` : ''}
+      </div>
+      ${
+        ko.length
+          ? `<details class="hist-echecs"><summary>Détail des échecs</summary><ul>${ko
+              .map((r) => `<li><strong>${esc(r.client_nom || '—')}</strong> <span class="badge err">${libStatut(r)}</span> — ${esc(r.message || '')}</li>`)
+              .join('')}</ul></details>`
+          : ''
+      }
+    </div>`;
+    })
+    .join('');
+  const reste = sessions.length - limite;
+  el.innerHTML =
+    html +
+    (reste > 0
+      ? `<div class="hist-plus"><button type="button" class="btn small" data-hist-plus>Afficher ${Math.min(reste, HIST_PAR_PAGE)} récupération(s) de plus</button></div>`
+      : '');
+  el.querySelector('[data-hist-plus]')?.addEventListener('click', () => {
+    el.dataset.limite = limite + HIST_PAR_PAGE;
+    renderHistorique(el, runs);
+  });
 }
 
+let runsAll = [];
 async function chargerRuns() {
   runsAll = await api('/api/runs');
-  renderRuns();
+  renderHistorique($('#hist-impots'), runsAll);
 }
 
 // ---- Suivi d'avancement (journal en direct) -------------------------------

@@ -182,13 +182,8 @@
   async function chargerRuns() {
     try {
       const runs = await api('/api/urssaf/runs');
-      $('#table-urssaf-runs tbody').innerHTML = runs
-        .slice(0, 100)
-        .map(
-          (r) => `
-        <tr><td>${fmtDate(r.lance_le)}</td><td>${esc(r.client_nom || '—')}</td><td>${statutBadge(r.statut)}</td><td>${r.nb_docs ?? 0}</td><td class="aide" style="margin:0;">${esc(r.message || '')}</td></tr>`,
-        )
-        .join('');
+      // Rendu partagé « façon récupération en cours » (helper global de app.js).
+      renderHistorique(document.getElementById('hist-urssaf'), runs);
     } catch {
       /* ignore */
     }
