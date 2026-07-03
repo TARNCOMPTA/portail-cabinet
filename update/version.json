@@ -1,6 +1,6 @@
 {
-  "version": "1.5.0",
-  "notes": "La captcha des impôts s'affiche directement dans le portail avec un champ de saisie — plus besoin d'ouvrir la fenêtre noVNC (qui reste disponible en secours).",
+  "version": "1.5.1",
+  "notes": "Récupération URSSAF nettement accélérée : navigation par client mesurée à 87 s au lieu de 243 s (attentes réseau inutiles supprimées, cookies mémorisés).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "d6aaa6d0fa6f5441cb8a9b7184ce2985dc2373d6d8fe3f7b4614f855bd9bbbbf"
+  "sha256": "2ae1ce59ebbc8394f541318f7c9660bdeff451f9fd62b6332493a798482a6c56"
 }
