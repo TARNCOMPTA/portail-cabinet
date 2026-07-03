@@ -537,7 +537,8 @@ async function suivreProgression() {
     recupEnCours = false;
     rafraichir();
   } // fin de recup -> rafraichit les tableaux
-  const aMontrer = (p.actif || (p.fini_le && p.resultats.length > 0)) && !progressMasque;
+  // Le panneau d'avancement ne s'affiche que sur le tableau de bord.
+  const aMontrer = (p.actif || (p.fini_le && p.resultats.length > 0)) && !progressMasque && ongletActif === 'dashboard';
   $('#panel-progress').hidden = !aMontrer;
   if (!aMontrer) return;
   const pct = p.total > 0 ? Math.round((p.fait / p.total) * 100) : 0;
@@ -1072,11 +1073,16 @@ $('#pc-recherche')?.addEventListener('input', (e) => {
 });
 
 // ---- Onglets --------------------------------------------------------------
+let ongletActif = 'dashboard';
 function activerOnglet(nom) {
+  ongletActif = nom;
   document.querySelectorAll('.tab-btn').forEach((b) => b.classList.toggle('active', b.dataset.tab === nom));
   document.querySelectorAll('.tab-pane').forEach((p) => {
     p.hidden = p.id !== `tab-${nom}`;
   });
+  // Le panneau « Récupération en cours » n'est visible que sur le tableau de bord.
+  if (nom === 'dashboard') suivreProgression();
+  else $('#panel-progress').hidden = true;
   if (nom === 'par-client') chargerParClient();
   if (nom === 'messages') chargerMessages();
 }
