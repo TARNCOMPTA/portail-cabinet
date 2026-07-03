@@ -54,8 +54,13 @@ function addRunSafe(clientId, run) {
   }
 }
 
+// Contexts dont le bandeau cookies a deja ete accepte : les appels suivants font une
+// seule passe rapide au lieu de 8 x 400 ms a vide (~3 s x plusieurs fois PAR CLIENT).
+const cookiesAcceptes = new WeakSet();
 async function fermerCookies(page) {
-  for (let i = 0; i < 8; i++) {
+  const ctx = page.context();
+  const dejaFait = cookiesAcceptes.has(ctx);
+  for (let i = 0; i < (dejaFait ? 1 : 8); i++) {
     let done = false;
     for (const fr of page.frames()) {
       if (!/privacy|tmg|consent/i.test(fr.url())) continue;
@@ -73,7 +78,11 @@ async function fermerCookies(page) {
         done = true;
       }
     }
-    if (done) break;
+    if (done) {
+      cookiesAcceptes.add(ctx);
+      break;
+    }
+    if (dejaFait) break;
     await page.waitForTimeout(400);
   }
   await page
@@ -114,14 +123,15 @@ async function passerActualites(page, log) {
         })
         .catch(() => {});
     }
-    await page.waitForLoadState('networkidle').catch(() => {});
-    await page.waitForTimeout(600);
+    // PAS de networkidle ici : les pages URSSAF ont des requetes continues -> il
+    // expirait en timeout (45 s perdues). On attend la sortie de /actualites.
+    await page.waitForURL((u) => !/\/actualites/i.test(String(u)), { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(400);
   }
   // Toujours bloque sur les actualites -> on force la sortie vers le tableau de bord.
   if (/\/actualites/i.test(page.url())) {
     log?.('Actualites toujours affichees — navigation forcee vers le tableau de bord.');
     await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForLoadState('networkidle').catch(() => {});
   }
 }
 
@@ -142,7 +152,6 @@ async function attendreTableauBord(page, log) {
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await fermerCookies(page);
     await passerActualites(page, log);
-    await page.waitForLoadState('networkidle').catch(() => {});
   }
   return await page
     .locator('#search, input[placeholder="Rechercher"], input.input-search')
@@ -184,8 +193,9 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
   await page.locator('#login-tiers-declarant-tiers-mandate-identifiant').fill(cabinet.login);
   await page.locator('#login-tiers-declarant-tiers-mandate-password').fill(cabinet.password);
   await Promise.all([page.waitForLoadState('domcontentloaded').catch(() => {}), page.locator('#login-tiers-declarant-tiers-mandate-password').press('Enter')]);
-  // Laisser la redirection post-login s'effectuer (attente conditionnelle).
-  await page.waitForLoadState('networkidle').catch(() => {});
+  // Redirection post-login : on attend de QUITTER la page de connexion (identifiants
+  // acceptes) plutot qu'un networkidle qui expirait en timeout (~45 s perdues).
+  await page.waitForURL((u) => !/se-connecter|Comptes\/Connexion/i.test(String(u)), { timeout: 25000 }).catch(() => {});
   await fermerCookies(page);
 
   // Echec d'authentification : on est reste sur la page de connexion.
@@ -243,12 +253,10 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
       log('Ouverture du tableau de bord tiers declarant (navigation directe)...');
       await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     }
-    await page.waitForLoadState('networkidle').catch(() => {});
     await fermerCookies(page);
     await passerActualites(page, log);
     pret = await attendreTableauBord(page, log); // attend la recherche, avec rafraichissements si bloque
   }
-  await page.waitForTimeout(600);
   if (!pret) {
     try {
       const dbg = resolve(DOWNLOADS_DIR, '_debug');
@@ -385,48 +393,44 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     }
     if (!(await acceder.count())) throw new Error(`Aucun client trouve (${siret} / ${client.nom}).`);
 
-    // 2. Acceder au dossier client (webti)
+    // 2. Acceder au dossier client (webti). PAS de networkidle (requetes continues
+    // sur ces pages -> il expirait systematiquement en timeout) : on attend
+    // directement le lien « Messagerie », seul signal utile.
     const popupP = page.waitForEvent('popup', { timeout: 12000 }).catch(() => null);
     await acceder.click();
     const cli = (await popupP) || page;
     await cli.waitForLoadState('domcontentloaded').catch(() => {});
-    await cli.waitForLoadState('networkidle').catch(() => {});
     await fermerCookies(cli);
-    // On attend le lien « Messagerie » (signal que le dossier client est pret).
     const lienMsg = cli.locator('a:visible, button:visible', { hasText: 'Messagerie' }).first();
     await lienMsg.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
     log('Acces au dossier client.');
 
     // 3. Messagerie : s'ouvre dans un nouvel onglet via une redirection a token
     // (RedirectionFromTeledep.action -> Rico.action). La reference du popup est parfois
-    // ephemere -> on retrouve l'onglet messagerie OUVERT parmi les onglets (sans recharger,
-    // ce qui casserait la page a token), avec protection contre les pages fermees.
+    // ephemere -> on SONDE les onglets ouverts jusqu'a trouver celui de la messagerie
+    // (dcl.urssaf.fr / Rico.action), sans recharger (ce qui casserait la page a token)
+    // et sans networkidle (la messagerie a des requetes continues).
     const popup2P = cli.waitForEvent('popup', { timeout: 12000 }).catch(() => null);
     log('Ouverture de la messagerie...');
     await lienMsg.click().catch(() => {});
-    let msg = (await popup2P) || cli;
-    await msg.waitForLoadState('networkidle').catch(() => {});
-    await msg.waitForTimeout(3000).catch(() => {});
-    // Repli : si l'onglet est ferme ou n'est pas la messagerie, on la retrouve parmi les onglets.
-    if (msg.isClosed() || !/dcl\.urssaf\.fr\/messagerie|Rico\.action/.test(msg.url())) {
-      const alt = context.pages().find((p) => !p.isClosed() && /dcl\.urssaf\.fr\/messagerie|Rico\.action/.test(p.url()));
-      if (alt) {
-        msg = alt;
-        await msg.waitForLoadState('networkidle').catch(() => {});
-        await msg.waitForTimeout(1500).catch(() => {});
-      }
+    let popupResolu = null;
+    popup2P.then((p) => (popupResolu = p)).catch(() => {});
+    const estMessagerie = (p) => p && !p.isClosed() && /dcl\.urssaf\.fr\/messagerie|Rico\.action/.test(p.url());
+    let msg = null;
+    const finRecherche = Date.now() + 15000;
+    while (!msg && Date.now() < finRecherche) {
+      if (estMessagerie(popupResolu)) msg = popupResolu;
+      else msg = context.pages().find(estMessagerie) || null;
+      if (!msg) await cli.waitForTimeout(300);
     }
+    if (!msg) msg = popupResolu && !popupResolu.isClosed() ? popupResolu : cli;
+    await msg.waitForLoadState('domcontentloaded').catch(() => {});
     // On attend les messages (apercuMsg) OU les pieces jointes (showAttachement).
-    let pretMsg = await msg
+    const pretMsg = await msg
       .waitForFunction(() => document.querySelectorAll('[onclick*="apercuMsg"], a[href*="showAttachement"]').length > 0, null, { timeout: 20000 })
       .then(() => true)
       .catch(() => false);
-    if (!pretMsg) {
-      await msg.waitForTimeout(3000).catch(() => {});
-      pretMsg = await msg.evaluate(() => document.querySelectorAll('[onclick*="apercuMsg"], a[href*="showAttachement"]').length > 0).catch(() => false);
-    }
     if (!pretMsg) log('Avertissement : liste des messages non detectee.');
-    await msg.waitForTimeout(500).catch(() => {});
 
     // 4. Tous les documents de la messagerie -> PDF.
     // Les liens de pieces jointes (showAttachement.action) sont DEJA presents
@@ -469,8 +473,9 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
 
       let items = extraire(document); // a) DOM affiche
 
+      // b) pagination SEQUENTIELLE (RicoFil garde un etat de session cote serveur :
+      // des requetes paralleles se perturbent -> pages incoherentes, documents rates).
       for (let p = 1; p <= 30; p++) {
-        // b) pagination
         let html;
         try {
           const r = await fetch(`/messagerie/RicoFil.action?pageEnCours=${p}&timestamp=${Date.now()}`, { credentials: 'include' });
@@ -630,7 +635,6 @@ async function retourTableauBord(context, page, navTimeout) {
   await passerActualites(page);
   // Attend le champ de recherche, avec rafraichissement si la page reste bloquee.
   await attendreTableauBord(page);
-  await page.waitForTimeout(400);
 }
 
 // La session cabinet URSSAF expire apres ~1h. On la considere vivante si on est
