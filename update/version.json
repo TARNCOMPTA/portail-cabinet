@@ -1,6 +1,6 @@
 {
-  "version": "1.4.0",
-  "notes": "La récupération des impôts se découpe en trois phases au choix : avis CFE, taxe foncière, messagerie — trois cases à cocher sur l'onglet Impôts pour des passages plus courts.",
+  "version": "1.4.1",
+  "notes": "Liste noire : un client supprimé ne réapparaît plus à la synchronisation (Impôts et URSSAF) — section dédiée avec bouton Réintégrer. Correctif : fenêtre captcha potentiellement noire.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "e308c5a77d081d2eb6047eaa6c092f9caef8745c806cc81eaa4ef0d2636e0852"
+  "sha256": "cc4dd3f9fa745305ee8a4f58b8ac16de135da4ddfbec06d301c383aba5f8b59a"
 }
