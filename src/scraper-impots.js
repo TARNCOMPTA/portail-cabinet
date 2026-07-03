@@ -348,8 +348,20 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
   return { docs, existants };
 }
 
-// Traite UN client (SIREN) sur une page deja connectee. Telecharge CFE + taxe fonciere.
-async function recupererClient(page, client, { baseFolder, navTimeout, log, context, messagerie }) {
+// Phases de recuperation demandees (defaut : tout). opts.messagerie (ancien flag)
+// reste accepte pour compatibilite (MCP, anciens appels).
+function phasesDe(opts = {}) {
+  const p = opts.phases || {};
+  return {
+    cfe: p.cfe !== false,
+    tf: p.tf !== false,
+    messagerie: (p.messagerie ?? opts.messagerie) !== false,
+  };
+}
+
+// Traite UN client (SIREN) sur une page deja connectee, selon les phases demandees
+// (CFE, taxe fonciere, messagerie) — permet des lots plus courts par type de document.
+async function recupererClient(page, client, { baseFolder, navTimeout, log, context, phases }) {
   const siren = String(client.siret || '')
     .replace(/\D/g, '')
     .slice(0, 9);
@@ -361,58 +373,67 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
 
   try {
     if (siren.length < 9) throw new Error('SIREN invalide (9 chiffres requis).');
-    // 1. Choisir le dossier par SIREN
-    await page.goto(CFE_CHOISIR_URL, { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1200);
-    for (let i = 0; i < 9; i++) {
-      const box = page.locator(`#siren${i}`);
-      if (await box.count()) await box.fill(siren[i] || '');
-    }
-    await page
-      .locator('input[name="button.submitValider"], input[type="image"]')
-      .first()
-      .click()
-      .catch(() => {});
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(2500);
-    // 2. Liste de dossiers -> selection + CONSULTER
-    if (/rechercherDossiers/i.test(page.url())) {
-      const radio = page.locator('input[name="idDossier"], #sel0').first();
-      if (await radio.count()) {
-        if (!(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
-      }
-      await Promise.all([
-        page.waitForLoadState('domcontentloaded').catch(() => {}),
-        page
-          .locator('input[name="button.submitValider"], input[type="image"]')
-          .first()
-          .click()
-          .catch(() => {}),
-      ]);
-      await page.waitForTimeout(3000);
-    }
-    // 3. Avis CFE
-    await page.goto(CFE_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(3000);
-    const cfe = await telechargerAvis(page, client, clientDir, 'CFE', '[id$="tableauAvisImposition_data"]', navTimeout, log);
-    // 4. Taxe fonciere
-    await page.goto(TF_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(3000);
-    const tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
-
-    // 5. Messagerie (optionnelle)
+    let cfe = { docs: [], existants: 0 };
+    let tf = { docs: [], existants: 0 };
     let msg = { docs: [], existants: 0 };
-    if (messagerie) msg = await recupererMessagerie(page, context, client, clientDir, navTimeout, log);
+    // Le choix de dossier « avis CFE » ne sert qu'aux avis (la messagerie a son propre
+    // parcours) : on le saute entierement en mode « messagerie seule ».
+    if (phases.cfe || phases.tf) {
+      // 1. Choisir le dossier par SIREN
+      await page.goto(CFE_CHOISIR_URL, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(1200);
+      for (let i = 0; i < 9; i++) {
+        const box = page.locator(`#siren${i}`);
+        if (await box.count()) await box.fill(siren[i] || '');
+      }
+      await page
+        .locator('input[name="button.submitValider"], input[type="image"]')
+        .first()
+        .click()
+        .catch(() => {});
+      await page.waitForLoadState('domcontentloaded').catch(() => {});
+      await page.waitForTimeout(2500);
+      // 2. Liste de dossiers -> selection + CONSULTER
+      if (/rechercherDossiers/i.test(page.url())) {
+        const radio = page.locator('input[name="idDossier"], #sel0').first();
+        if (await radio.count()) {
+          if (!(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
+        }
+        await Promise.all([
+          page.waitForLoadState('domcontentloaded').catch(() => {}),
+          page
+            .locator('input[name="button.submitValider"], input[type="image"]')
+            .first()
+            .click()
+            .catch(() => {}),
+        ]);
+        await page.waitForTimeout(3000);
+      }
+      // 3. Avis CFE
+      if (phases.cfe) {
+        await page.goto(CFE_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await page.waitForTimeout(3000);
+        cfe = await telechargerAvis(page, client, clientDir, 'CFE', '[id$="tableauAvisImposition_data"]', navTimeout, log);
+      }
+      // 4. Taxe fonciere
+      if (phases.tf) {
+        await page.goto(TF_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+        await page.waitForTimeout(3000);
+        tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
+      }
+    }
+    // 5. Messagerie
+    if (phases.messagerie) msg = await recupererMessagerie(page, context, client, clientDir, navTimeout, log);
 
     const nouveaux = cfe.docs.length + tf.docs.length + msg.docs.length;
     const existants = cfe.existants + tf.existants + msg.existants;
+    const parts = [];
+    if (phases.cfe) parts.push(`${cfe.docs.length} CFE`);
+    if (phases.tf) parts.push(`${tf.docs.length} taxe fonciere`);
+    if (phases.messagerie) parts.push(`${msg.docs.length} message(s)`);
     addRunSafe(client.id, {
       statut: 'succes',
-      message:
-        `${cfe.docs.length} CFE + ${tf.docs.length} taxe fonciere` +
-        (messagerie ? ` + ${msg.docs.length} message(s)` : '') +
-        ` recupere(s)` +
-        (existants ? `, ${existants} deja present(s)` : ''),
+      message: `${parts.join(' + ')} recupere(s)` + (existants ? `, ${existants} deja present(s)` : ''),
       nb_docs: nouveaux,
     });
     log(`Termine : ${nouveaux} nouveau(x), ${existants} deja present(s).`);
@@ -461,7 +482,7 @@ export async function scrapeClient(client, opts = {}) {
   try {
     await attendreConnexionManuelle(page, opts.cabinet, log);
     await minimiserFenetre(context, page, log);
-    return await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log, context, messagerie: opts.messagerie });
+    return await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log, context, phases: phasesDe(opts) });
   } catch (err) {
     addRunSafe(client.id, { statut: 'echec', message: err.message, nb_docs: 0 });
     return { ok: false, error: err.message, docs: [] };
@@ -496,7 +517,7 @@ export async function scrapeAll(clients, opts = {}) {
       };
       clog(`(${i + 1}/${clients.length})`);
       opts.onClient?.(client.nom);
-      const r = await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, context, messagerie: opts.messagerie });
+      const r = await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, context, phases: phasesDe(opts) });
       resume.traites++;
       const msg = r.ok ? `${r.docs.length} document(s)` : r.error || 'erreur';
       opts.onResult?.({ nom: client.nom, ok: !!r.ok, message: msg, nb_docs: r.docs.length });

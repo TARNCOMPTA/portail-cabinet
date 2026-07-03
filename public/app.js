@@ -354,7 +354,9 @@ $('#btn-scrape-selection').addEventListener('click', async () => {
   if (!ids.length) return;
   if (!confirm(`Récupérer les appels de cotisations pour ${ids.length} client(s) sélectionné(s) ?`)) return;
   try {
-    const r = await api('/api/scrape-selection', { method: 'POST', body: JSON.stringify({ ids, messagerie: !!$('#chk-messagerie')?.checked }) });
+    const phases = phasesImpotsCochees();
+    if (!phases) return;
+    const r = await api('/api/scrape-selection', { method: 'POST', body: JSON.stringify({ ids, ...phases }) });
     toast(`Récupération lancée pour ${r.total} client(s).`, 'ok');
     majEtatGlobal(true);
   } catch (err) {
@@ -371,7 +373,9 @@ $('#table-clients').addEventListener('click', async (e) => {
     btn.disabled = true;
     btn.textContent = '…';
     try {
-      await api(`/api/clients/${id}/scrape`, { method: 'POST', body: JSON.stringify({ messagerie: !!$('#chk-messagerie')?.checked }) });
+      const phases = phasesImpotsCochees();
+      if (!phases) throw new Error('Coche au moins une phase (CFE, taxe foncière ou messagerie).');
+      await api(`/api/clients/${id}/scrape`, { method: 'POST', body: JSON.stringify(phases) });
       toast("Récupération lancée. Suis l'avancement dans l'historique.", 'ok');
     } catch (err) {
       toast(err.message, 'err');
@@ -443,10 +447,21 @@ form.addEventListener('submit', async (e) => {
 });
 
 // ---- Tout récupérer (une session par cabinet) ----
+// Phases impots cochées (CFE / TF / messagerie) — null si aucune (avec toast).
+function phasesImpotsCochees() {
+  const p = { cfe: !!$('#chk-cfe')?.checked, tf: !!$('#chk-tf')?.checked, messagerie: !!$('#chk-messagerie')?.checked };
+  if (!p.cfe && !p.tf && !p.messagerie) {
+    toast('Coche au moins une phase (CFE, taxe foncière ou messagerie).', 'err');
+    return null;
+  }
+  return p;
+}
 $('#btn-scrape-all').addEventListener('click', async () => {
+  const phases = phasesImpotsCochees();
+  if (!phases) return;
   if (!confirm('Lancer la récupération pour TOUS les clients ?\n(Une connexion par cabinet, puis enchaînement de ses clients.)')) return;
   try {
-    const r = await api('/api/scrape-all', { method: 'POST', body: JSON.stringify({ messagerie: !!$('#chk-messagerie')?.checked }) });
+    const r = await api('/api/scrape-all', { method: 'POST', body: JSON.stringify(phases) });
     let msg = `Récupération lancée : ${r.total} client(s) sur ${r.cabinets} cabinet(s).`;
     if (r.ignores) msg += ` Reprise : ${r.ignores} déjà récupéré(s), ignoré(s).`;
     toast(msg, 'ok');

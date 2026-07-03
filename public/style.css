@@ -941,6 +941,27 @@ td .row-actions {
   color: var(--ink-soft);
 }
 
+/* Cases des phases de récupération impôts (CFE / TF / messagerie). */
+.phases-impots {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.phases-impots label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--ink-soft);
+  font-weight: 600;
+  cursor: pointer;
+}
+.phases-impots input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 /* ---- Historique des récupérations : sessions façon panneau d'avancement ---- */
 .hist-session {
   padding: 14px 22px 16px;

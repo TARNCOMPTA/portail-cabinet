@@ -423,7 +423,12 @@ app.post('/api/settings', (req, res) => {
 });
 
 // ---- Recuperation ---------------------------------------------------------
-async function lancer(clientId, res, messagerie = true) {
+// Phases impots demandees (defaut : tout) — { cfe, tf, messagerie }, chaque phase
+// est incluse sauf « false » explicite. Permet des lots courts par type de document.
+function phasesImpots(body) {
+  return { cfe: body?.cfe !== false, tf: body?.tf !== false, messagerie: body?.messagerie !== false };
+}
+async function lancer(clientId, res, phases = {}) {
   const c = getClient(clientId);
   if (!c) return res?.status(404).json({ error: 'Client introuvable.' });
   if (!c.cabinet_id) return res?.status(400).json({ error: "Ce client n'est rattaché à aucun cabinet." });
@@ -438,7 +443,7 @@ async function lancer(clientId, res, messagerie = true) {
     progression.courant = c.nom;
   }
   try {
-    const r = await scrapeClient(c, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog, messagerie });
+    const r = await scrapeClient(c, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog, phases });
     if (suiviLocal)
       progression.resultats.push({
         nom: c.nom,
@@ -455,13 +460,13 @@ async function lancer(clientId, res, messagerie = true) {
   }
 }
 
-// Messagerie incluse par defaut ; envoyer { messagerie: false } pour la sauter.
-app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), res, req.body?.messagerie !== false));
+// Toutes les phases par defaut ; envoyer { cfe/tf/messagerie: false } pour en sauter.
+app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), res, phasesImpots(req.body)));
 
 // Traite un lot de clients : groupe par cabinet, UNE session par cabinet.
 // Disjoncteur : N echecs consecutifs = site impots indisponible/session perdue -> arret
 // du lot (la reprise repartira du premier dossier non recupere au prochain lancement).
-async function lancerLot(clients, messagerie = true) {
+async function lancerLot(clients, phases = {}) {
   const baseFolder = getSetting('destination_folder');
   const disj = creerDisjoncteur();
   let arretAuto = false;
@@ -479,7 +484,7 @@ async function lancerLot(clients, messagerie = true) {
       cabinet: cab,
       baseFolder,
       shouldStop: () => stopAll || arretAuto,
-      messagerie,
+      phases,
       onLog: progLog,
       onClient: (nom) => {
         progression.courant = nom;
@@ -513,7 +518,7 @@ app.post('/api/scrape-all', async (req, res) => {
   const cabinets = new Set(aFaire.filter((c) => c.cabinet_id).map((c) => c.cabinet_id)).size;
   res.json({ started: true, total, cabinets, ignores });
   try {
-    await lancerLot(aFaire, req.body?.messagerie !== false);
+    await lancerLot(aFaire, phasesImpots(req.body));
   } finally {
     enCours.delete('all');
     terminerSuivi();
@@ -532,7 +537,7 @@ app.post('/api/scrape-selection', async (req, res) => {
   demarrerSuivi(clients.filter((c) => c.cabinet_id).length);
   res.json({ started: true, total: clients.filter((c) => c.cabinet_id).length });
   try {
-    await lancerLot(clients, req.body?.messagerie !== false);
+    await lancerLot(clients, phasesImpots(req.body));
   } finally {
     enCours.delete('all');
     terminerSuivi();

@@ -244,12 +244,14 @@
               <p>Clients (par SIREN) rattachés à un compte espace pro. Récupération des avis sur impots.gouv.fr.</p>
             </div>
             <div class="row-actions" style="align-items: center">
-              <label
-                style="display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-soft); font-weight: 600; cursor: pointer"
-                title="Récupère aussi le texte des messages (Mes échanges) et leurs pièces jointes, par client"
+              <span
+                class="phases-impots"
+                title="Choisis ce que la récupération doit traiter — décocher des phases raccourcit d'autant le passage sur chaque client"
               >
-                <input type="checkbox" id="chk-messagerie" checked style="width: 16px; height: 16px; accent-color: var(--accent)" /> Inclure la messagerie
-              </label>
+                <label><input type="checkbox" id="chk-cfe" checked /> Avis CFE</label>
+                <label><input type="checkbox" id="chk-tf" checked /> Taxe foncière</label>
+                <label><input type="checkbox" id="chk-messagerie" checked /> Messagerie</label>
+              </span>
               <button type="button" class="btn danger" id="btn-stop-all" hidden>■ Arrêter</button>
               <button type="button" class="btn primary" id="btn-scrape-all"><i class="ph ph-download-simple"></i> Tout récupérer</button>
             </div>
