@@ -1,6 +1,6 @@
 {
-  "version": "1.2.1",
-  "notes": "Messagerie impôts : les messages très courts (ou dont le texte ne peut pas être extrait) sont désormais enregistrés quand même et apparaissent dans l'onglet Messages avec leurs pièces jointes.",
+  "version": "1.2.2",
+  "notes": "Arrêt automatique des récupérations quand le site source est indisponible (5 échecs consécutifs) — la prochaine récupération reprend au premier dossier non récupéré.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "668e0dee60c6a8c0c7f20510d076e746617f0991dc7ad4f4bea00dba3eb60ce9"
+  "sha256": "c81661ded2efbbded493567f5cffb39cd0dde8a0aae0364243c15a6ff2c17200"
 }
