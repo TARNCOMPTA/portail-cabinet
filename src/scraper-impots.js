@@ -452,7 +452,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
 // hors de vue, mais avec la session intacte (impots refuse une session headless).
 async function ouvrirSession() {
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 60000);
-  const browser = await chromium.launch({ headless: false, args: launchArgs() }); // visible (captcha manuel)
+  const browser = await chromium.launch({ headless: false, args: launchArgs({ visible: true }) }); // visible (captcha manuel)
   const context = await browser.newContext({ acceptDownloads: true, locale: 'fr-FR', viewport: { width: 1500, height: 950 } });
   const page = await context.newPage();
   page.setDefaultTimeout(navTimeout);
