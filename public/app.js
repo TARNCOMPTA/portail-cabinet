@@ -689,6 +689,71 @@ $('#progress-masquer').addEventListener('click', () => {
   $('#panel-progress').hidden = true;
 });
 
+// ---- Captcha impôts relayée dans le portail ---------------------------------
+// L'image est capturée par le robot ; le code tapé ici est recopié dans la vraie
+// page de connexion. Le bandeau s'affiche sur TOUS les onglets (action requise).
+let captchaVisible = false;
+async function suivreCaptcha() {
+  try {
+    const c = await api('/api/captcha');
+    const p = $('#panel-captcha');
+    if (!p) return;
+    if (c.actif) {
+      const img = $('#captcha-img');
+      if (img.src !== c.image) img.src = c.image;
+      if (!captchaVisible) {
+        captchaVisible = true;
+        p.hidden = false;
+        $('#captcha-code').value = '';
+        $('#captcha-msg').textContent = '';
+        $('#captcha-code').focus();
+      }
+    } else if (captchaVisible) {
+      captchaVisible = false;
+      p.hidden = true;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+async function validerCaptcha() {
+  const code = $('#captcha-code').value.trim();
+  if (!code) return;
+  $('#captcha-valider').disabled = true;
+  $('#captcha-msg').textContent = 'Envoi du code…';
+  try {
+    const r = await api('/api/captcha', { method: 'POST', body: JSON.stringify({ code }) });
+    if (r.connecte) {
+      $('#captcha-msg').textContent = '✔ Connecté — la récupération continue.';
+      toast('Captcha validée — connexion réussie.', 'ok');
+    } else if (r.refuse) {
+      $('#captcha-msg').textContent = 'Code refusé — nouvelle image chargée.';
+      if (r.image) $('#captcha-img').src = r.image;
+      $('#captcha-code').value = '';
+      $('#captcha-code').focus();
+    } else if (r.error) {
+      $('#captcha-msg').textContent = r.error;
+    }
+  } catch (err) {
+    $('#captcha-msg').textContent = err.message;
+  } finally {
+    $('#captcha-valider').disabled = false;
+  }
+}
+$('#captcha-valider')?.addEventListener('click', validerCaptcha);
+$('#captcha-code')?.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') validerCaptcha();
+});
+$('#captcha-rafraichir')?.addEventListener('click', async () => {
+  try {
+    const r = await api('/api/captcha/rafraichir', { method: 'POST' });
+    if (r.image) $('#captcha-img').src = r.image;
+  } catch {
+    /* ignore */
+  }
+});
+setInterval(suivreCaptcha, 3000);
+
 // ---- Documents (onglet global) --------------------------------------------
 let tousDocs = [];
 let pageDocs = 1;

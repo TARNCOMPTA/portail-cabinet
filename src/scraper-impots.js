@@ -16,6 +16,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './db.js';
 import { launchArgs } from './navigateur.js';
+import * as captchaRelais from './captcha-relais.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads');
@@ -107,8 +108,55 @@ async function attendreConnexionManuelle(page, cabinet, log) {
     log('Connecte-toi dans le navigateur (identifiants + captcha).');
   }
 
+  // Relais captcha : capture l'IMAGE du captcha et la publie dans le portail —
+  // l'utilisateur la recopie dans l'interface, sans ouvrir noVNC (qui reste dispo).
+  const capturerCaptcha = async () => {
+    const img = page.locator('img[src*="captcha" i], img[id*="captcha" i], img[alt*="captcha" i]').first();
+    if (await img.count().catch(() => 0)) return await img.screenshot().catch(() => null);
+    // Repli : zone du champ captcha (l'image est a cote), a defaut rien.
+    const champ = page.locator(LOGIN_CAPTCHA_SEL).first();
+    if (await champ.count().catch(() => 0)) {
+      const parent = champ.locator('xpath=ancestor::*[2]');
+      return await parent.screenshot().catch(() => null);
+    }
+    return null;
+  };
+  const bufCaptcha = login && pwd ? await capturerCaptcha() : null;
+  if (bufCaptcha) {
+    captchaRelais.ouvrir({
+      image: bufCaptcha,
+      // Code tape dans le portail : on le recopie dans la page et on se connecte.
+      soumettre: async (code) => {
+        await page.locator(LOGIN_CAPTCHA_SEL).first().fill(code);
+        const btn = page.locator('button[type="submit"], input[type="submit"], #submit, button:has-text("Connexion")').first();
+        if (await btn.count().catch(() => 0)) await btn.click().catch(() => {});
+        else
+          await page
+            .locator(LOGIN_CAPTCHA_SEL)
+            .first()
+            .press('Enter')
+            .catch(() => {});
+        await page.waitForTimeout(3500);
+        if (/cfspro\.impots\.gouv\.fr\/mire\//.test(page.url())) return { ok: true, connecte: true };
+        // Toujours sur la page de connexion : code refuse -> nouvelle image.
+        const nouvelle = await capturerCaptcha();
+        if (nouvelle) captchaRelais.majImage(nouvelle);
+        return { ok: false, refuse: true, ...captchaRelais.etat() };
+      },
+      rafraichir: async () => {
+        const b = await capturerCaptcha();
+        if (b) captchaRelais.majImage(b);
+      },
+    });
+    log('Captcha affichée dans le portail (bandeau en haut) : saisis le code directement — ou via la fenêtre « Captcha » (noVNC).');
+  }
+
   // Attend la connexion effective (redirection vers l'espace pro), max 5 min.
-  await page.waitForURL(/cfspro\.impots\.gouv\.fr\/mire\/(accueil|afficherChoisirDossier|rechercherDossiers)/, { timeout: 300000 });
+  try {
+    await page.waitForURL(/cfspro\.impots\.gouv\.fr\/mire\/(accueil|afficherChoisirDossier|rechercherDossiers)/, { timeout: 300000 });
+  } finally {
+    captchaRelais.fermer();
+  }
   log('Connexion detectee. Traitement en cours...');
   await page.waitForTimeout(1500);
 }

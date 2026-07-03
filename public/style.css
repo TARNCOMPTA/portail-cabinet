@@ -941,6 +941,27 @@ td .row-actions {
   color: var(--ink-soft);
 }
 
+/* Captcha impôts relayée dans le portail. */
+.captcha-zone {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 0 22px 16px;
+}
+#captcha-img {
+  height: 56px;
+  min-width: 120px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+#captcha-code {
+  width: 150px;
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+
 /* Cases des phases de récupération impôts (CFE / TF / messagerie). */
 .phases-impots {
   display: flex;

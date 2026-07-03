@@ -56,6 +56,7 @@ import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
 import { installAuthRoutes, requireAuth, requireAdmin, hashPassword, apiKeyDefinie, regenererApiKey, revoquerApiKey } from './src/auth.js';
 import { installOAuth, requireBearer, baseUrl, CALLBACK_HOSTE } from './src/oauth.js';
 import { installMcp } from './src/mcp-http.js';
+import * as captchaRelais from './src/captcha-relais.js';
 import * as oauthDb from './src/oauth-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -440,6 +441,14 @@ app.post('/api/settings', (req, res) => {
   if (typeof req.body?.destinationFolder === 'string') setSetting('destination_folder', req.body.destinationFolder.trim());
   res.json({ destinationFolder: getSetting('destination_folder', '') });
 });
+
+// ---- Captcha impots relayee dans le portail --------------------------------
+// L'image du captcha est capturee par le robot et affichee dans l'interface ;
+// le code tape par l'utilisateur est recopie dans la vraie page (voir
+// src/captcha-relais.js). noVNC reste disponible en secours.
+app.get('/api/captcha', (req, res) => res.json(captchaRelais.etat()));
+app.post('/api/captcha', async (req, res) => res.json(await captchaRelais.soumettre(req.body?.code)));
+app.post('/api/captcha/rafraichir', async (req, res) => res.json(await captchaRelais.rafraichir()));
 
 // ---- Recuperation ---------------------------------------------------------
 // Phases impots demandees (defaut : tout) — { cfe, tf, messagerie }, chaque phase

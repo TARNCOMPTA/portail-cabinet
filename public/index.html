@@ -127,6 +127,24 @@
       </header>
 
       <div class="content">
+        <!-- Captcha impôts relayée : image capturée par le robot, code saisi ici -->
+        <section class="panel flush progress-panel" id="panel-captcha" hidden>
+          <div class="panel-head">
+            <h2>🔐 Captcha impôts — à toi de jouer</h2>
+          </div>
+          <p class="aide" style="margin: 0 22px 10px">
+            Le robot attend le code : recopie l'image ci-dessous puis valide — la connexion et la récupération s'enchaînent toutes seules. (La fenêtre « Captcha
+            » noVNC reste disponible en secours.)
+          </p>
+          <div class="captcha-zone">
+            <img id="captcha-img" alt="captcha impôts" />
+            <button type="button" class="btn small" id="captcha-rafraichir" title="Recharger l'image">↻</button>
+            <input id="captcha-code" placeholder="Code" autocomplete="off" spellcheck="false" />
+            <button type="button" class="btn primary" id="captcha-valider">Valider</button>
+            <span class="aide" id="captcha-msg" style="margin: 0"></span>
+          </div>
+        </section>
+
         <!-- Panneau d'avancement (récupération en cours) -->
         <section class="panel flush progress-panel" id="panel-progress" hidden>
           <div class="panel-head">
