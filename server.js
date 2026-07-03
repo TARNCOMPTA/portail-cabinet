@@ -35,6 +35,7 @@ import {
   deleteUser,
   deleteUserSessions,
   purgerSessionsExpirees,
+  listeNoire,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
@@ -266,8 +267,10 @@ app.post('/api/cabinets/:id/sync', async (req, res) => {
   enCours.add(key);
   try {
     const rows = await listerClients(cab);
-    const bilan = importClients(rows, id);
-    res.json({ ...bilan, total: rows.length });
+    // Liste noire : les clients supprimes volontairement ne sont pas recrees.
+    const aImporter = rows.filter((r) => !listeNoire.estListeNoire(r.siret));
+    const bilan = importClients(aImporter, id);
+    res.json({ ...bilan, total: rows.length, liste_noire: rows.length - aImporter.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   } finally {
@@ -282,6 +285,7 @@ app.post('/api/clients', (req, res) => {
   const { nom, siret, dossier, cabinet_id } = req.body || {};
   if (!nom || !siret) return res.status(400).json({ error: 'nom et SIRET sont requis.' });
   if (getClientBySiret(siret)) return res.status(409).json({ error: 'Un client avec ce SIRET existe déjà.' });
+  listeNoire.retirerListeNoireParSiret(siret); // ajout volontaire = sortie de liste noire
   res.status(201).json(createClient({ nom, siret, dossier, cabinet_id: cabinet_id || null }));
 });
 
@@ -289,6 +293,7 @@ app.post('/api/clients/import', (req, res) => {
   const clients = req.body?.clients;
   if (!Array.isArray(clients) || clients.length === 0) return res.status(400).json({ error: 'Aucune ligne à importer.' });
   if (clients.length > 5000) return res.status(400).json({ error: 'Trop de lignes (max 5000).' });
+  for (const c of clients) listeNoire.retirerListeNoireParSiret(c?.siret); // import volontaire
   res.json(importClients(clients, req.body?.cabinet_id || null));
 });
 
@@ -298,9 +303,23 @@ app.put('/api/clients/:id', (req, res) => {
   res.json(c);
 });
 
+// Suppression = mise en liste noire (la synchro ne recreera pas ce client).
 app.delete('/api/clients/:id', (req, res) => {
+  const c = getClient(Number(req.params.id));
+  if (c?.siret) listeNoire.ajouterListeNoire({ siret: c.siret, nom: c.nom, cabinet_id: c.cabinet_id });
   deleteClient(Number(req.params.id));
-  res.json({ ok: true });
+  res.json({ ok: true, liste_noire: !!c?.siret });
+});
+
+// ---- Liste noire (clients supprimes, proteges de la synchro) ---------------
+app.get('/api/liste-noire', (req, res) => res.json(listeNoire.listListeNoire()));
+app.post('/api/liste-noire/:id/reintegrer', (req, res) => {
+  const entree = listeNoire.retirerListeNoire(Number(req.params.id));
+  if (!entree) return res.status(404).json({ error: 'Entrée introuvable.' });
+  if (getClientBySiret(entree.siret)) return res.json({ ok: true, nom: entree.nom, deja_present: true });
+  const cabinetOk = entree.cabinet_id && getCabinetFull(entree.cabinet_id) ? entree.cabinet_id : null;
+  const c = createClient({ nom: entree.nom || entree.siret, siret: entree.siret, cabinet_id: cabinetOk });
+  res.json({ ok: true, nom: c.nom, client_id: c.id, sans_cabinet: !cabinetOk });
 });
 
 app.get('/api/clients/:id/documents', (req, res) => res.json(listDocuments(Number(req.params.id))));
@@ -702,8 +721,10 @@ app.post('/api/urssaf/cabinets/:id/sync', async (req, res) => {
   enCours.add(key);
   try {
     const rows = await listerClientsUrssaf(cab, { onLog: progLog });
-    const bilan = urssafDb.importClients(rows, id);
-    res.json({ ...bilan, total: rows.length });
+    // Liste noire : les clients supprimes volontairement ne sont pas recrees.
+    const aImporter = rows.filter((r) => !urssafDb.listeNoire.estListeNoire(r.siret));
+    const bilan = urssafDb.importClients(aImporter, id);
+    res.json({ ...bilan, total: rows.length, liste_noire: rows.length - aImporter.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   } finally {
@@ -716,12 +737,14 @@ app.post('/api/urssaf/clients', (req, res) => {
   const { nom, siret, dossier, cabinet_id } = req.body || {};
   if (!nom || !siret) return res.status(400).json({ error: 'Nom et SIRET sont requis.' });
   if (urssafDb.getClientBySiret(siret)) return res.status(409).json({ error: 'Un client avec ce SIRET existe déjà.' });
+  urssafDb.listeNoire.retirerListeNoireParSiret(siret); // ajout volontaire = sortie de liste noire
   res.status(201).json(urssafDb.createClient({ nom, siret, dossier, cabinet_id: cabinet_id || null }));
 });
 app.post('/api/urssaf/clients/import', (req, res) => {
   const clients = req.body?.clients;
   if (!Array.isArray(clients) || clients.length === 0) return res.status(400).json({ error: 'Aucune ligne à importer.' });
   if (clients.length > 5000) return res.status(400).json({ error: 'Trop de lignes (max 5000).' });
+  for (const c of clients) urssafDb.listeNoire.retirerListeNoireParSiret(c?.siret); // import volontaire
   res.json(urssafDb.importClients(clients, req.body?.cabinet_id || null));
 });
 app.put('/api/urssaf/clients/:id', (req, res) => {
@@ -729,9 +752,23 @@ app.put('/api/urssaf/clients/:id', (req, res) => {
   if (!c) return res.status(404).json({ error: 'Client introuvable.' });
   res.json(c);
 });
+// Suppression = mise en liste noire (la synchro ne recreera pas ce client).
 app.delete('/api/urssaf/clients/:id', (req, res) => {
+  const c = urssafDb.getClient(Number(req.params.id));
+  if (c?.siret) urssafDb.listeNoire.ajouterListeNoire({ siret: c.siret, nom: c.nom, cabinet_id: c.cabinet_id });
   urssafDb.deleteClient(Number(req.params.id));
-  res.json({ ok: true });
+  res.json({ ok: true, liste_noire: !!c?.siret });
+});
+
+// ---- Liste noire URSSAF -----------------------------------------------------
+app.get('/api/urssaf/liste-noire', (req, res) => res.json(urssafDb.listeNoire.listListeNoire()));
+app.post('/api/urssaf/liste-noire/:id/reintegrer', (req, res) => {
+  const entree = urssafDb.listeNoire.retirerListeNoire(Number(req.params.id));
+  if (!entree) return res.status(404).json({ error: 'Entrée introuvable.' });
+  if (urssafDb.getClientBySiret(entree.siret)) return res.json({ ok: true, nom: entree.nom, deja_present: true });
+  const cabinetOk = entree.cabinet_id && urssafDb.getCabinetFull(entree.cabinet_id) ? entree.cabinet_id : null;
+  const c = urssafDb.createClient({ nom: entree.nom || entree.siret, siret: entree.siret, cabinet_id: cabinetOk });
+  res.json({ ok: true, nom: c.nom, client_id: c.id, sans_cabinet: !cabinetOk });
 });
 app.get('/api/urssaf/clients/:id/documents', (req, res) => {
   if (!urssafDb.getClient(Number(req.params.id))) return res.status(404).json({ error: 'Client introuvable.' });

@@ -7,12 +7,16 @@ import { mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encrypt, decrypt } from './crypto.js';
+import { creerListeNoire } from './liste-noire.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = resolve(__dirname, '..', 'data');
 mkdirSync(DATA_DIR, { recursive: true });
 const db = new DatabaseSync(resolve(DATA_DIR, 'urssaf.db'));
 db.exec('PRAGMA journal_mode = WAL;');
+
+// Liste noire des clients supprimes (la synchro ne les recree pas).
+export const listeNoire = creerListeNoire(db);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS cabinets (

@@ -335,6 +335,27 @@
             <div class="panel-head"><h2>Historique des récupérations</h2></div>
             <div class="historique" id="hist-impots"></div>
           </section>
+
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Liste noire <span class="compteur" id="imp-ln-compte"></span></h2>
+            </div>
+            <p class="aide" style="padding: 0 22px 8px">
+              Clients supprimés : la synchronisation ne les recréera <strong>pas</strong>. « Réintégrer » remet le client dans la liste immédiatement.
+            </p>
+            <table id="imp-ln-table" hidden>
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>SIREN</th>
+                  <th>Retiré le</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="imp-ln-vide" style="padding: 0 22px 16px">Aucun client en liste noire.</p>
+          </section>
         </div>
 
         <!-- ===================== URSSAF ===================== -->
@@ -434,6 +455,28 @@
           <section class="panel flush">
             <div class="panel-head"><h2>Historique des récupérations</h2></div>
             <div class="historique" id="hist-urssaf"></div>
+          </section>
+
+          <section class="panel flush">
+            <div class="panel-head">
+              <h2>Liste noire <span class="compteur" id="u-ln-compte"></span></h2>
+            </div>
+            <p class="aide" style="padding: 0 22px 8px">
+              Clients supprimés : la synchronisation du portefeuille ne les recréera <strong>pas</strong>. « Réintégrer » remet le client dans la liste
+              immédiatement.
+            </p>
+            <table id="u-ln-table" hidden>
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>SIRET</th>
+                  <th>Retiré le</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="u-ln-vide" style="padding: 0 22px 16px">Aucun client en liste noire.</p>
           </section>
         </div>
 

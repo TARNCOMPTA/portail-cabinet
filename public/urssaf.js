@@ -95,6 +95,7 @@
       try {
         const r = await api(`/api/urssaf/cabinets/${id}/sync`, { method: 'POST' });
         let msg = `${r.total} client(s) : ${r.crees} ajouté(s), ${r.maj} mis à jour`;
+        if (r.liste_noire) msg += `, ${r.liste_noire} en liste noire (ignorés)`;
         if (r.erreurs?.length) msg += `, ${r.erreurs.length} erreur(s)`;
         toast(msg, 'ok');
         chargerCabinets();
@@ -246,11 +247,13 @@
     }
     if (btn.dataset.uDel) {
       const c = clients.find((x) => x.id === Number(btn.dataset.uDel));
-      if (!confirm(`Supprimer le client « ${c?.nom} » ?`)) return;
+      if (!confirm(`Supprimer le client « ${c?.nom} » ?\nIl passe en liste noire : la synchronisation ne le recréera pas (réintégrable en bas de page).`))
+        return;
       try {
         await api(`/api/urssaf/clients/${btn.dataset.uDel}`, { method: 'DELETE' });
-        toast('Client supprimé.', 'ok');
+        toast('Client supprimé et ajouté à la liste noire.', 'ok');
         chargerClients();
+        chargerListeNoire('/api/urssaf', 'u');
       } catch (err) {
         toast(err.message, 'err');
       }
@@ -366,6 +369,12 @@
   // ---- Init + rafraichissement ----
   chargerCabinets();
   chargerClients();
+  chargerListeNoire('/api/urssaf', 'u');
+  // Rafraichissement demande depuis app.js (ex : reintegration depuis la liste noire).
+  window.addEventListener('urssaf-rafraichir', () => {
+    chargerClients();
+    chargerListeNoire('/api/urssaf', 'u');
+  });
   setInterval(() => {
     api('/api/status')
       .then((s) => {

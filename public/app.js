@@ -110,6 +110,7 @@ $('#table-cabinets').addEventListener('click', async (e) => {
     try {
       const r = await api(`/api/cabinets/${id}/sync`, { method: 'POST' });
       let msg = `${r.total} client(s) : ${r.crees} ajouté(s), ${r.maj} mis à jour`;
+      if (r.liste_noire) msg += `, ${r.liste_noire} en liste noire (ignorés)`;
       if (r.erreurs?.length) msg += `, ${r.erreurs.length} erreur(s)`;
       toast(msg, 'ok');
       rafraichir();
@@ -391,10 +392,11 @@ $('#table-clients').addEventListener('click', async (e) => {
   } else if (act === 'edit') {
     remplir(id);
   } else if (act === 'del') {
-    if (confirm('Supprimer ce client et ses documents enregistrés ?')) {
+    if (confirm('Supprimer ce client ?\nIl passe en liste noire : la synchronisation ne le recréera pas (réintégrable en bas de page).')) {
       await api(`/api/clients/${id}`, { method: 'DELETE' });
-      toast('Client supprimé.');
+      toast('Client supprimé et ajouté à la liste noire.');
       chargerClients();
+      chargerListeNoire('/api', 'imp');
     }
   }
 });
@@ -510,6 +512,49 @@ async function ouvrirDocs(id, nom) {
   dialogDocs.showModal();
 }
 $('#docs-fermer').addEventListener('click', () => dialogDocs.close());
+
+// ---- Liste noire (clients supprimés, protégés de la synchro) ----------------
+// Helper GLOBAL (impôts prefix 'imp' + URSSAF prefix 'u' via urssaf.js).
+async function chargerListeNoire(apiBase, prefix) {
+  try {
+    const lignes = await api(`${apiBase}/liste-noire`);
+    const table = $(`#${prefix}-ln-table`);
+    if (!table) return;
+    table.querySelector('tbody').innerHTML = lignes
+      .map(
+        (l) => `
+      <tr>
+        <td>${esc(l.nom || '—')}</td>
+        <td class="siret">${esc(l.siret)}</td>
+        <td>${l.ajoute_le ? new Date(l.ajoute_le + 'Z').toLocaleDateString('fr-FR') : '—'}</td>
+        <td><button type="button" class="btn small" data-ln-reintegrer="${l.id}" data-ln-base="${apiBase}" data-ln-prefix="${prefix}">↩ Réintégrer</button></td>
+      </tr>`,
+      )
+      .join('');
+    table.hidden = !lignes.length;
+    const vide = $(`#${prefix}-ln-vide`);
+    if (vide) vide.hidden = !!lignes.length;
+    const compte = $(`#${prefix}-ln-compte`);
+    if (compte) compte.textContent = lignes.length || '';
+  } catch {
+    /* ignore */
+  }
+}
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-ln-reintegrer]');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const r = await api(`${btn.dataset.lnBase}/liste-noire/${btn.dataset.lnReintegrer}/reintegrer`, { method: 'POST' });
+    toast(`${r.nom || 'Client'} réintégré${r.sans_cabinet ? ' — pense à le rattacher à un compte' : ''}.`, 'ok');
+    chargerListeNoire(btn.dataset.lnBase, btn.dataset.lnPrefix);
+    if (btn.dataset.lnPrefix === 'imp') chargerClients();
+    else window.dispatchEvent(new Event('urssaf-rafraichir'));
+  } catch (err) {
+    toast(err.message, 'err');
+    btn.disabled = false;
+  }
+});
 
 // ---- Historique des récupérations -------------------------------------------
 // Présentation façon « récupération en cours » : les lignes (1 par client) sont
@@ -1616,7 +1661,7 @@ async function chargerConfig() {
 
 async function rafraichir() {
   await chargerCabinets();
-  await Promise.all([chargerClients(), chargerRuns(), chargerDocuments()]);
+  await Promise.all([chargerClients(), chargerRuns(), chargerDocuments(), chargerListeNoire('/api', 'imp')]);
 }
 chargerMoi();
 chargerConfig();
