@@ -1,6 +1,6 @@
 {
-  "version": "1.2.2",
-  "notes": "Arrêt automatique des récupérations quand le site source est indisponible (5 échecs consécutifs) — la prochaine récupération reprend au premier dossier non récupéré.",
+  "version": "1.2.3",
+  "notes": "Simplification : les champs « Dossier d'enregistrement » disparaissent des formulaires clients (le rangement est automatique sur le serveur).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "c81661ded2efbbded493567f5cffb39cd0dde8a0aae0364243c15a6ff2c17200"
+  "sha256": "cb181979ebdfea416d4be3310342ffb6c50c3a4555ebb269c379915473e0d5da"
 }
