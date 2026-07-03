@@ -1,6 +1,6 @@
 {
-  "version": "1.2.3",
-  "notes": "Simplification : les champs « Dossier d'enregistrement » disparaissent des formulaires clients (le rangement est automatique sur le serveur).",
+  "version": "1.2.4",
+  "notes": "Le panneau « Récupération en cours » ne s'affiche plus que sur le tableau de bord.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "cb181979ebdfea416d4be3310342ffb6c50c3a4555ebb269c379915473e0d5da"
+  "sha256": "fc93add1bc9cc790867ed2fb69d1c394e021f5e3428139b32ca0b9d8d1918d05"
 }
