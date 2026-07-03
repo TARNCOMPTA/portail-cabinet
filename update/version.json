@@ -1,6 +1,6 @@
 {
-  "version": "1.3.2",
-  "notes": "La saisie au pavé numérique fonctionne désormais dans la fenêtre captcha (noVNC) : le verrouillage numérique de l'écran du serveur est activé au démarrage.",
+  "version": "1.3.3",
+  "notes": "L'historique des récupérations est présenté comme le panneau « récupération en cours » : une carte par récupération avec barre de réussite, badges succès/échecs et détail des échecs.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "980ce3881b4ebb44d88681049f012f10026b0a9ee5db67eb8b53fc90ff4c9712"
+  "sha256": "2ebd9dbf95897adc478befd31e5043b3abd260b263826752638d64a7d50cd6aa"
 }
