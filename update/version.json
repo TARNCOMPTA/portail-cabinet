@@ -1,6 +1,6 @@
 {
-  "version": "1.3.0",
-  "notes": "Planification enrichie : plusieurs horaires par organisme (ex. URSSAF deux fois par semaine) — bouton « Ajouter un horaire » et suppression par ligne dans Paramètres ▸ Planification.",
+  "version": "1.3.1",
+  "notes": "Messagerie impôts : extraction du texte des messages renforcée (réclamations et autres formats) ; en cas d'échec, une capture de diagnostic est enregistrée.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "78e7ea4ed881d6783fdc5440a984744cd4ee8ef083d1d21b8e626518a1974ebe"
+  "sha256": "de944520bb7f601ce149d8fc4bcdd7f9cae2e73fd28e9004d5418564e4c5be10"
 }
