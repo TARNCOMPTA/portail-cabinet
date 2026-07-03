@@ -1,6 +1,6 @@
 {
-  "version": "1.4.3",
-  "notes": "Messagerie impôts encore plus rapide : dès l'affichage de la liste, les numéros de demandes sont comparés à la base — aucun nouveau message = passage immédiat au dossier suivant.",
+  "version": "1.5.0",
+  "notes": "La captcha des impôts s'affiche directement dans le portail avec un champ de saisie — plus besoin d'ouvrir la fenêtre noVNC (qui reste disponible en secours).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "be441893069e7dde0834d110d003b4d212a24172c5dcb2d11f57adca6a51d92b"
+  "sha256": "d6aaa6d0fa6f5441cb8a9b7184ce2985dc2373d6d8fe3f7b4614f855bd9bbbbf"
 }
