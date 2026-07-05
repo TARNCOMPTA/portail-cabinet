@@ -14,6 +14,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun } from './carpimko-db.js';
 import { launchArgs } from './navigateur.js';
+import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'carpimko');
@@ -104,6 +105,8 @@ export async function scrapeClient(client, opts = {}) {
 
   const docsRecuperes = [];
   let dejaPresents = 0;
+  const quarantaines = [];
+  let nonVerifiables = 0;
   try {
     log('Ouverture de la page de connexion');
     await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
@@ -267,6 +270,14 @@ export async function scrapeClient(client, opts = {}) {
           const buf = await resp.body();
           if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') throw new Error('reponse non-PDF (lien expire ou page HTML)');
           writeFileSync(dest, buf);
+          // Vérification d'appartenance : le PDF doit mentionner le n° d'adhérent ou le nom.
+          const verif = await verifierEtClasser({ fichier: dest, source: 'carpimko', client });
+          if (verif.verdict === 'quarantaine') {
+            quarantaines.push(verif.raison);
+            log(`⚠️ QUARANTAINE : ${verif.raison}`);
+            continue; // pas d'addDocument -> retéléchargé et revérifié au prochain run
+          }
+          if (verif.verdict === 'non_verifiable') nonVerifiables++;
           addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date) });
           docsRecuperes.push({ libelle: d.nom, fichier: dest });
           log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
@@ -277,12 +288,14 @@ export async function scrapeClient(client, opts = {}) {
     }
 
     const motBilan = tousDocuments ? 'document(s)' : 'appel(s) de cotisations';
-    const bilan =
+    let bilan =
       `${docsRecuperes.length} nouveau(x) ${motBilan} telecharge(s)` +
       (dejaPresents > 0 ? `, ${dejaPresents} deja present(s) (ignore(s))` : '') +
       ` — ${cibles.length} detecte(s)`;
+    if (nonVerifiables > 0) bilan += ` (${nonVerifiables} non verifiable(s) : PDF sans texte)`;
+    if (quarantaines.length > 0) bilan = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${bilan}`;
     addRunSafe(client.id, {
-      statut: docsRecuperes.length + dejaPresents > 0 || cibles.length === 0 ? 'succes' : 'echec',
+      statut: quarantaines.length > 0 ? 'echec' : docsRecuperes.length + dejaPresents > 0 || cibles.length === 0 ? 'succes' : 'echec',
       message: bilan,
       nb_docs: docsRecuperes.length,
     });

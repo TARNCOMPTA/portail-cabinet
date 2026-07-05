@@ -16,6 +16,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './db.js';
 import { launchArgs } from './navigateur.js';
+import { verifierEtClasser } from './validation-pdf.js';
 import * as captchaRelais from './captcha-relais.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -168,6 +169,8 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
   const n = await liens.count().catch(() => 0);
   const docs = [];
   let existants = 0;
+  const quarantaines = [];
+  let nonVerifiables = 0;
   for (let i = 0; i < n; i++) {
     const lien = liens.nth(i);
     const ligneTxt = (await lien.evaluate((el) => el.closest('tr')?.innerText || '').catch(() => '')).replace(/\s+/g, ' ');
@@ -185,6 +188,14 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
     try {
       const [dl] = await Promise.all([page.waitForEvent('download', { timeout: navTimeout }), lien.click()]);
       await dl.saveAs(dest);
+      // Verification d'appartenance : l'avis doit mentionner le SIREN ou le nom du client.
+      const verif = await verifierEtClasser({ fichier: dest, source: 'impots', client });
+      if (verif.verdict === 'quarantaine') {
+        quarantaines.push(verif.raison);
+        log(`⚠️ QUARANTAINE : ${verif.raison}`);
+        continue; // pas d'addDocument -> retelecharge et reverifie au prochain run
+      }
+      if (verif.verdict === 'non_verifiable') nonVerifiables++;
       try {
         addDocument(client.id, { libelle: `${prefixe} ${annee} ${ref}`, fichier: dest, eventid: eid });
       } catch {}
@@ -194,7 +205,7 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
       log(`(${prefixe} ${i + 1} : ${e.message.split('\n')[0]})`);
     }
   }
-  return { docs, existants };
+  return { docs, existants, quarantaines, nonVerifiables };
 }
 
 // Messagerie securisee "Mes echanges" (gaia2) d'un dossier : enregistre le TEXTE de
@@ -208,6 +219,8 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
   mkdirSync(dir, { recursive: true });
   const docs = [];
   let existants = 0;
+  const quarantaines = [];
+  let nonVerifiables = 0;
   try {
     // 1. Choix du dossier sous l'habilitation "messagerie" (peut ouvrir un nouvel onglet)
     await page.goto(MSG_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -277,7 +290,7 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
     if (!echanges.length) {
       log('Messagerie : aucune demande — passage au suivant.');
       if (popup) await popup.close().catch(() => {});
-      return { docs, existants };
+      return { docs, existants, quarantaines, nonVerifiables };
     }
     // Comparaison IMMEDIATE des numeros avec la base : si aucun nouveau, on passe
     // au dossier suivant sans derouler la liste (les connus ne sont jamais rouverts).
@@ -286,7 +299,7 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
       existants += echanges.length;
       log(`Messagerie : ${echanges.length} échange(s), aucun nouveau — passage au suivant.`);
       if (popup) await popup.close().catch(() => {});
-      return { docs, existants };
+      return { docs, existants, quarantaines, nonVerifiables };
     }
     existants += echanges.length - nouveauxEchanges.length;
     // ordre chronologique (date de création croissante)
@@ -407,6 +420,16 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
             const nomPj = sanitize(dl.suggestedFilename() || nomLien || `${e.num}_pj${k + 1}`);
             const destPj = resolve(dir, `${(e.date || '').replace(/\//g, '-')}_${nomPj}`);
             await dl.saveAs(destPj);
+            // Verification d'appartenance des PJ au format PDF (les scans restent tolerés).
+            if (/\.pdf$/i.test(destPj)) {
+              const verif = await verifierEtClasser({ fichier: destPj, source: 'impots', client });
+              if (verif.verdict === 'quarantaine') {
+                quarantaines.push(verif.raison);
+                log(`⚠️ QUARANTAINE : ${verif.raison}`);
+                continue; // pas d'addDocument -> retelechargee et reverifiee au prochain run
+              }
+              if (verif.verdict === 'non_verifiable') nonVerifiables++;
+            }
             try {
               addDocument(client.id, { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), fichier: destPj, eventid: `${eid}_PJ${k + 1}` });
             } catch {}
@@ -424,7 +447,7 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
   } catch (err) {
     log(`Messagerie : ${err.message.split('\n')[0]}`);
   }
-  return { docs, existants };
+  return { docs, existants, quarantaines, nonVerifiables };
 }
 
 // Phases de recuperation demandees (defaut : tout). opts.messagerie (ancien flag)
@@ -452,9 +475,9 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
 
   try {
     if (siren.length < 9) throw new Error('SIREN invalide (9 chiffres requis).');
-    let cfe = { docs: [], existants: 0 };
-    let tf = { docs: [], existants: 0 };
-    let msg = { docs: [], existants: 0 };
+    let cfe = { docs: [], existants: 0, quarantaines: [], nonVerifiables: 0 };
+    let tf = { docs: [], existants: 0, quarantaines: [], nonVerifiables: 0 };
+    let msg = { docs: [], existants: 0, quarantaines: [], nonVerifiables: 0 };
     // Le choix de dossier « avis CFE » ne sert qu'aux avis (la messagerie a son propre
     // parcours) : on le saute entierement en mode « messagerie seule ».
     if (phases.cfe || phases.tf) {
@@ -506,13 +529,18 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
 
     const nouveaux = cfe.docs.length + tf.docs.length + msg.docs.length;
     const existants = cfe.existants + tf.existants + msg.existants;
+    const quarantaines = [...(cfe.quarantaines || []), ...(tf.quarantaines || []), ...(msg.quarantaines || [])];
+    const nonVerifiables = (cfe.nonVerifiables || 0) + (tf.nonVerifiables || 0) + (msg.nonVerifiables || 0);
     const parts = [];
     if (phases.cfe) parts.push(`${cfe.docs.length} CFE`);
     if (phases.tf) parts.push(`${tf.docs.length} taxe fonciere`);
     if (phases.messagerie) parts.push(msg.info ? `messagerie : ${msg.info}` : `${msg.docs.length} message(s)`);
+    let message = `${parts.join(' + ')} recupere(s)` + (existants ? `, ${existants} deja present(s)` : '');
+    if (nonVerifiables > 0) message += ` (${nonVerifiables} non verifiable(s) : PDF sans texte)`;
+    if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
     addRunSafe(client.id, {
-      statut: 'succes',
-      message: `${parts.join(' + ')} recupere(s)` + (existants ? `, ${existants} deja present(s)` : ''),
+      statut: quarantaines.length > 0 ? 'echec' : 'succes',
+      message,
       nb_docs: nouveaux,
     });
     log(`Termine : ${nouveaux} nouveau(x), ${existants} deja present(s).`);

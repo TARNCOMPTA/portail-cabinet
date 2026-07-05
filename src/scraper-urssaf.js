@@ -17,6 +17,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './urssaf-db.js';
 import { launchArgs } from './navigateur.js';
+import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'urssaf');
@@ -565,6 +566,8 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     }
 
     let existants = 0;
+    const quarantaines = [];
+    let nonVerifiables = 0;
     const utilises = new Set();
     for (const { href, eid, objet, date } of docsTrouves) {
       // Cle unique du document : DOCUMENTID si present, sinon EVENTID, sinon le lien.
@@ -596,6 +599,14 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         const buf = await resp.body();
         if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') throw new Error('reponse non-PDF');
         writeFileSync(dest, buf);
+        // Verification d'appartenance : le PDF doit mentionner le SIRET/SIREN ou le nom.
+        const verif = await verifierEtClasser({ fichier: dest, source: 'urssaf', client });
+        if (verif.verdict === 'quarantaine') {
+          quarantaines.push(verif.raison);
+          log(`⚠️ QUARANTAINE : ${verif.raison}`);
+          continue; // pas d'addDocument -> retelecharge et reverifie au prochain run
+        }
+        if (verif.verdict === 'non_verifiable') nonVerifiables++;
         try {
           addDocument(client.id, { libelle: libelleDoc, fichier: dest, eventid: docId });
         } catch (e) {
@@ -614,7 +625,9 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
       log('Aucun document (piece jointe) dans la messagerie de ce client.');
       message = 'Aucun document disponible';
     } else message = `${docs.length} nouveau(x) document(s), ${existants} deja present(s) sur ${total} piece(s) jointe(s)`;
-    addRunSafe(client.id, { statut: 'succes', message, nb_docs: docs.length });
+    if (nonVerifiables > 0) message += ` (${nonVerifiables} non verifiable(s) : PDF sans texte)`;
+    if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
+    addRunSafe(client.id, { statut: quarantaines.length > 0 ? 'echec' : 'succes', message, nb_docs: docs.length });
     log(`Termine : ${docs.length} nouveau(x), ${existants} deja present(s) sur ${total} document(s).`);
     return { ok: true, docs };
   } catch (err) {

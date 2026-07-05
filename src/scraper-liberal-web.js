@@ -5,6 +5,7 @@
 import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const sanitize = (name) =>
@@ -50,6 +51,8 @@ export function creerScraperLiberalWeb(cfg) {
 
     const docs = [];
     let dejaPresents = 0;
+    const quarantaines = [];
+    let nonVerifiables = 0;
     try {
       if (!client.password) {
         const e = new Error('Mot de passe vide pour ce client — re-saisis-le.');
@@ -81,7 +84,7 @@ export function creerScraperLiberalWeb(cfg) {
       log('Connecté. Récupération des documents.');
       const H = { picristoken, authorization, 'content-type': 'application/json' };
 
-      const enregistrer = (libelle, nomFichier, b64, annee) => {
+      const enregistrer = async (libelle, nomFichier, b64, annee) => {
         const buf = Buffer.from(b64, 'base64');
         if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') {
           log(`(${libelle} : réponse non-PDF, ignoré)`);
@@ -95,6 +98,14 @@ export function creerScraperLiberalWeb(cfg) {
           return;
         }
         writeFileSync(dest, buf);
+        // Vérification d'appartenance : le PDF doit mentionner le n° d'adhérent ou le nom.
+        const verif = await verifierEtClasser({ fichier: dest, source: sousDossier, client });
+        if (verif.verdict === 'quarantaine') {
+          quarantaines.push(verif.raison);
+          log(`⚠️ QUARANTAINE : ${verif.raison}`);
+          return; // pas d'addDocument -> retéléchargé et revérifié au prochain run
+        }
+        if (verif.verdict === 'non_verifiable') nonVerifiables++;
         addDocument(client.id, { libelle, fichier: dest, date_doc: annee });
         docs.push({ libelle, fichier: dest });
         log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
@@ -120,7 +131,7 @@ export function creerScraperLiberalWeb(cfg) {
           const annee = (String(it.libelle || '').match(/\b(20\d{2})\b/) || [])[1] || null;
           try {
             const c = await recupCourrier(`${API}/dossier/courrier/generer/V1/${dossier}/1/${it.noCourrier}`);
-            if (c) enregistrer(it.libelle || `Attestation ${it.noCourrier}`, c.nom, c.courrier, annee);
+            if (c) await enregistrer(it.libelle || `Attestation ${it.noCourrier}`, c.nom, c.courrier, annee);
             else log(`(${it.libelle || it.noCourrier} : indisponible)`);
           } catch (e) {
             log(`Échec ${it.libelle || it.noCourrier} : ${e.message.split('\n')[0]}`);
@@ -148,7 +159,7 @@ export function creerScraperLiberalWeb(cfg) {
               const c = await recupCourrier(`${API}/dossier/courrier/telecharge/V1/${dossier}/1/${it.identifiantCourrier}`);
               if (c) {
                 const annee = String(it.date || '').slice(0, 4) || null;
-                enregistrer((it.libelleCourrier || categorie || 'Courrier').trim(), c.nom, c.courrier, annee);
+                await enregistrer((it.libelleCourrier || categorie || 'Courrier').trim(), c.nom, c.courrier, annee);
                 ok++;
               } else log(`(${it.libelleCourrier || it.identifiantCourrier} : indisponible)`);
             } catch (e) {
@@ -161,9 +172,12 @@ export function creerScraperLiberalWeb(cfg) {
         log(`Courriers : ${e.message.split('\n')[0]}`);
       }
 
+      let message = `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : '');
+      if (nonVerifiables > 0) message += ` (${nonVerifiables} non vérifiable(s) : PDF sans texte)`;
+      if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
       addRunSafe(client.id, {
-        statut: docs.length + dejaPresents > 0 ? 'succes' : 'echec',
-        message: `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : ''),
+        statut: quarantaines.length > 0 ? 'echec' : docs.length + dejaPresents > 0 ? 'succes' : 'echec',
+        message,
         nb_docs: docs.length,
       });
       log(`Terminé : ${docs.length} nouveau(x), ${dejaPresents} déjà présent(s).`);

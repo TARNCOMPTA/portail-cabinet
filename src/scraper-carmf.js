@@ -11,6 +11,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun } from './carmf-db.js';
 import { launchArgs } from './navigateur.js';
+import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'carmf');
@@ -58,6 +59,8 @@ export async function scrapeClient(client, opts = {}) {
 
   const docs = [];
   let dejaPresents = 0;
+  const quarantaines = [];
+  let nonVerifiables = 0;
   try {
     // ---- 1. Connexion ----
     log('Ouverture de la page de connexion CARMF');
@@ -146,6 +149,14 @@ export async function scrapeClient(client, opts = {}) {
           continue;
         }
         writeFileSync(dest, buf);
+        // Vérification d'appartenance : le PDF doit mentionner le n° d'adhérent ou le nom.
+        const verif = await verifierEtClasser({ fichier: dest, source: 'carmf', client });
+        if (verif.verdict === 'quarantaine') {
+          quarantaines.push(verif.raison);
+          log(`⚠️ QUARANTAINE : ${verif.raison}`);
+          continue; // pas d'addDocument -> retéléchargé et revérifié au prochain run
+        }
+        if (verif.verdict === 'non_verifiable') nonVerifiables++;
         addDocument(client.id, { libelle: `${c.libelle} ${annee}`, fichier: dest, date_doc: annee });
         docs.push({ libelle: c.libelle, fichier: dest });
         log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
@@ -154,9 +165,12 @@ export async function scrapeClient(client, opts = {}) {
       }
     }
 
+    let message = `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : '');
+    if (nonVerifiables > 0) message += ` (${nonVerifiables} non vérifiable(s) : PDF sans texte)`;
+    if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
     addRunSafe(client.id, {
-      statut: docs.length + dejaPresents > 0 ? 'succes' : 'echec',
-      message: `${docs.length} document(s) récupéré(s)` + (dejaPresents ? `, ${dejaPresents} déjà présent(s)` : ''),
+      statut: quarantaines.length > 0 ? 'echec' : docs.length + dejaPresents > 0 ? 'succes' : 'echec',
+      message,
       nb_docs: docs.length,
     });
     log(`Terminé : ${docs.length} nouveau(x), ${dejaPresents} déjà présent(s).`);
