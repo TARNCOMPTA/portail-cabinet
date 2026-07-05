@@ -1,6 +1,6 @@
 {
-  "version": "1.5.3",
-  "notes": "Correctif : les documents anciens (au-delà de 5000) redeviennent ouvrables — recherche directe par id en base",
+  "version": "1.5.4",
+  "notes": "Sécurité : verrouillage par compte (5 échecs → 15 min) en plus du verrouillage par IP contre la force brute",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "3badc54a4fb7d7f19a9c715c805cfa7824f0e59a9a04208fd473185b3951c13d"
+  "sha256": "6e71f333e7129be99eced4a3db96045fd7383365c11fa23910fdb6221222cf21"
 }
