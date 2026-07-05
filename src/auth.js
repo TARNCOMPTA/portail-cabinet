@@ -94,39 +94,52 @@ export function currentUser(req) {
 }
 
 // Routes publiques d'authentification (connexion / deconnexion / qui-suis-je).
-// ---- Anti-brute-force : throttle des connexions par IP (en memoire) ----
-const _echecs = new Map(); // ip -> { n, resetAt }
-const LOGIN_MAX = 10; // essais avant blocage temporaire
+// ---- Anti-brute-force : throttle des connexions (en memoire) ----
+// Deux compteurs independants : par IP (attaquant unique) ET par compte vise
+// (attaque distribuee sur un meme e-mail depuis beaucoup d'adresses).
+export function creerThrottle({ max, fenetreMs }) {
+  const echecs = new Map(); // cle -> { n, resetAt }
+  return {
+    bloque(cle) {
+      const e = echecs.get(cle);
+      if (!e) return false;
+      if (Date.now() > e.resetAt) {
+        echecs.delete(cle);
+        return false;
+      }
+      return e.n >= max;
+    },
+    echec(cle) {
+      const e = echecs.get(cle);
+      if (!e || Date.now() > e.resetAt) echecs.set(cle, { n: 1, resetAt: Date.now() + fenetreMs });
+      else e.n++;
+    },
+    reussite(cle) {
+      echecs.delete(cle);
+    },
+  };
+}
 const LOGIN_FENETRE = 15 * 60 * 1000; // fenetre de 15 min
-function loginBloque(ip) {
-  const e = _echecs.get(ip);
-  if (!e) return false;
-  if (Date.now() > e.resetAt) {
-    _echecs.delete(ip);
-    return false;
-  }
-  return e.n >= LOGIN_MAX;
-}
-function loginEchec(ip) {
-  const e = _echecs.get(ip);
-  if (!e || Date.now() > e.resetAt) _echecs.set(ip, { n: 1, resetAt: Date.now() + LOGIN_FENETRE });
-  else e.n++;
-}
+const throttleIp = creerThrottle({ max: 10, fenetreMs: LOGIN_FENETRE });
+const throttleCompte = creerThrottle({ max: 5, fenetreMs: LOGIN_FENETRE });
 
 export function installAuthRoutes(app) {
   app.post('/api/auth/login', (req, res) => {
     const ip = req.ip || req.socket?.remoteAddress || 'inconnu';
-    if (loginBloque(ip)) return res.status(429).json({ error: 'Trop de tentatives. Réessaie dans 15 minutes.' });
     const email = String(req.body?.email || '')
       .trim()
       .toLowerCase();
+    // Meme message pour IP et compte bloques : ne revele pas si l'e-mail existe.
+    if (throttleIp.bloque(ip) || throttleCompte.bloque(email)) return res.status(429).json({ error: 'Trop de tentatives. Réessaie dans 15 minutes.' });
     const pwd = String(req.body?.password || '');
     const u = getUserByEmail(email);
     if (!u || !u.actif || !verifyPassword(pwd, u.password_hash)) {
-      loginEchec(ip);
+      throttleIp.echec(ip);
+      throttleCompte.echec(email);
       return res.status(401).json({ error: 'E-mail ou mot de passe incorrect.' });
     }
-    _echecs.delete(ip); // connexion reussie : on remet le compteur a zero
+    throttleIp.reussite(ip); // connexion reussie : on remet les compteurs a zero
+    throttleCompte.reussite(email);
     const token = crypto.randomBytes(32).toString('hex');
     createSession(token, u.id, new Date(Date.now() + SESSION_MS).toISOString());
     touchUserLogin(u.id);
