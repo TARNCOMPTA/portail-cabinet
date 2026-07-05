@@ -1,6 +1,6 @@
 {
-  "version": "1.5.2",
-  "notes": "Vérification que chaque PDF téléchargé appartient bien au client (SIREN, n° adhérent ou nom) — sinon quarantaine + alerte",
+  "version": "1.5.3",
+  "notes": "Correctif : les documents anciens (au-delà de 5000) redeviennent ouvrables — recherche directe par id en base",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "6b6ecd5cefbbe18d8302d94a21504510459149b4f654bb65694ba5c979d607c2"
+  "sha256": "3badc54a4fb7d7f19a9c715c805cfa7824f0e59a9a04208fd473185b3951c13d"
 }
