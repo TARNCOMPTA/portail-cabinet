@@ -49,7 +49,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
   });
   r.get('/documents', (req, res) => res.json(db.listAllDocuments()));
   r.get('/documents/:id/file', (req, res) => {
-    const doc = db.listAllDocuments().find((d) => d.id === Number(req.params.id));
+    const doc = db.getDocument(req.params.id);
     if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
     res.download(doc.fichier, basename(doc.fichier));
   });

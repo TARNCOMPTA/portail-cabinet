@@ -260,6 +260,10 @@ export function listAllDocuments() {
     )
     .all();
 }
+// Un document par id (avec le nom du client), pour servir un fichier directement.
+export function getDocument(id) {
+  return db.prepare('SELECT d.*, c.nom AS client_nom FROM documents d LEFT JOIN clients c ON c.id = d.client_id WHERE d.id = ?').get(Number(id));
+}
 export function addRun(client_id, { statut, message, nb_docs }) {
   db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs) VALUES (?, ?, ?, ?)').run(client_id, statut, message ?? null, nb_docs ?? 0);
 }

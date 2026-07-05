@@ -16,6 +16,7 @@ export const {
   addDocument,
   listDocuments,
   listAllDocuments,
+  getDocument,
   addRun,
   listRuns,
 } = creerSourceDb('carpimko.db');

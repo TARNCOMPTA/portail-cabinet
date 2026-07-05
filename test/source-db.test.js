@@ -60,3 +60,13 @@ test('deleteClient', () => {
   db.deleteClient(c.id);
   assert.equal(db.getClientByLogin('IMPA'), undefined);
 });
+
+test('getDocument : accès direct par id (indépendant des listes plafonnées)', () => {
+  const c = db.getClientByLogin('LOG1');
+  db.addDocument(c.id, { libelle: 'Attestation 2026', fichier: '/tmp/doc_test.pdf', date_doc: '2026' });
+  const d = db.listDocuments(c.id)[0];
+  const direct = db.getDocument(d.id);
+  assert.equal(direct.fichier, '/tmp/doc_test.pdf');
+  assert.equal(direct.client_nom, c.nom, 'joint le nom du client');
+  assert.equal(db.getDocument(999999), undefined, 'id inconnu -> undefined');
+});

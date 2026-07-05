@@ -15,6 +15,7 @@ export const {
   addDocument,
   listDocuments,
   listAllDocuments,
+  getDocument,
   addRun,
   listRuns,
 } = creerSourceDb('carpv.db');

@@ -14,6 +14,7 @@ import {
   importClients,
   listDocuments,
   listAllDocuments,
+  getDocument,
   listRuns,
   getSetting,
   setSetting,
@@ -352,7 +353,7 @@ app.get('/api/messages', (req, res) => {
   res.json(out);
 });
 app.get('/api/messages/:id/texte', (req, res) => {
-  const doc = listAllDocuments().find((d) => d.id === Number(req.params.id));
+  const doc = getDocument(req.params.id);
   if (!doc || !doc.fichier || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Message introuvable.' });
   let texte = '';
   try {
@@ -372,13 +373,24 @@ const DOCS_PAR_SOURCE = {
   carcdsf: carcdsf.listAllDocuments,
   carpv: carpv.listAllDocuments,
 };
+// Resolution d'UN document par id : toujours en direct dans la base (les listes
+// ci-dessus peuvent etre plafonnees — un document ancien en sortirait et
+// deviendrait impossible a ouvrir alors que son fichier est intact).
+const DOC_PAR_SOURCE = {
+  impots: getDocument,
+  carpimko: carpimko.getDocument,
+  carmf: carmf.getDocument,
+  urssaf: urssafDb.getDocument,
+  carcdsf: carcdsf.getDocument,
+  carpv: carpv.getDocument,
+};
 
 // Genere un lien de telechargement direct (usage unique, 10 min) pour un document
 // d'une source donnee. Resolu cote serveur via l'id (pas de chemin arbitraire).
 app.post('/api/documents/lien', (req, res) => {
-  const fn = DOCS_PAR_SOURCE[String(req.body?.source || '')];
+  const fn = DOC_PAR_SOURCE[String(req.body?.source || '')];
   if (!fn) return res.status(400).json({ error: 'Source inconnue.' });
-  const doc = fn().find((d) => d.id === Number(req.body?.document_id));
+  const doc = fn(req.body?.document_id);
   if (!doc || !doc.fichier || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Document introuvable.' });
   const token = oauthDb.rnd(24);
   const filename = basename(doc.fichier);
@@ -408,8 +420,9 @@ app.post('/api/documents/zip', async (req, res) => {
       .trim() || '_';
   let nb = 0;
   for (const [src, ids] of parSource) {
-    for (const doc of DOCS_PAR_SOURCE[src]()) {
-      if (!ids.has(doc.id) || !doc.fichier || !existsSync(doc.fichier)) continue;
+    for (const id of ids) {
+      const doc = DOC_PAR_SOURCE[src](id);
+      if (!doc || !doc.fichier || !existsSync(doc.fichier)) continue;
       let chemin = `${propre(doc.client_nom || 'Sans client')}/${propre(basename(doc.fichier))}`;
       for (let k = 2; nomsPris.has(chemin); k++) chemin = chemin.replace(/(\.[^./]*)?$/, ` (${k})$1`);
       nomsPris.add(chemin);
@@ -785,7 +798,7 @@ app.get('/api/urssaf/clients/:id/documents', (req, res) => {
 });
 app.get('/api/urssaf/documents', (req, res) => res.json(urssafDb.listAllDocuments()));
 app.get('/api/urssaf/documents/:id/file', (req, res) => {
-  const doc = urssafDb.listAllDocuments().find((d) => d.id === Number(req.params.id));
+  const doc = urssafDb.getDocument(req.params.id);
   if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
   res.download(doc.fichier, basename(doc.fichier));
 });

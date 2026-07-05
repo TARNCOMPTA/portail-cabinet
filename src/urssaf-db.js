@@ -207,6 +207,11 @@ export function listAllDocuments(limit = 5000) {
     .prepare(`SELECT d.*, c.nom AS client_nom FROM documents d LEFT JOIN clients c ON c.id = d.client_id ORDER BY d.recupere_le DESC, d.id DESC LIMIT ?`)
     .all(limit);
 }
+// Un document par id — pour servir un fichier, ne PAS passer par listAllDocuments
+// (plafonnée à 5000 : les documents anciens en sortent et deviendraient introuvables).
+export function getDocument(id) {
+  return db.prepare('SELECT d.*, c.nom AS client_nom FROM documents d LEFT JOIN clients c ON c.id = d.client_id WHERE d.id = ?').get(Number(id));
+}
 export function addRun(client_id, { statut, message, nb_docs }) {
   db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs) VALUES (?, ?, ?, ?)').run(client_id, statut, message ?? null, nb_docs ?? 0);
 }
