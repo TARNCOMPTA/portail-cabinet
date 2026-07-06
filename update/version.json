@@ -1,6 +1,6 @@
 {
-  "version": "1.5.5",
-  "notes": "Clients URSSAF : renommer une fiche protège désormais le nom — la synchronisation du portefeuille ne l'écrase plus (badge 🔏, bouton « Reprendre le nom URSSAF » pour revenir en arrière).",
+  "version": "1.5.6",
+  "notes": "URSSAF : une petite flèche ↻ à côté du SIRET synchronise la fiche du client (nom, rattachement) sans lancer la récupération des documents.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "b623f0043db12fe79c9857caf983f5b7701f8c21fe507c847491479ebd70dac6"
+  "sha256": "c5601169cec305832d427afe3dc2c0d498f93f99b6b8b103ef0bb0eb0fd4ca5c"
 }
