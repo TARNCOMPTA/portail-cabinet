@@ -258,6 +258,11 @@ export function listCfeSansPaiement(limit = 10000) {
     .prepare("SELECT id, fichier FROM documents WHERE eventid LIKE 'CFE\\_%' ESCAPE '\\' AND paiement IS NULL AND fichier IS NOT NULL LIMIT ?")
     .all(limit);
 }
+// Oubli des modes memorises : quand les motifs de detection changent
+// (PAIEMENT_CFE_VERSION), la retro-analyse repart de zero sur tous les avis.
+export function resetPaiementCfe() {
+  db.prepare("UPDATE documents SET paiement = NULL WHERE eventid LIKE 'CFE\\_%' ESCAPE '\\'").run();
+}
 export function getDocumentByEventid(client_id, eventid) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? AND eventid = ?').get(client_id, eventid);
 }

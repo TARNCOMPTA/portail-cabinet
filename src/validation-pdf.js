@@ -113,17 +113,30 @@ export function normaliser(texte) {
     .trim();
 }
 
-/** Mode de paiement mentionné sur un avis CFE. Mentions constatées sur les avis :
- *  « PRÉLÈVEMENT À L'ÉCHÉANCE », « mensualisation »/« mensualisé », et
- *  « vous n'avez pas adhéré à un prélèvement automatique ». Un avis « sans
- *  prélèvement » INVITE souvent à adhérer aux deux options -> cette mention
- *  est prioritaire. Renvoie 'aucun' | 'mensualise' | 'echeance' | null. */
+/** Mode de paiement mentionné sur un avis CFE. ATTENTION : TOUS les avis
+ *  embarquent une FAQ générique citant mensualisation ET prélèvement à
+ *  l'échéance (« résilier votre contrat de mensualisation ? », « vous êtes
+ *  mensualisé et vous souhaitez... », « le prélèvement à l'échéance —
+ *  avantages : ... ») : des mots isolés classaient TOUT en « mensualisé ».
+ *  Seules les mentions PERSONNALISÉES sont fiables (constat sur avis réels
+ *  2021-2025) :
+ *    échéance   : « vous avez choisi le prélèvement à l'échéance »
+ *    mensualisé : « contrat de mensualisation au nom de », « numéro de
+ *                  contrat de prélèvement mensuel » (l'avis à l'échéance a un
+ *                  « numéro de contrat de prélèvement » SANS « mensuel »),
+ *                  « vous avez choisi/opté pour le prélèvement mensuel »
+ *    aucun      : « vous n'avez pas adhéré à un prélèvement automatique »
+ *  Renvoie 'aucun' | 'mensualise' | 'echeance' | null. */
+// Version des motifs : l'incrémenter relance la retro-analyse de tous les avis
+// au prochain démarrage du serveur (les modes mémorisés sont oubliés).
+export const PAIEMENT_CFE_VERSION = 2;
 export function detecterPaiementCfe(texte) {
   const t = normaliser(texte);
   if (!t) return null;
+  if (/avez (choisi|opte pour) le prelevement a l.{0,2}echeance/.test(t)) return 'echeance';
+  if (/contrat de mensualisation au nom de|numero de contrat de prelevement mensuel|avez (choisi|opte pour) le prelevement mensuel/.test(t))
+    return 'mensualise';
   if (/pas adhere a un prelevement/.test(t)) return 'aucun';
-  if (/mensualis/.test(t)) return 'mensualise';
-  if (/prelevement[s]? a l.{0,2}echeance|preleve[e]? a l.{0,2}echeance/.test(t)) return 'echeance';
   return null;
 }
 

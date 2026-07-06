@@ -39,6 +39,7 @@ import {
   listeNoire,
   setPaiementDocument,
   listCfeSansPaiement,
+  resetPaiementCfe,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
@@ -1018,7 +1019,13 @@ if (!majDeclenchee) {
   // Tache de fond, une seule fois par document ('inconnu' si rien de detectable).
   (async () => {
     try {
-      const { extraireTextePdf, detecterPaiementCfe } = await import('./src/validation-pdf.js');
+      const { extraireTextePdf, detecterPaiementCfe, PAIEMENT_CFE_VERSION } = await import('./src/validation-pdf.js');
+      // Motifs de detection revises ? On oublie les modes memorises pour que
+      // TOUS les avis soient re-analyses avec les nouveaux motifs.
+      if (getSetting('cfe_detection_version') !== String(PAIEMENT_CFE_VERSION)) {
+        resetPaiementCfe();
+        setSetting('cfe_detection_version', String(PAIEMENT_CFE_VERSION));
+      }
       const aFaire = listCfeSansPaiement();
       if (!aFaire.length) return;
       console.log(`  [cfe] Analyse du mode de paiement de ${aFaire.length} avis CFE existants...`);
