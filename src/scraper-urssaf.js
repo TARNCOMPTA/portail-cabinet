@@ -191,9 +191,20 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
   await fermerCookies(page);
   // Attendre le champ identifiant (formulaire tiers mandate affiche).
   await page.locator('#login-tiers-declarant-tiers-mandate-identifiant').waitFor({ state: 'visible', timeout: 10000 });
-  await page.locator('#login-tiers-declarant-tiers-mandate-identifiant').fill(cabinet.login);
-  await page.locator('#login-tiers-declarant-tiers-mandate-password').fill(cabinet.password);
-  await Promise.all([page.waitForLoadState('domcontentloaded').catch(() => {}), page.locator('#login-tiers-declarant-tiers-mandate-password').press('Enter')]);
+  // Le formulaire URSSAF vide parfois les champs juste apres la saisie (echec
+  // « Le champ doit etre renseigne ») : on verifie les valeurs et on re-remplit.
+  const champId = page.locator('#login-tiers-declarant-tiers-mandate-identifiant');
+  const champMdp = page.locator('#login-tiers-declarant-tiers-mandate-password');
+  for (let t = 0; t < 3; t++) {
+    await champId.fill(cabinet.login);
+    await champMdp.fill(cabinet.password);
+    await page.waitForTimeout(300);
+    const idOk = (await champId.inputValue().catch(() => '')) === cabinet.login;
+    const mdpOk = ((await champMdp.inputValue().catch(() => '')) || '').length > 0;
+    if (idOk && mdpOk) break;
+    log(`Champs de connexion vides apres saisie — nouvelle saisie (${t + 1}/3)...`);
+  }
+  await Promise.all([page.waitForLoadState('domcontentloaded').catch(() => {}), champMdp.press('Enter')]);
   // Redirection post-login : on attend de QUITTER la page de connexion (identifiants
   // acceptes) plutot qu'un networkidle qui expirait en timeout (~45 s perdues).
   await page.waitForURL((u) => !/se-connecter|Comptes\/Connexion/i.test(String(u)), { timeout: 25000 }).catch(() => {});
@@ -698,6 +709,32 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
   }
 }
 
+// Deconnexion PROPRE de la messagerie dcl : detruit la session « dossier courant »
+// cote URSSAF. Sans ca, une session fantome survit (~1 h et plus si des acces la
+// rafraichissent) et ressert le MAUVAIS dossier aux clients suivants, meme apres
+// une reconnexion complete du compte cabinet (constate en reel). Best effort.
+async function deconnecterMessagerie(context, log) {
+  for (const p of context.pages()) {
+    if (p.isClosed() || !/dcl\.urssaf\.fr/.test(p.url())) continue;
+    const fait = await p
+      .evaluate(() => {
+        const el = [...document.querySelectorAll('a, button, [onclick]')].find((e) =>
+          /d[ée]connexion|se d[ée]connecter|quitter/i.test(`${e.textContent || ''} ${e.getAttribute('href') || ''} ${e.getAttribute('onclick') || ''}`),
+        );
+        if (el) {
+          el.click();
+          return true;
+        }
+        return false;
+      })
+      .catch(() => false);
+    if (fait) {
+      log?.('Deconnexion de la messagerie (fermeture de la session dossier cote URSSAF)...');
+      await p.waitForTimeout(1500);
+    }
+  }
+}
+
 // Ferme les onglets secondaires (webti/dcl) et revient au tableau de bord pour le client suivant.
 async function retourTableauBord(context, page, navTimeout) {
   for (const p of context.pages()) {
@@ -808,12 +845,22 @@ export async function scrapeAll(clients, opts = {}) {
       // on se reconnecte au compte cabinet pour ne pas rater tout le reste du lot.
       if (!(await sessionVivante(page)) || echecsConsecutifs >= 3) {
         log(echecsConsecutifs >= 3 ? "Plusieurs echecs d'affilee -> reconnexion du compte cabinet..." : 'Session cabinet expiree -> reconnexion...');
-        try {
-          await connecterCabinet(page, cabinet, navTimeout, log);
-          await page.waitForTimeout(300);
-          echecsConsecutifs = 0;
-        } catch (e) {
-          log(`Echec de la reconnexion (${e.message}). Arret du lot.`);
+        // La page de connexion URSSAF echoue parfois de facon transitoire
+        // (« Le champ doit etre renseigne ») : 2 tentatives avant d'abandonner.
+        let reconnecte = false;
+        for (let t = 0; t < 2 && !reconnecte; t++) {
+          try {
+            await connecterCabinet(page, cabinet, navTimeout, log);
+            await page.waitForTimeout(300);
+            echecsConsecutifs = 0;
+            reconnecte = true;
+          } catch (e) {
+            log(`Echec de la reconnexion (${e.message})${t === 0 ? ' — nouvel essai dans 5 s...' : ''}`);
+            if (t === 0) await page.waitForTimeout(5000);
+          }
+        }
+        if (!reconnecte) {
+          log('Reconnexion impossible apres 2 tentatives. Arret du lot.');
           break;
         }
       }
@@ -823,10 +870,12 @@ export async function scrapeAll(clients, opts = {}) {
       const r = await recupererAppelsClient(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, suiviMessagerie });
       let arretCollage = false;
       if (r.sessionSuspecte) {
-        // Documents d'un autre compte : la session dcl est collante. Cookies
+        // Documents d'un autre compte : la session dcl est collante. On DETRUIT
+        // la session fantome cote URSSAF (deconnexion messagerie), puis cookies
         // purges (la simple reconnexion ne suffit pas, le contexte les garde)
         // -> reconnexion complete en tete de boucle, et UNE nouvelle tentative.
         suiviMessagerie.empreinte = null;
+        await deconnecterMessagerie(context, clog).catch(() => {});
         await context.clearCookies().catch(() => {});
         echecsConsecutifs = 3; // force la reconnexion avant le prochain passage
         if (!clientsRetentes.has(client.id)) {
