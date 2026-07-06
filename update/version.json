@@ -1,6 +1,6 @@
 {
-  "version": "1.5.6",
-  "notes": "URSSAF : une petite flèche ↻ à côté du SIRET synchronise la fiche du client (nom, rattachement) sans lancer la récupération des documents.",
+  "version": "1.5.7",
+  "notes": "Correctif : après une grosse récupération URSSAF, les documents des premiers clients traités pouvaient disparaître de l'onglet Documents (plafond d'affichage relevé).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "c5601169cec305832d427afe3dc2c0d498f93f99b6b8b103ef0bb0eb0fd4ca5c"
+  "sha256": "6e40f153ac4a98ffe3a93c1ef31f1882d5c4da327a6b224bdbe4bd23f5ae9fcd"
 }
