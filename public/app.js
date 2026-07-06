@@ -67,6 +67,7 @@ function remplirSelectCabinets() {
 const formCab = $('#form-cabinet');
 formCab.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!e.isTrusted) return; // soumission de script/extension (gestionnaire de mdp), pas d'un clic
   const btn = $('#cab-submit');
   if (btn.disabled) return; // anti double-soumission (double-clic / Entrée repete)
   const payload = { libelle: formCab.libelle.value.trim(), login: formCab.login.value.trim(), password: formCab.password.value };
@@ -1761,3 +1762,21 @@ setInterval(chargerRuns, 5000);
 setInterval(chargerDocuments, 30000);
 setInterval(chargerDashboard, 10000);
 setInterval(suivreProgression, 2000);
+
+// ---- Anti gestionnaires de mots de passe -----------------------------------
+// Les formulaires de comptes (identifiant + mot de passe des sources) sont pris
+// pour des formulaires de connexion par les extensions (Dashlane, Bitwarden...) :
+// fenetres intempestives, remplissage et SOUMISSION automatiques a l'ouverture
+// des Parametres (toasts « Identifiant requis » en serie). On marque ces champs
+// comme hors-jeu avec les attributs d'exclusion propres a chaque extension.
+for (const f of document.querySelectorAll('form')) {
+  if (!f.querySelector('input[type="password"]')) continue;
+  f.setAttribute('autocomplete', 'off');
+  for (const inp of f.querySelectorAll('input[name="login"], input[type="password"]')) {
+    inp.setAttribute('autocomplete', inp.type === 'password' ? 'new-password' : 'off');
+    inp.setAttribute('data-lpignore', 'true'); // LastPass
+    inp.setAttribute('data-1p-ignore', ''); // 1Password
+    inp.setAttribute('data-bwignore', ''); // Bitwarden
+    inp.setAttribute('data-protonpass-ignore', 'true'); // Proton Pass
+  }
+}

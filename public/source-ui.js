@@ -110,6 +110,7 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
   form.password.required = true;
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!e.isTrusted) return; // soumission de script/extension (gestionnaire de mdp), pas d'un clic
     const btn = el('submit');
     if (btn.disabled) return;
     const id = form.id.value;

@@ -60,6 +60,7 @@
   $('#ucab-cancel').addEventListener('click', resetCab);
   formCab.addEventListener('submit', async (e) => {
     e.preventDefault();
+    if (!e.isTrusted) return; // soumission de script/extension (gestionnaire de mdp), pas d'un clic
     const btn = $('#ucab-submit');
     if (btn.disabled) return;
     const id = formCab.id.value;
