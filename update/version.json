@@ -1,6 +1,6 @@
 {
-  "version": "1.6.0",
-  "notes": "Avis CFE : le mode de paiement est détecté dans chaque avis (prélèvement à l'échéance, mensualisation, ou pas de prélèvement automatique) — badges dans les listes et filtres pour repérer les clients sans prélèvement. Les avis déjà récupérés sont analysés automatiquement au redémarrage.",
+  "version": "1.6.1",
+  "notes": "URSSAF : correction du classement des documents (la recherche client verifie le SIRET avant d'ouvrir un dossier) + script de re-verification des documents existants.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "9c629e08fd1a9a2dadba6c7a92a43e319002ba95d5505aff6eae6ded1336496d"
+  "sha256": "41fa77c55ae472e238ad8458ec928c7f98a4cb4898a45b4c09a9ea67673bf007"
 }
