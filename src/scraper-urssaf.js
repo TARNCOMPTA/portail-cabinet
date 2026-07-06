@@ -402,6 +402,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
       const chiffres = siret.replace(/\D/g, '');
       const siren = chiffres.length >= 9 ? chiffres.slice(0, 9) : '';
       const finAttente = Date.now() + 8000;
+      let dernieresLignes = [];
       while (Date.now() < finAttente) {
         // Marque chaque « Acceder » visible (data-pc-acceder=index) et remonte le
         // texte de sa ligne (premier ancetre portant plus que le libelle du bouton).
@@ -420,12 +421,26 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
             });
           })
           .catch(() => []);
+        if (lignes.length) dernieresLignes = lignes;
         for (let i = 0; i < lignes.length; i++) {
           const digits = lignes[i].replace(/\D/g, '');
           const parNumero = (chiffres.length >= 8 && digits.includes(chiffres)) || (siren && digits.includes(siren));
           if (parNumero || (client.nom && correspondanceNom(lignes[i], client.nom))) return page.locator(`[data-pc-acceder="${i}"]`);
         }
         await page.waitForTimeout(400);
+      }
+      // Echec : trace de ce que la page affichait REELLEMENT (valeur du champ +
+      // lignes des boutons « Acceder »), pour diagnostiquer sans acces a l'ecran.
+      try {
+        const valeur = await champ.inputValue().catch(() => '?');
+        const apercu =
+          dernieresLignes
+            .slice(0, 4)
+            .map((l) => `« ${l.slice(0, 100)} »`)
+            .join(' | ') || '(aucune ligne avec « Acceder »)';
+        log(`(diag : champ="${valeur}" ; ${dernieresLignes.length} ligne(s) affichee(s) : ${apercu})`);
+      } catch {
+        /* diagnostic best effort */
       }
       return null;
     }
@@ -845,6 +860,10 @@ export async function scrapeAll(clients, opts = {}) {
       // on se reconnecte au compte cabinet pour ne pas rater tout le reste du lot.
       if (!(await sessionVivante(page)) || echecsConsecutifs >= 3) {
         log(echecsConsecutifs >= 3 ? "Plusieurs echecs d'affilee -> reconnexion du compte cabinet..." : 'Session cabinet expiree -> reconnexion...');
+        // Si la session est encore active, la page de connexion redirige et le
+        // formulaire n'apparait jamais (echec « champ identifiant invisible ») :
+        // cookies purges pour garantir une VRAIE page de connexion.
+        await context.clearCookies().catch(() => {});
         // La page de connexion URSSAF echoue parfois de facon transitoire
         // (« Le champ doit etre renseigne ») : 2 tentatives avant d'abandonner.
         let reconnecte = false;
