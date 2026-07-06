@@ -1,6 +1,6 @@
 {
-  "version": "1.5.4",
-  "notes": "Sécurité : verrouillage par compte (5 échecs → 15 min) en plus du verrouillage par IP contre la force brute",
+  "version": "1.5.5",
+  "notes": "Clients URSSAF : renommer une fiche protège désormais le nom — la synchronisation du portefeuille ne l'écrase plus (badge 🔏, bouton « Reprendre le nom URSSAF » pour revenir en arrière).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "6e71f333e7129be99eced4a3db96045fd7383365c11fa23910fdb6221222cf21"
+  "sha256": "b623f0043db12fe79c9857caf983f5b7701f8c21fe507c847491479ebd70dac6"
 }
