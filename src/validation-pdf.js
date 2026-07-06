@@ -17,7 +17,12 @@ export const QUARANTAINE_DIR = resolve(__dirname, '..', 'downloads', '_quarantai
 
 const SEP = '[\\s\\u00a0\\u202f.\\-]'; // séparateurs tolérés entre les chiffres d'un numéro imprimé
 
-// Civilités, formes juridiques et mots-outils ignorés dans le matching par nom.
+// Civilités, formes juridiques, PROFESSIONS et mots-outils ignorés dans le
+// matching par nom. Les professions sont indispensables : les fiches sont
+// nommées « MME MARRE Infirmiere » — sans exclusion, « infirmiere » (token le
+// plus long) faisait matcher N'IMPORTE QUELLE infirmière avec n'importe quelle
+// autre (cas réel : la recherche URSSAF ouvrait le dossier de la première
+// infirmière de la liste, VIGUIER, pour toutes les autres).
 const STOPLIST = new Set([
   'm',
   'mr',
@@ -30,6 +35,51 @@ const STOPLIST = new Set([
   'madame',
   'mademoiselle',
   'maitre',
+  'infirmier',
+  'infirmiere',
+  'medecin',
+  'specialiste',
+  'generaliste',
+  'kinesitherapeute',
+  'masseur',
+  'kine',
+  'sage',
+  'femme',
+  'orthophoniste',
+  'orthoptiste',
+  'dentiste',
+  'chirurgien',
+  'veterinaire',
+  'pharmacien',
+  'pharmacienne',
+  'podologue',
+  'pedicure',
+  'osteopathe',
+  'psychologue',
+  'dieteticien',
+  'dieteticienne',
+  'auxiliaire',
+  'medical',
+  'medicale',
+  'medicaux',
+  'liberal',
+  'liberale',
+  'remplacant',
+  'remplacante',
+  'titulaire',
+  'huissier',
+  'justice',
+  'notaire',
+  'avocat',
+  'avocate',
+  'gerant',
+  'gerante',
+  'majoritaire',
+  'president',
+  'presidente',
+  'artisan',
+  'commercant',
+  'commercante',
   'cabinet',
   'selarl',
   'selas',

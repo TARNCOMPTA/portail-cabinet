@@ -111,6 +111,17 @@ test('correspondanceNom : frontières de mot et non-correspondance', () => {
   assert.ok(!correspondanceNom('Docteur BERNARD Paul', 'DUPONT Marie'));
 });
 
+test('correspondanceNom : les professions ne suffisent JAMAIS à matcher (cas réel VIGUIER)', () => {
+  // Les fiches sont nommées « MME X Infirmiere » : sans exclusion des professions,
+  // « infirmiere » (token le plus long) faisait matcher n'importe quelle infirmière
+  // avec n'importe quelle autre -> le scraper ouvrait le dossier VIGUIER pour toutes.
+  assert.ok(!correspondanceNom('MME VIGUIER INFIRMIERE', 'MME MARRE Infirmiere'));
+  assert.ok(correspondanceNom('MADAME MARRE Sophie, infirmière libérale', 'MME MARRE Infirmiere'));
+  assert.ok(!correspondanceNom('MME PENARD Sage-femme', 'MME MASSE Sage-femme'));
+  assert.ok(!correspondanceNom('MR DURAND Medecin specialiste', 'MME LAGARRIGUE Medecin specialiste'));
+  assert.ok(correspondanceNom('LAGARRIGUE Anne', 'MME LAGARRIGUE Medecin specialiste'));
+});
+
 // ---- attendusPour / verifierCorrespondance ----
 
 test('attendusPour dérive les identifiants selon la source', () => {
