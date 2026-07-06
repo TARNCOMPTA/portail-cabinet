@@ -941,6 +941,34 @@ td .row-actions {
   color: var(--ink-soft);
 }
 
+/* ↻ Synchronisation d'une seule fiche (colonne SIRET des listes clients). */
+.btn-sync-un {
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 3px;
+  vertical-align: middle;
+  display: inline-block;
+}
+.btn-sync-un:hover {
+  transform: scale(1.2);
+}
+.btn-sync-un.tourne {
+  animation: sync-tourne 1s linear infinite;
+  pointer-events: none;
+}
+@keyframes sync-tourne {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Captcha impôts relayée dans le portail. */
 .captcha-zone {
   display: flex;

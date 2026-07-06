@@ -156,7 +156,9 @@
         (c) => `
       <tr>
         <td>${c.nom_verrouille ? '<span title="Nom personnalisé — la synchronisation ne l\'écrase plus">🔏 </span>' : ''}${esc(c.nom)}</td>
-        <td class="siret">${esc(c.siret)}</td>
+        <td class="siret">${esc(c.siret)}
+          <button type="button" class="btn-sync-un" data-u-syncun="${c.id}" title="Synchroniser cette fiche depuis l'URSSAF (nom, rattachement — pas les documents)">↻</button>
+        </td>
         <td>${c.cabinet_libelle ? `<span class="badge cab">${esc(c.cabinet_libelle)}</span>` : '<span class="badge err">aucun</span>'}</td>
         <td>${c.nb_docs ? `<a href="#" data-u-docs="${c.id}" style="color:var(--accent);font-weight:600;text-decoration:none;">${c.nb_docs}</a>` : '0'}</td>
         <td>${statutBadge(c.dernier_statut)} <span class="aide" style="margin:0;">${fmtDate(c.dernier_run)}</span></td>
@@ -246,6 +248,31 @@
     if (a) {
       e.preventDefault();
       return voirDocs(Number(a.dataset.uDocs));
+    }
+    // ↻ Synchronisation d'UNE fiche depuis le portefeuille URSSAF (pas les documents).
+    const sy = e.target.closest('button[data-u-syncun]');
+    if (sy) {
+      if (sy.classList.contains('tourne')) return;
+      sy.classList.add('tourne');
+      try {
+        const r = await api(`/api/urssaf/clients/${sy.dataset.uSyncun}/sync`, { method: 'POST' });
+        if (r.ok) {
+          toast(
+            r.nom_verrouille && r.nom_urssaf !== r.nom
+              ? `Fiche synchronisée — nom 🔏 conservé (« ${r.nom} », l'URSSAF indique « ${r.nom_urssaf} »).`
+              : `Fiche synchronisée : ${r.nom}.`,
+            'ok',
+          );
+        } else if (r.introuvable) {
+          toast(`SIRET introuvable dans le portefeuille URSSAF (${r.total} compte(s) listés).`, 'err');
+        }
+        chargerClients();
+      } catch (err) {
+        toast(err.message, 'err');
+      } finally {
+        sy.classList.remove('tourne');
+      }
+      return;
     }
     const btn = e.target.closest('button[data-u-scrape], button[data-u-edit], button[data-u-del]');
     if (!btn) return;

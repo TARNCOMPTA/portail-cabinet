@@ -769,6 +769,32 @@ app.post('/api/urssaf/clients/import', (req, res) => {
   for (const c of clients) urssafDb.listeNoire.retirerListeNoireParSiret(c?.siret); // import volontaire
   res.json(urssafDb.importClients(clients, req.body?.cabinet_id || null));
 });
+// Synchronise UNE fiche depuis le portefeuille URSSAF (nom, rattachement — pas les
+// documents). Une session cabinet est ouverte, la ligne du SIRET est appliquée via
+// importClients (donc verrou de nom et regles habituelles respectes).
+app.post('/api/urssaf/clients/:id/sync', async (req, res) => {
+  const c = urssafDb.getClient(Number(req.params.id));
+  if (!c) return res.status(404).json({ error: 'Client introuvable.' });
+  const cab = c.cabinet_id ? urssafDb.getCabinetFull(c.cabinet_id) : null;
+  if (!cab) return res.status(400).json({ error: "Rattache d'abord ce client à un compte URSSAF." });
+  if ([...enCours].some((k) => String(k).startsWith('urssaf'))) return res.status(409).json({ error: 'Une opération URSSAF est déjà en cours.' });
+  const key = 'urssaf:syncclient:' + c.id;
+  enCours.add(key);
+  try {
+    const rows = await listerClientsUrssaf(cab, { onLog: progLog });
+    const siret = String(c.siret || '').replace(/\D/g, '');
+    const ligne = rows.find((r) => String(r.siret || '').replace(/\D/g, '') === siret);
+    if (!ligne) return res.json({ ok: false, introuvable: true, total: rows.length });
+    urssafDb.importClients([ligne], c.cabinet_id);
+    const maj = urssafDb.getClient(c.id);
+    res.json({ ok: true, nom: maj.nom, nom_verrouille: !!maj.nom_verrouille, nom_urssaf: ligne.nom });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  } finally {
+    enCours.delete(key);
+  }
+});
+
 app.put('/api/urssaf/clients/:id', (req, res) => {
   const avant = urssafDb.getClient(Number(req.params.id));
   if (!avant) return res.status(404).json({ error: 'Client introuvable.' });
