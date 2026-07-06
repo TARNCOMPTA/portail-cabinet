@@ -1,6 +1,6 @@
 {
-  "version": "1.5.7",
-  "notes": "Correctif : après une grosse récupération URSSAF, les documents des premiers clients traités pouvaient disparaître de l'onglet Documents (plafond d'affichage relevé).",
+  "version": "1.5.8",
+  "notes": "Fiabilité : le serveur vérifie et réinstalle ses dépendances manquantes à chaque démarrage (correction d'un blocage possible après mise à jour interrompue).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "6e40f153ac4a98ffe3a93c1ef31f1882d5c4da327a6b224bdbe4bd23f5ae9fcd"
+  "sha256": "4cccc2d47dd42613239e6185f35de698fbdc2ede658162f5623d940dd88434c4"
 }
