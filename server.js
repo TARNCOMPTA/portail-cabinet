@@ -37,6 +37,8 @@ import {
   deleteUserSessions,
   purgerSessionsExpirees,
   listeNoire,
+  setPaiementDocument,
+  listCfeSansPaiement,
 } from './src/db.js';
 import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
@@ -1010,4 +1012,30 @@ try {
 
 if (!majDeclenchee) {
   app.listen(PORT, () => console.log(`\n  Impots pro scraper -> http://localhost:${PORT}\n`));
+
+  // Retro-analyse des avis CFE deja telecharges : detecte le mode de paiement
+  // (prelevement a l'echeance / mensualisation / aucun) dans le texte des PDF.
+  // Tache de fond, une seule fois par document ('inconnu' si rien de detectable).
+  (async () => {
+    try {
+      const { extraireTextePdf, detecterPaiementCfe } = await import('./src/validation-pdf.js');
+      const aFaire = listCfeSansPaiement();
+      if (!aFaire.length) return;
+      console.log(`  [cfe] Analyse du mode de paiement de ${aFaire.length} avis CFE existants...`);
+      let detectes = 0;
+      for (const d of aFaire) {
+        if (!existsSync(d.fichier)) {
+          setPaiementDocument(d.id, 'inconnu');
+          continue;
+        }
+        const texte = await extraireTextePdf(d.fichier).catch(() => null);
+        const p = (texte && detecterPaiementCfe(texte)) || 'inconnu';
+        setPaiementDocument(d.id, p);
+        if (p !== 'inconnu') detectes++;
+      }
+      console.log(`  [cfe] Terminé : mode de paiement détecté sur ${detectes}/${aFaire.length} avis.`);
+    } catch (e) {
+      console.warn('  [cfe] retro-analyse : ' + e.message);
+    }
+  })();
 }

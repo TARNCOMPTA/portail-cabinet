@@ -309,12 +309,15 @@
               <select id="clients-filtre-cabinet">
                 <option value="">Tous les comptes</option>
               </select>
-              <select id="clients-filtre-etat" title="Filtrer par état de la dernière récupération">
+              <select id="clients-filtre-etat" title="Filtrer par état de la dernière récupération ou par mode de paiement CFE">
                 <option value="">Tous les états</option>
                 <option value="succes">✔ Succès</option>
                 <option value="echec">✘ Échec</option>
                 <option value="bloque">🔒 Bloqué (mot de passe)</option>
                 <option value="jamais">Jamais récupéré</option>
+                <option value="cfe-aucun">⚠ CFE sans prélèvement</option>
+                <option value="cfe-echeance">CFE prélevée à l'échéance</option>
+                <option value="cfe-mensualise">CFE mensualisée</option>
               </select>
               <button type="button" class="btn" id="btn-export-csv"><i class="ph ph-download-simple"></i> Exporter (CSV)</button>
               <button type="button" class="btn primary" id="btn-scrape-selection" disabled>Récupérer la sélection (0)</button>
@@ -930,6 +933,12 @@
               />
               <select id="docs-filtre-annee" title="Filtrer par année du document">
                 <option value="">Toutes les années</option>
+              </select>
+              <select id="docs-filtre-paiement" title="Filtrer les avis CFE par mode de paiement détecté dans le PDF">
+                <option value="">Paiement CFE : tous</option>
+                <option value="aucun">⚠ Pas de prélèvement</option>
+                <option value="echeance">Prélevé à l'échéance</option>
+                <option value="mensualise">Mensualisé</option>
               </select>
               <button
                 type="button"

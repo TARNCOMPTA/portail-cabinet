@@ -16,7 +16,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './db.js';
 import { launchArgs } from './navigateur.js';
-import { verifierEtClasser } from './validation-pdf.js';
+import { verifierEtClasser, extraireTextePdf, detecterPaiementCfe } from './validation-pdf.js';
 import * as captchaRelais from './captcha-relais.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -196,11 +196,18 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
         continue; // pas d'addDocument -> retelecharge et reverifie au prochain run
       }
       if (verif.verdict === 'non_verifiable') nonVerifiables++;
+      // Avis CFE : detection du mode de paiement mentionne dans le PDF
+      // (prelevement a l'echeance / mensualisation / pas de prelevement).
+      let paiement = null;
+      if (prefixe === 'CFE') {
+        const texte = await extraireTextePdf(dest).catch(() => null);
+        paiement = (texte && detecterPaiementCfe(texte)) || 'inconnu';
+      }
       try {
-        addDocument(client.id, { libelle: `${prefixe} ${annee} ${ref}`, fichier: dest, eventid: eid });
+        addDocument(client.id, { libelle: `${prefixe} ${annee} ${ref}`, fichier: dest, eventid: eid, paiement });
       } catch {}
       docs.push({ libelle: `${prefixe} ${annee}`, fichier: dest });
-      log(`OK : ${prefixe}_${annee}_${ref}.pdf`);
+      log(`OK : ${prefixe}_${annee}_${ref}.pdf${paiement && paiement !== 'inconnu' ? ` (paiement : ${paiement})` : ''}`);
     } catch (e) {
       log(`(${prefixe} ${i + 1} : ${e.message.split('\n')[0]})`);
     }

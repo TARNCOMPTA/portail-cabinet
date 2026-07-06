@@ -169,6 +169,14 @@ let clientsPage = 1;
 let clientsTri = { col: 'nom', dir: 1 };
 const selection = new Set();
 
+// Badge du mode de paiement CFE (détecté dans le texte de l'avis) — helper GLOBAL.
+function badgePaiementCfe(p) {
+  if (p === 'echeance') return '<span class="badge ok" title="L\'avis CFE indique un prélèvement à l\'échéance">Prélevé échéance</span>';
+  if (p === 'mensualise') return '<span class="badge ok" title="L\'avis CFE indique une mensualisation">Mensualisé</span>';
+  if (p === 'aucun') return '<span class="badge err" title="L\'avis CFE indique : pas d\'adhésion à un prélèvement automatique">⚠ Pas de prélèvement</span>';
+  return '';
+}
+
 // État de la dernière récupération d'un client — helper GLOBAL, utilisé par les
 // filtres « état » des listes clients de toutes les sources (source-ui.js, urssaf.js).
 function filtreEtatClient(c, etat) {
@@ -187,7 +195,9 @@ function clientsFiltres() {
   const etat = $('#clients-filtre-etat')?.value || '';
   let liste = clientsAll.slice();
   if (cabFiltre) liste = liste.filter((c) => String(c.cabinet_id) === cabFiltre);
-  if (etat) liste = liste.filter((c) => filtreEtatClient(c, etat));
+  // Filtres « paiement CFE » (mode détecté sur le dernier avis CFE du client).
+  if (etat.startsWith('cfe-')) liste = liste.filter((c) => c.paiement_cfe === etat.slice(4));
+  else if (etat) liste = liste.filter((c) => filtreEtatClient(c, etat));
   if (q) liste = liste.filter((c) => `${c.nom} ${c.siret} ${c.cabinet_libelle || ''}`.toLowerCase().includes(q));
   const { col, dir } = clientsTri;
   const val = (c) =>
@@ -229,7 +239,7 @@ function renderClients() {
     const cab = c.cabinet_libelle ? `<span class="badge cab">${esc(c.cabinet_libelle)}</span>` : '<span class="badge err">aucun</span>';
     tr.innerHTML = `
       <td class="col-check"><input type="checkbox" class="row-check" data-id="${c.id}" ${selection.has(c.id) ? 'checked' : ''} /></td>
-      <td>${esc(c.nom)}</td>
+      <td>${esc(c.nom)} ${badgePaiementCfe(c.paiement_cfe)}</td>
       <td><span class="siret">${esc(c.siret)}</span></td>
       <td>${cab}</td>
       <td>${c.nb_docs}</td>
@@ -877,6 +887,8 @@ async function chargerDocuments() {
 function docsAffiches() {
   let liste = tousDocs;
   if (filtreAnnee) liste = liste.filter((d) => d._annee === filtreAnnee);
+  const fPaiement = $('#docs-filtre-paiement')?.value || '';
+  if (fPaiement) liste = liste.filter((d) => d.paiement === fPaiement);
   if (filtreDocs) {
     const q = norm(filtreDocs);
     liste = liste.filter((d) =>
@@ -911,7 +923,7 @@ function afficherPageDocs() {
       <td>${esc(d._date || '—')}</td>
       <td>${esc(d.client_nom || '—')}</td>
       <td><span class="badge cab">${esc(d.source || '—')}</span></td>
-      <td>${esc(d._libelle || '—')}</td>
+      <td>${esc(d._libelle || '—')} ${badgePaiementCfe(d.paiement)}</td>
       <td><a class="btn small primary" href="${d._href}" target="_blank">Ouvrir</a></td>`;
     tbody.appendChild(tr);
   }
@@ -937,6 +949,10 @@ $('#search-docs').addEventListener('input', (e) => {
 });
 $('#docs-filtre-annee')?.addEventListener('change', (e) => {
   filtreAnnee = e.target.value;
+  pageDocs = 1;
+  afficherPageDocs();
+});
+$('#docs-filtre-paiement')?.addEventListener('change', () => {
   pageDocs = 1;
   afficherPageDocs();
 });

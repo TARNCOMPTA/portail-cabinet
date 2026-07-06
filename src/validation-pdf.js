@@ -113,6 +113,20 @@ export function normaliser(texte) {
     .trim();
 }
 
+/** Mode de paiement mentionné sur un avis CFE. Mentions constatées sur les avis :
+ *  « PRÉLÈVEMENT À L'ÉCHÉANCE », « mensualisation »/« mensualisé », et
+ *  « vous n'avez pas adhéré à un prélèvement automatique ». Un avis « sans
+ *  prélèvement » INVITE souvent à adhérer aux deux options -> cette mention
+ *  est prioritaire. Renvoie 'aucun' | 'mensualise' | 'echeance' | null. */
+export function detecterPaiementCfe(texte) {
+  const t = normaliser(texte);
+  if (!t) return null;
+  if (/pas adhere a un prelevement/.test(t)) return 'aucun';
+  if (/mensualis/.test(t)) return 'mensualise';
+  if (/prelevement[s]? a l.{0,2}echeance|preleve[e]? a l.{0,2}echeance/.test(t)) return 'echeance';
+  return null;
+}
+
 /** Cherche une suite de chiffres dans le texte en tolérant des séparateurs entre les
  *  groupes (« 123 456 789 » matche '123456789'). Un SIREN matche aussi le début d'un
  *  SIRET imprimé. Refuse le raccord au milieu d'un nombre plus long à gauche. */

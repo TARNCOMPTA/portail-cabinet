@@ -49,6 +49,14 @@ db.exec(`
   );
 `);
 
+// Migration : mode de paiement detecte dans les avis CFE
+// ('echeance' | 'mensualise' | 'aucun' | 'inconnu' | NULL = pas encore analyse).
+try {
+  db.exec('ALTER TABLE documents ADD COLUMN paiement TEXT');
+} catch {
+  /* colonne deja presente */
+}
+
 // ---- Reglages -------------------------------------------------------------
 export function getSetting(cle, def = null) {
   const r = db.prepare('SELECT valeur FROM settings WHERE cle = ?').get(cle);
@@ -157,6 +165,8 @@ export function listClients() {
     SELECT c.id, c.nom, c.siret, c.dossier, c.cabinet_id, c.created_at, c.updated_at,
            (SELECT libelle FROM cabinets cab WHERE cab.id = c.cabinet_id) AS cabinet_libelle,
            (SELECT COUNT(*) FROM documents d WHERE d.client_id = c.id) AS nb_docs,
+           (SELECT paiement FROM documents d WHERE d.client_id = c.id AND d.paiement IS NOT NULL AND d.paiement != 'inconnu'
+              ORDER BY d.recupere_le DESC, d.id DESC LIMIT 1) AS paiement_cfe,
            (SELECT lance_le FROM runs r WHERE r.client_id = c.id ORDER BY r.lance_le DESC, r.id DESC LIMIT 1) AS dernier_run,
            (SELECT statut   FROM runs r WHERE r.client_id = c.id ORDER BY r.lance_le DESC, r.id DESC LIMIT 1) AS dernier_statut,
            (SELECT message  FROM runs r WHERE r.client_id = c.id ORDER BY r.lance_le DESC, r.id DESC LIMIT 1) AS dernier_message
@@ -229,13 +239,24 @@ export function importClients(rows, cabinetId = null) {
 }
 
 // ---- Documents & runs -----------------------------------------------------
-export function addDocument(client_id, { libelle, fichier, eventid }) {
-  db.prepare('INSERT OR IGNORE INTO documents (client_id, libelle, fichier, eventid) VALUES (?, ?, ?, ?)').run(
+export function addDocument(client_id, { libelle, fichier, eventid, paiement }) {
+  db.prepare('INSERT OR IGNORE INTO documents (client_id, libelle, fichier, eventid, paiement) VALUES (?, ?, ?, ?, ?)').run(
     client_id,
     libelle ?? null,
     fichier,
     eventid ?? null,
+    paiement ?? null,
   );
+}
+// ---- Mode de paiement des avis CFE (detecte dans le texte du PDF) ----------
+export function setPaiementDocument(id, paiement) {
+  db.prepare('UPDATE documents SET paiement = ? WHERE id = ?').run(paiement ?? null, Number(id));
+}
+// Avis CFE pas encore analyses (retro-analyse au demarrage du serveur).
+export function listCfeSansPaiement(limit = 10000) {
+  return db
+    .prepare("SELECT id, fichier FROM documents WHERE eventid LIKE 'CFE\\_%' ESCAPE '\\' AND paiement IS NULL AND fichier IS NOT NULL LIMIT ?")
+    .all(limit);
 }
 export function getDocumentByEventid(client_id, eventid) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? AND eventid = ?').get(client_id, eventid);
