@@ -212,7 +212,10 @@ export function getDocumentByEventid(client_id, eventid) {
 export function listDocuments(client_id) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? ORDER BY recupere_le DESC, id DESC').all(client_id);
 }
-export function listAllDocuments(limit = 5000) {
+// Plafond LARGE : l'ancien plafond de 5000 faisait disparaitre de l'onglet Documents
+// (et du lien MCP / du ZIP) les clients traites en debut de lot des que la tournee
+// complete depassait 5000 documents (cas reel : BARTHE, ~5100 docs au total).
+export function listAllDocuments(limit = 50000) {
   return db
     .prepare(`SELECT d.*, c.nom AS client_nom FROM documents d LEFT JOIN clients c ON c.id = d.client_id ORDER BY d.recupere_le DESC, d.id DESC LIMIT ?`)
     .all(limit);

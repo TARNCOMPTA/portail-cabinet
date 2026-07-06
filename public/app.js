@@ -1268,6 +1268,7 @@ function activerOnglet(nom) {
   else $('#panel-progress').hidden = true;
   if (nom === 'par-client') chargerParClient();
   if (nom === 'messages') chargerMessages();
+  if (nom === 'documents') chargerDocuments();
 }
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
 activerOnglet('dashboard');
@@ -1739,6 +1740,8 @@ suivreEtat();
 afficherVersion();
 suivreProgression();
 setInterval(chargerRuns, 5000);
-setInterval(chargerDocuments, 8000);
+// Les listes de documents peuvent etre volumineuses (plafond urssaf releve a 50000) :
+// rafraichissement espace, complete par un rechargement a l'ouverture de l'onglet.
+setInterval(chargerDocuments, 30000);
 setInterval(chargerDashboard, 10000);
 setInterval(suivreProgression, 2000);
