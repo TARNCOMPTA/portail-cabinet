@@ -363,7 +363,7 @@ export async function listerClients(cabinet, opts = {}) {
 // Traite UN client sur une page deja connectee (positionnee sur le tableau de bord tdbec).
 // Recherche -> Acceder -> Messagerie -> telechargement des appels. Enregistre le run.
 // Ne ferme PAS les onglets : c'est l'appelant qui nettoie et revient au tableau de bord.
-async function recupererAppelsClient(context, page, client, { baseFolder, navTimeout, log }) {
+async function recupererAppelsClient(context, page, client, { baseFolder, navTimeout, log, suiviMessagerie }) {
   const docs = [];
   const siret = String(client.siret || '').replace(/\s+/g, '');
   const clientDir = dossierClient(client, baseFolder);
@@ -386,7 +386,10 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         .first()
         .click()
         .catch(() => {});
-      const siren = siret.length >= 9 ? siret.slice(0, 9) : '';
+      // Identifiants avec lettres (praticiens PAMC : « GQ8387317...Z01 ») : la
+      // comparaison se fait sur les chiffres seuls, comme la ligne affichee.
+      const chiffres = siret.replace(/\D/g, '');
+      const siren = chiffres.length >= 9 ? chiffres.slice(0, 9) : '';
       const finAttente = Date.now() + 8000;
       while (Date.now() < finAttente) {
         // Marque chaque « Acceder » visible (data-pc-acceder=index) et remonte le
@@ -408,7 +411,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
           .catch(() => []);
         for (let i = 0; i < lignes.length; i++) {
           const digits = lignes[i].replace(/\D/g, '');
-          const parNumero = (siret && digits.includes(siret)) || (siren && digits.includes(siren));
+          const parNumero = (chiffres.length >= 8 && digits.includes(chiffres)) || (siren && digits.includes(siren));
           if (parNumero || (client.nom && correspondanceNom(lignes[i], client.nom))) return page.locator(`[data-pc-acceder="${i}"]`);
         }
         await page.waitForTimeout(400);
@@ -532,6 +535,26 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     });
 
     log(`${docsTrouves.length} document(s) detecte(s) dans la messagerie.`);
+
+    // Session dcl COLLANTE : la redirection a jeton vers la messagerie echoue
+    // parfois silencieusement et la page affiche la messagerie du client
+    // PRECEDENT (cas reel : les memes 22 pieces jointes telechargees pour des
+    // dizaines de clients d'affilee). Une liste de pieces jointes strictement
+    // identique a celle du client precedent est le signal le plus fiable : on
+    // ne telecharge RIEN et on demande a l'appelant de se reconnecter.
+    if (suiviMessagerie && docsTrouves.length) {
+      const empreinte = docsTrouves
+        .map((d) => d.href)
+        .sort()
+        .join('|');
+      if (empreinte === suiviMessagerie.empreinte) {
+        const msgErr = 'Messagerie identique a celle du client precedent (session URSSAF collante) — aucun telechargement, reconnexion necessaire.';
+        addRunSafe(client.id, { statut: 'echec', message: msgErr, nb_docs: 0 });
+        log(`ERREUR : ${msgErr}`);
+        return { ok: false, error: msgErr, docs, sessionSuspecte: true };
+      }
+      suiviMessagerie.empreinte = empreinte;
+    }
 
     // Diagnostic : si 0 document, on dump la structure de la messagerie pour
     // comprendre les cas particuliers (praticiens PAMC : infirmiers, osteo...).
@@ -658,6 +681,9 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
     addRunSafe(client.id, { statut: quarantaines.length > 0 ? 'echec' : 'succes', message, nb_docs: docs.length });
     log(`Termine : ${docs.length} nouveau(x), ${existants} deja present(s) sur ${total} document(s).`);
+    // Des PDF d'un AUTRE compte mis en quarantaine = messagerie/session suspecte :
+    // l'appelant (scrapeAll) purge les cookies, se reconnecte et retente une fois.
+    if (quarantaines.length > 0) return { ok: false, error: message, docs, sessionSuspecte: true };
     return { ok: true, docs };
   } catch (err) {
     const shot = resolve(clientDir, `_debug_${Date.now()}.png`);
@@ -754,6 +780,10 @@ export async function scrapeAll(clients, opts = {}) {
     await page.waitForTimeout(200);
 
     let echecsConsecutifs = 0;
+    // Detection de la session dcl collante (messagerie du client precedent) :
+    // empreinte des pieces jointes partagee entre clients + un seul re-essai chacun.
+    const suiviMessagerie = { empreinte: null };
+    const clientsRetentes = new Set();
     for (let i = 0; i < clients.length; i++) {
       if (opts.shouldStop && opts.shouldStop()) {
         log('Arret demande, fin du lot.');
@@ -782,7 +812,22 @@ export async function scrapeAll(clients, opts = {}) {
 
       clog(`(${i + 1}/${clients.length})`);
       opts.onClient?.(client.nom);
-      const r = await recupererAppelsClient(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog });
+      const r = await recupererAppelsClient(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, suiviMessagerie });
+      if (r.sessionSuspecte) {
+        // Documents d'un autre compte : la session dcl est collante. Cookies
+        // purges (la simple reconnexion ne suffit pas, le contexte les garde)
+        // -> reconnexion complete en tete de boucle, et UNE nouvelle tentative.
+        suiviMessagerie.empreinte = null;
+        await context.clearCookies().catch(() => {});
+        echecsConsecutifs = 3; // force la reconnexion avant le prochain passage
+        if (!clientsRetentes.has(client.id)) {
+          clientsRetentes.add(client.id);
+          clog('Documents d’un autre compte detectes — reconnexion complete puis nouvelle tentative...');
+          for (const p of context.pages()) if (p !== page) await p.close().catch(() => {});
+          i--;
+          continue;
+        }
+      }
       echecsConsecutifs = r.ok ? 0 : echecsConsecutifs + 1;
       resume.traites++;
       if (r.ok) {
