@@ -274,7 +274,7 @@ export function listAllDocuments() {
   return db
     .prepare(
       `
-    SELECT d.id, d.client_id, d.libelle, d.fichier, d.eventid, d.recupere_le, c.nom AS client_nom
+    SELECT d.id, d.client_id, d.libelle, d.fichier, d.eventid, d.recupere_le, d.paiement, c.nom AS client_nom
     FROM documents d LEFT JOIN clients c ON c.id = d.client_id
     ORDER BY d.recupere_le DESC, d.id DESC
   `,
