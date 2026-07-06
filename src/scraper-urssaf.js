@@ -17,7 +17,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './urssaf-db.js';
 import { launchArgs } from './navigateur.js';
-import { verifierEtClasser } from './validation-pdf.js';
+import { verifierEtClasser, correspondanceNom } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'urssaf');
@@ -370,7 +370,13 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
   mkdirSync(clientDir, { recursive: true });
 
   try {
-    // 1. Recherche (par identifiant, repli sur le nom)
+    // 1. Recherche (par identifiant, repli sur le nom). On ne clique JAMAIS le
+    // premier « Acceder » venu : pendant que la recherche s'execute, la liste
+    // affiche encore le resultat PRECEDENT (ou le portefeuille par defaut) ;
+    // cliquer a l'aveugle ouvrait alors le mauvais dossier et classait ses
+    // documents chez ce client (cas reel : 53 PDF BADUEL chez une association).
+    // Chaque bouton est valide par le texte de sa ligne : SIRET/SIREN du client,
+    // ou correspondance de nom (memes regles que la quarantaine PDF).
     async function rechercher(terme) {
       const champ = page.locator('#search, input[placeholder="Rechercher"], input.input-search').first();
       await champ.fill('');
@@ -380,19 +386,42 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         .first()
         .click()
         .catch(() => {});
-      // On attend l'apparition du bouton « Acceder » (resultat trouve) plutot
-      // qu'un delai fixe : client present -> on continue tout de suite.
-      const lien = page.locator('a:has-text("Accéder"), button:has-text("Accéder")').first();
-      await lien.waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
-      return lien;
+      const siren = siret.length >= 9 ? siret.slice(0, 9) : '';
+      const finAttente = Date.now() + 8000;
+      while (Date.now() < finAttente) {
+        // Marque chaque « Acceder » visible (data-pc-acceder=index) et remonte le
+        // texte de sa ligne (premier ancetre portant plus que le libelle du bouton).
+        const lignes = await page
+          .evaluate(() => {
+            document.querySelectorAll('[data-pc-acceder]').forEach((e) => e.removeAttribute('data-pc-acceder'));
+            const boutons = [...document.querySelectorAll('a, button')].filter((e) => /acc[eé]der/i.test(e.textContent || '') && e.offsetParent !== null);
+            return boutons.map((b, i) => {
+              b.setAttribute('data-pc-acceder', String(i));
+              let row = b;
+              for (let k = 0; k < 8 && row.parentElement && row.parentElement !== document.body; k++) {
+                row = row.parentElement;
+                if ((row.textContent || '').replace(/\s+/g, ' ').trim().length > (b.textContent || '').trim().length + 10) break;
+              }
+              return (row.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 500);
+            });
+          })
+          .catch(() => []);
+        for (let i = 0; i < lignes.length; i++) {
+          const digits = lignes[i].replace(/\D/g, '');
+          const parNumero = (siret && digits.includes(siret)) || (siren && digits.includes(siren));
+          if (parNumero || (client.nom && correspondanceNom(lignes[i], client.nom))) return page.locator(`[data-pc-acceder="${i}"]`);
+        }
+        await page.waitForTimeout(400);
+      }
+      return null;
     }
     log(`Recherche du compte ${siret}`);
     let acceder = await rechercher(siret);
-    if (!(await acceder.count()) && client.nom) {
-      log(`Aucun resultat par identifiant — recherche par nom « ${client.nom} »`);
+    if (!acceder && client.nom) {
+      log(`Aucun resultat correspondant par identifiant — recherche par nom « ${client.nom} »`);
       acceder = await rechercher(client.nom);
     }
-    if (!(await acceder.count())) throw new Error(`Aucun client trouve (${siret} / ${client.nom}).`);
+    if (!acceder) throw new Error(`Aucun resultat correspondant a ${siret} / ${client.nom} — acces refuse pour ne pas melanger les dossiers.`);
 
     // 2. Acceder au dossier client (webti). PAS de networkidle (requetes continues
     // sur ces pages -> il expirait systematiquement en timeout) : on attend
