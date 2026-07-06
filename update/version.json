@@ -1,6 +1,6 @@
 {
-  "version": "1.6.5",
-  "notes": "URSSAF : deconnexion active de la messagerie fantome (destruction de la session dossier cote URSSAF quand un mauvais dossier est detecte - plus besoin d'attendre l'expiration) + connexion robuste (re-saisie si le formulaire vide les champs, 2 tentatives de reconnexion en cours de lot).",
+  "version": "1.6.6",
+  "notes": "URSSAF : correction de la cause racine du melange de dossiers - les professions (infirmiere, medecin, sage-femme...) ne suffisent plus a identifier un client dans la recherche ni dans la quarantaine ; le nom de famille est obligatoire. Les comptes PAM introuvables par SIRET echouent proprement au lieu d'ouvrir le dossier d'un autre client.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "c9482970b3042a94885fd8787e210ea3fc3641aad4ad422260a2a184acf1d148"
+  "sha256": "f8db783b4f2777d85cda5b3060ce837c4607c462df1ba41ec9eec5d0cfa1d3d3"
 }
