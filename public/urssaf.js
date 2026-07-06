@@ -155,7 +155,7 @@
       .map(
         (c) => `
       <tr>
-        <td>${esc(c.nom)}</td>
+        <td>${c.nom_verrouille ? '<span title="Nom personnalisé — la synchronisation ne l\'écrase plus">🔏 </span>' : ''}${esc(c.nom)}</td>
         <td class="siret">${esc(c.siret)}</td>
         <td>${c.cabinet_libelle ? `<span class="badge cab">${esc(c.cabinet_libelle)}</span>` : '<span class="badge err">aucun</span>'}</td>
         <td>${c.nb_docs ? `<a href="#" data-u-docs="${c.id}" style="color:var(--accent);font-weight:600;text-decoration:none;">${c.nb_docs}</a>` : '0'}</td>
@@ -198,8 +198,23 @@
     formCli.id.value = '';
     $('#u-submit').textContent = 'Enregistrer le client';
     $('#u-cancel').hidden = true;
+    const suivre = $('#u-suivre-urssaf');
+    if (suivre) suivre.hidden = true;
   }
   $('#u-cancel').addEventListener('click', resetCli);
+  // Déverrouillage : la prochaine synchronisation remettra le nom connu de l'URSSAF.
+  $('#u-suivre-urssaf')?.addEventListener('click', async () => {
+    const id = formCli.id.value;
+    if (!id) return;
+    try {
+      await api(`/api/urssaf/clients/${id}`, { method: 'PUT', body: JSON.stringify({ suivre_urssaf: true }) });
+      toast('Verrou retiré : la prochaine synchronisation reprendra le nom URSSAF.', 'ok');
+      resetCli();
+      chargerClients();
+    } catch (err) {
+      toast(err.message, 'err');
+    }
+  });
   formCli.addEventListener('submit', async (e) => {
     e.preventDefault();
     const id = formCli.id.value;
@@ -211,8 +226,10 @@
     if (!payload.nom || !payload.siret) return toast('Nom et SIRET requis.', 'err');
     try {
       if (id) {
+        const avant = clients.find((x) => x.id === Number(id));
+        const renomme = avant && payload.nom !== avant.nom;
         await api(`/api/urssaf/clients/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
-        toast('Client mis à jour.', 'ok');
+        toast(renomme ? 'Client renommé — 🔏 nom protégé de la synchronisation.' : 'Client mis à jour.', 'ok');
       } else {
         await api('/api/urssaf/clients', { method: 'POST', body: JSON.stringify(payload) });
         toast('Client ajouté.', 'ok');
@@ -242,6 +259,8 @@
       formCli.cabinet_id.value = c.cabinet_id || '';
       $('#u-submit').textContent = 'Mettre à jour';
       $('#u-cancel').hidden = false;
+      // Fiche au nom personnalisé : proposer de reprendre le nom URSSAF (déverrouille).
+      $('#u-suivre-urssaf').hidden = !c.nom_verrouille;
       formCli.closest('details').open = true;
       formCli.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }

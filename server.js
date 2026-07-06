@@ -770,8 +770,15 @@ app.post('/api/urssaf/clients/import', (req, res) => {
   res.json(urssafDb.importClients(clients, req.body?.cabinet_id || null));
 });
 app.put('/api/urssaf/clients/:id', (req, res) => {
-  const c = urssafDb.updateClient(Number(req.params.id), req.body || {});
-  if (!c) return res.status(404).json({ error: 'Client introuvable.' });
+  const avant = urssafDb.getClient(Number(req.params.id));
+  if (!avant) return res.status(404).json({ error: 'Client introuvable.' });
+  const maj = { ...(req.body || {}) };
+  // Renommage MANUEL -> verrou : la synchro du portefeuille n'ecrasera plus ce nom
+  // (cas nom d'usage au cabinet different du nom connu de l'URSSAF).
+  if (maj.suivre_urssaf === true) maj.nom_verrouille = 0;
+  else if (typeof maj.nom === 'string' && maj.nom.trim() && maj.nom.trim() !== avant.nom) maj.nom_verrouille = 1;
+  delete maj.suivre_urssaf;
+  const c = urssafDb.updateClient(Number(req.params.id), maj);
   res.json(c);
 });
 // Suppression = mise en liste noire (la synchro ne recreera pas ce client).

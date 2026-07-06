@@ -53,6 +53,14 @@ db.exec(`
     lance_le  TEXT DEFAULT (datetime('now'))
   );
 `);
+// Migration : verrou de nom personnalise (un renommage manuel n'est plus ecrase
+// par la synchronisation du portefeuille — cas nom d'usage vs nom URSSAF).
+try {
+  db.exec('ALTER TABLE clients ADD COLUMN nom_verrouille INTEGER DEFAULT 0');
+} catch {
+  /* colonne deja presente */
+}
+
 // Dedoublonnage des comptes par login + index unique (meme garde-fou que le module Impots).
 {
   const dups = db.prepare('SELECT MIN(id) AS keep FROM cabinets GROUP BY lower(login) HAVING COUNT(*) > 1').all();
@@ -120,7 +128,7 @@ export function listClients() {
   return db
     .prepare(
       `
-    SELECT c.id, c.nom, c.siret, c.dossier, c.cabinet_id, c.created_at, c.updated_at,
+    SELECT c.id, c.nom, c.siret, c.dossier, c.cabinet_id, c.nom_verrouille, c.created_at, c.updated_at,
            (SELECT libelle FROM cabinets cab WHERE cab.id = c.cabinet_id) AS cabinet_libelle,
            (SELECT COUNT(*) FROM documents d WHERE d.client_id = c.id) AS nb_docs,
            (SELECT lance_le FROM runs r WHERE r.client_id = c.id ORDER BY r.lance_le DESC, r.id DESC LIMIT 1) AS dernier_run,
@@ -143,14 +151,15 @@ export function createClient({ nom, siret, dossier, cabinet_id }) {
     .run(nom, String(siret).replace(/\s+/g, ''), dossier ?? null, cabinet_id ?? null);
   return getClient(info.lastInsertRowid);
 }
-export function updateClient(id, { nom, siret, dossier, cabinet_id }) {
+export function updateClient(id, { nom, siret, dossier, cabinet_id, nom_verrouille }) {
   const c = getClient(id);
   if (!c) return null;
-  db.prepare(`UPDATE clients SET nom = ?, siret = ?, dossier = ?, cabinet_id = ?, updated_at = datetime('now') WHERE id = ?`).run(
+  db.prepare(`UPDATE clients SET nom = ?, siret = ?, dossier = ?, cabinet_id = ?, nom_verrouille = ?, updated_at = datetime('now') WHERE id = ?`).run(
     nom ?? c.nom,
     siret !== undefined ? String(siret).replace(/\s+/g, '') : c.siret,
     dossier !== undefined ? dossier : c.dossier,
     cabinet_id !== undefined ? cabinet_id : c.cabinet_id,
+    nom_verrouille !== undefined ? (nom_verrouille ? 1 : 0) : (c.nom_verrouille ?? 0),
     id,
   );
   return getClient(id);
@@ -176,7 +185,8 @@ export function importClients(rows, cabinetId = null) {
     try {
       const ex = getClientBySiret(siret);
       if (ex) {
-        updateClient(ex.id, { nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id });
+        // Nom verrouille (personnalise au cabinet) : la synchro ne l'ecrase pas.
+        updateClient(ex.id, { nom: ex.nom_verrouille ? undefined : nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id });
         bilan.maj++;
       } else {
         createClient({ nom, siret, cabinet_id: cabinetId });

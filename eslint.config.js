@@ -22,7 +22,7 @@ export default [
 
   // Back-end Node : modules ES + scripts racine.
   {
-    files: ['src/**/*.js', '*.js', 'mcp-portail/**/*.mjs', 'scripts/**/*.mjs'],
+    files: ['src/**/*.js', 'test/**/*.js', '*.js', 'mcp-portail/**/*.mjs', 'scripts/**/*.mjs'],
     languageOptions: { ecmaVersion: 2023, sourceType: 'module', globals: { ...globals.node } },
   },
 
