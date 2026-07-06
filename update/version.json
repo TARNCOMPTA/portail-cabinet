@@ -1,6 +1,6 @@
 {
-  "version": "1.6.4",
-  "notes": "URSSAF : la session collante est cote URSSAF (dossier courant memorise par compte cabinet, ~1 h). Des le 1er PDF d'un autre compte, arret des telechargements du client ; 2 clients colles d'affilee malgre reconnexion -> arret du lot avec consigne (attendre ~1 h, une seule recuperation a la fois).",
+  "version": "1.6.5",
+  "notes": "URSSAF : deconnexion active de la messagerie fantome (destruction de la session dossier cote URSSAF quand un mauvais dossier est detecte - plus besoin d'attendre l'expiration) + connexion robuste (re-saisie si le formulaire vide les champs, 2 tentatives de reconnexion en cours de lot).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "6eb3c5c302ca582ea0563d1208ce2083851bc6ea3931aa2cb45a26f2328cefe4"
+  "sha256": "c9482970b3042a94885fd8787e210ea3fc3641aad4ad422260a2a184acf1d148"
 }
