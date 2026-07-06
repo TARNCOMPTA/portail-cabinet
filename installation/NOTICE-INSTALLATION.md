@@ -118,3 +118,6 @@ le copier immédiatement.
 Chaque installation est **totalement autonome** : les identifiants, documents et bases
 restent sur le VPS du cabinet. Les mises à jour sont téléchargées depuis GitHub
 (vérifiées par empreinte SHA-256) — aucune donnée ne remonte vers l'éditeur.
+
+Le portail est distribué sous **licence MIT** (logiciel libre, fourni sans garantie) —
+voir le fichier `LICENSE` du dépôt.

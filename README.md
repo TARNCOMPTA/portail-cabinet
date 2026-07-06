@@ -213,3 +213,7 @@ puis `npm install` dans le dossier du projet, et double-clic sur **`Démarrer.ba
 Chaque installation est **totalement autonome** : identifiants, documents et bases restent
 sur le serveur du cabinet. Les mots de passe des clients sont chiffrés (AES-256) avec une
 clé générée localement. Aucune donnée ne remonte vers l'éditeur.
+
+## Licence
+
+Distribué sous licence **MIT** — voir le fichier [LICENSE](LICENSE).
