@@ -656,7 +656,11 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         if (verif.verdict === 'quarantaine') {
           quarantaines.push(verif.raison);
           log(`⚠️ QUARANTAINE : ${verif.raison}`);
-          continue; // pas d'addDocument -> retelecharge et reverifie au prochain run
+          // Un PDF d'un autre compte = toute la messagerie est suspecte (session
+          // dcl restee sur un autre dossier cote URSSAF) : on n'insiste pas, les
+          // documents suivants viendraient de la meme messagerie.
+          log('Telechargements interrompus pour ce client — messagerie d’un autre compte.');
+          break;
         }
         if (verif.verdict === 'non_verifiable') nonVerifiables++;
         try {
@@ -780,10 +784,14 @@ export async function scrapeAll(clients, opts = {}) {
     await page.waitForTimeout(200);
 
     let echecsConsecutifs = 0;
-    // Detection de la session dcl collante (messagerie du client precedent) :
+    // Detection de la session dcl collante (messagerie d'un autre dossier) :
     // empreinte des pieces jointes partagee entre clients + un seul re-essai chacun.
+    // Le collage est COTE URSSAF (dossier courant memorise par compte cabinet,
+    // survit a une reconnexion complete — constate en reel) : si deux clients l'ont
+    // subi malgre leur nouvelle tentative, insister ne sert a rien -> arret du lot.
     const suiviMessagerie = { empreinte: null };
     const clientsRetentes = new Set();
+    let collagesDefinitifs = 0;
     for (let i = 0; i < clients.length; i++) {
       if (opts.shouldStop && opts.shouldStop()) {
         log('Arret demande, fin du lot.');
@@ -813,6 +821,7 @@ export async function scrapeAll(clients, opts = {}) {
       clog(`(${i + 1}/${clients.length})`);
       opts.onClient?.(client.nom);
       const r = await recupererAppelsClient(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, suiviMessagerie });
+      let arretCollage = false;
       if (r.sessionSuspecte) {
         // Documents d'un autre compte : la session dcl est collante. Cookies
         // purges (la simple reconnexion ne suffit pas, le contexte les garde)
@@ -827,7 +836,10 @@ export async function scrapeAll(clients, opts = {}) {
           i--;
           continue;
         }
-      }
+        // Nouvelle tentative deja consommee : collage cote URSSAF confirme.
+        collagesDefinitifs++;
+        arretCollage = collagesDefinitifs >= 2;
+      } else if (r.ok) collagesDefinitifs = 0;
       echecsConsecutifs = r.ok ? 0 : echecsConsecutifs + 1;
       resume.traites++;
       if (r.ok) {
@@ -842,6 +854,13 @@ export async function scrapeAll(clients, opts = {}) {
         message: r.ok ? `${r.docs?.length ?? 0} document(s)` : r.error || 'erreur',
         nb_docs: r.docs?.length ?? 0,
       });
+      if (arretCollage) {
+        log(
+          "⚠️ La messagerie URSSAF renvoie toujours le dossier d'un AUTRE compte malgre les reconnexions : session bloquee cote URSSAF (dossier courant memorise par compte cabinet). " +
+            'Arret du lot — attendre ~1 h (expiration de la session URSSAF) avant de relancer, et ne JAMAIS lancer deux recuperations en parallele sur le meme compte cabinet.',
+        );
+        break;
+      }
       // Retour au tableau de bord (ferme les onglets webti/dcl) pour le client suivant.
       await retourTableauBord(context, page, navTimeout).catch((e) => log(`(retour tableau de bord: ${e.message})`));
     }
