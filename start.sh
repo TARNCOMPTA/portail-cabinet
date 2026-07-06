@@ -21,6 +21,14 @@ if [ -f app_update/server.js ]; then
 fi
 rm -f restart.flag
 
+# 0bis) Filet de securite dependances : si un module requis MANQUE (ex. maj appliquee
+# mais npm install interrompu -> crash-loop « Cannot find package »), on reinstalle.
+# Verifie a CHAQUE demarrage (le bloc ci-dessus ne se rejoue pas une fois app_update consomme).
+if ! node -e "const p=require('./package.json');const fs=require('fs');for(const d of Object.keys(p.dependencies||{}))if(!fs.existsSync('node_modules/'+d))process.exit(1)" 2>/dev/null; then
+  echo "[deps] Modules manquants -> npm install..."
+  npm install --omit=dev --no-audit --no-fund || echo "[deps] npm install a echoue"
+fi
+
 # 1) Ecran virtuel (le navigateur visible du robot s'y affiche)
 Xvfb :99 -screen 0 1600x1000x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 # Attendre que l'ecran soit pret
