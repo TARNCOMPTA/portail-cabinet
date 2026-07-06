@@ -1,6 +1,6 @@
 {
-  "version": "1.6.3",
-  "notes": "URSSAF : parade a la session collante (la messagerie du client precedent etait telechargee en serie - cas VIGUIER) : detection par empreinte des pieces jointes, purge des cookies + reconnexion + nouvelle tentative automatique. Les identifiants PAMC a lettres (GQ...) sont desormais reconnus a la recherche.",
+  "version": "1.6.4",
+  "notes": "URSSAF : la session collante est cote URSSAF (dossier courant memorise par compte cabinet, ~1 h). Des le 1er PDF d'un autre compte, arret des telechargements du client ; 2 clients colles d'affilee malgre reconnexion -> arret du lot avec consigne (attendre ~1 h, une seule recuperation a la fois).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "d21a8daf301fffce079afb15dc78872fe561436f45f0f613708894a67edff70a"
+  "sha256": "6eb3c5c302ca582ea0563d1208ce2083851bc6ea3931aa2cb45a26f2328cefe4"
 }
