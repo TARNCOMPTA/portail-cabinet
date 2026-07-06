@@ -1,6 +1,6 @@
 {
-  "version": "1.6.2",
-  "notes": "4 correctifs : les gestionnaires de mots de passe ne polluent plus les Parametres ; scripts de maintenance embarques dans la maj (nettoyeur URSSAF dispo sur le serveur) ; statuts de paiement CFE visibles dans l'onglet Documents ; detection echeance/mensualise corrigee (re-analyse automatique de tous les avis au redemarrage).",
+  "version": "1.6.3",
+  "notes": "URSSAF : parade a la session collante (la messagerie du client precedent etait telechargee en serie - cas VIGUIER) : detection par empreinte des pieces jointes, purge des cookies + reconnexion + nouvelle tentative automatique. Les identifiants PAMC a lettres (GQ...) sont desormais reconnus a la recherche.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "60c6169f8c88c2faacba7c99923c048b8752681e20e6c5c747aeceb22b351090"
+  "sha256": "d21a8daf301fffce079afb15dc78872fe561436f45f0f613708894a67edff70a"
 }
