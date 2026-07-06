@@ -1,4 +1,4 @@
-// Connecteur URSSAF (tiers mandate) : recuperation des appels de cotisations PDF.
+﻿// Connecteur URSSAF (tiers mandate) : recuperation des appels de cotisations PDF.
 //
 // Parcours (verifie sur compte reel) :
 //   1. urssaf.fr/accueil/se-connecter -> combobox "Tiers mandate" -> login cabinet
@@ -141,7 +141,7 @@ async function passerActualites(page, log) {
 // un rafraichissement la debloque (constate manuellement).
 async function attendreTableauBord(page, log) {
   for (let essai = 0; essai < 4; essai++) {
-    const champ = page.locator('#search, input[placeholder="Rechercher"], input.input-search').first();
+    const champ = page.locator('#recherche, input.input-search').first();
     if (
       await champ
         .waitFor({ state: 'visible', timeout: 12000 })
@@ -155,14 +155,15 @@ async function attendreTableauBord(page, log) {
     await passerActualites(page, log);
   }
   return await page
-    .locator('#search, input[placeholder="Rechercher"], input.input-search')
+    .locator('#recherche, input.input-search')
     .first()
     .isVisible()
     .catch(() => false);
 }
 
 // Connexion au compte cabinet (tiers mandate) -> portail mon.urssaf.fr / tableau de bord.
-async function connecterCabinet(page, cabinet, navTimeout, log) {
+// Exportee pour les scripts de maintenance/diagnostic (scripts/*.mjs).
+export async function connecterCabinet(page, cabinet, navTimeout, log) {
   log('Connexion au compte cabinet (tiers mandate)');
   await page.goto('https://www.urssaf.fr/accueil/se-connecter.html', { waitUntil: 'domcontentloaded' });
   await page
@@ -249,7 +250,7 @@ async function connecterCabinet(page, cabinet, navTimeout, log) {
   await passerActualites(page, log);
   await fermerCookies(page);
   let pret = await page
-    .locator('#search, input[placeholder="Rechercher"], input.input-search')
+    .locator('#recherche, input.input-search')
     .first()
     .isVisible()
     .catch(() => false);
@@ -389,14 +390,15 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     // Chaque bouton est valide par le texte de sa ligne : SIRET/SIREN du client,
     // ou correspondance de nom (memes regles que la quarantaine PDF).
     async function rechercher(terme) {
-      const champ = page.locator('#search, input[placeholder="Rechercher"], input.input-search').first();
+      // ⚠️ DEUX champs de recherche coexistent sur la page : #search (recherche
+      // EDITORIALE du site public urssaf.fr — y valider ejecte du tableau de
+      // bord) et #recherche (la vraie recherche du portefeuille, appli tdbec).
+      // Declenchement par la touche Entree ; PAS de clic sur « Rechercher »
+      // (c'est le bouton du formulaire du site public).
+      const champ = page.locator('#recherche, input.input-search').first();
       await champ.fill('');
       await champ.fill(terme);
-      await page
-        .locator('button:has-text("Rechercher")')
-        .first()
-        .click()
-        .catch(() => {});
+      await champ.press('Enter').catch(() => {});
       // Identifiants avec lettres (praticiens PAMC : « GQ8387317...Z01 ») : la
       // comparaison se fait sur les chiffres seuls, comme la ligne affichee.
       const chiffres = siret.replace(/\D/g, '');
@@ -766,7 +768,7 @@ async function retourTableauBord(context, page, navTimeout) {
 // (sans quoi toutes les recherches suivantes echouent en « Aucun client trouve »).
 async function sessionVivante(page) {
   if (!/tdbec\.urssaf\.fr/.test(page.url())) return false;
-  const champ = page.locator('#search, input[placeholder="Rechercher"], input.input-search').first();
+  const champ = page.locator('#recherche, input.input-search').first();
   return await champ.isVisible().catch(() => false);
 }
 
