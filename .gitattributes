@@ -11,5 +11,8 @@ update export-ignore
 .prettierrc.json export-ignore
 eslint.config.js export-ignore
 test export-ignore
-scripts export-ignore
 installation export-ignore
+# scripts/ : seul l'outil de publication (poste de dev) est exclu — les scripts de
+# MAINTENANCE doivent arriver sur les instances (VPS/Docker) via la maj en ligne.
+# NB : exclure le DOSSIER scripts empecherait git archive d'evaluer toute exception.
+scripts/publier-maj.mjs export-ignore
