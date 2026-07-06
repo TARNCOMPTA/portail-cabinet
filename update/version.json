@@ -1,6 +1,6 @@
 {
-  "version": "1.6.1",
-  "notes": "URSSAF : correction du classement des documents (la recherche client verifie le SIRET avant d'ouvrir un dossier) + script de re-verification des documents existants.",
+  "version": "1.6.2",
+  "notes": "4 correctifs : les gestionnaires de mots de passe ne polluent plus les Parametres ; scripts de maintenance embarques dans la maj (nettoyeur URSSAF dispo sur le serveur) ; statuts de paiement CFE visibles dans l'onglet Documents ; detection echeance/mensualise corrigee (re-analyse automatique de tous les avis au redemarrage).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "41fa77c55ae472e238ad8458ec928c7f98a4cb4898a45b4c09a9ea67673bf007"
+  "sha256": "60c6169f8c88c2faacba7c99923c048b8752681e20e6c5c747aeceb22b351090"
 }
