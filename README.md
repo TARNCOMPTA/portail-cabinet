@@ -5,14 +5,14 @@
 Chaque cabinet installe **son propre portail** sur **son propre serveur**, avec son nom, son
 domaine et ses données. Rien n'est partagé entre cabinets, rien ne remonte vers l'éditeur.
 
-| Organisme | Documents récupérés | Automatisable ? |
-| --- | --- | --- |
+| Organisme                              | Documents récupérés                                | Automatisable ?                                                                |
+| -------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
 | **Impôts** (espace pro impots.gouv.fr) | Avis CFE/IFER, taxe foncière, messagerie sécurisée | Semi-auto (captcha à saisir une fois par session, directement dans le portail) |
-| **URSSAF** (tiers déclarant) | Documents du portefeuille clients | ✅ Oui, planifiable |
-| **CARPIMKO** | Documents des clients (1 identifiant par client) | ✅ Oui, planifiable |
-| **CARMF** | Documents des clients | ✅ Oui, planifiable |
-| **CARCDSF** | Documents des clients | ✅ Oui, planifiable |
-| **CARPV** | Documents des clients | ✅ Oui, planifiable |
+| **URSSAF** (tiers déclarant)           | Documents du portefeuille clients                  | ✅ Oui, planifiable                                                            |
+| **CARPIMKO**                           | Documents des clients (1 identifiant par client)   | ✅ Oui, planifiable                                                            |
+| **CARMF**                              | Documents des clients                              | ✅ Oui, planifiable                                                            |
+| **CARCDSF**                            | Documents des clients                              | ✅ Oui, planifiable                                                            |
+| **CARPV**                              | Documents des clients                              | ✅ Oui, planifiable                                                            |
 
 **Dans la boîte :** multi-utilisateurs (admin / collaborateurs), planification par organisme,
 reprise après interruption, anti-doublon, mots de passe chiffrés (AES-256, clé locale au serveur),
@@ -73,8 +73,8 @@ ssh root@51.83.12.34
 ```
 
 (remplacer par **votre** IP). À la première connexion, répondre `yes` à la question de
-sécurité, puis saisir le **mot de passe root** reçu par e-mail — *l'écran n'affiche rien
-pendant la frappe, c'est normal*. Certains hébergeurs demandent de changer le mot de passe
+sécurité, puis saisir le **mot de passe root** reçu par e-mail — _l'écran n'affiche rien
+pendant la frappe, c'est normal_. Certains hébergeurs demandent de changer le mot de passe
 à la première connexion : suivre les instructions.
 
 Vous êtes maintenant « dans » le serveur : les commandes suivantes s'y tapent directement.
@@ -90,13 +90,13 @@ sudo sh install.sh
 
 Le script pose **5 questions** :
 
-| # | Question | Exemple de réponse |
-| --- | --- | --- |
-| 1 | Nom de domaine du portail | `portail.moncabinet.fr` |
-| 2 | E-mail pour le certificat HTTPS | `contact@moncabinet.fr` |
-| 3 | E-mail du compte administrateur | `jean.dupont@moncabinet.fr` |
-| 4 | Nom de l'administrateur | `Jean Dupont` |
-| 5 | Mot de passe administrateur (8 caractères min., saisie invisible) | — |
+| #   | Question                                                          | Exemple de réponse          |
+| --- | ----------------------------------------------------------------- | --------------------------- |
+| 1   | Nom de domaine du portail                                         | `portail.moncabinet.fr`     |
+| 2   | E-mail pour le certificat HTTPS                                   | `contact@moncabinet.fr`     |
+| 3   | E-mail du compte administrateur                                   | `jean.dupont@moncabinet.fr` |
+| 4   | Nom de l'administrateur                                           | `Jean Dupont`               |
+| 5   | Mot de passe administrateur (8 caractères min., saisie invisible) | —                           |
 
 Puis il fait **tout** tout seul : installation de Docker, ouverture du pare-feu,
 téléchargement du code, configuration, démarrage (la première construction prend
@@ -141,25 +141,25 @@ La configuration du serveur tient dans un fichier **`.env`** à côté de
 `docker-compose.yml` (le script d'installation le crée automatiquement — on n'y touche
 que pour changer quelque chose). Modèle : [.env.exemple](.env.exemple).
 
-| Variable | Rôle | Défaut |
-| --- | --- | --- |
-| `DOMAIN` | Nom de domaine du portail (certificat HTTPS) | `portail.tarncompta.fr` |
-| `PUBLIC_URL` | URL publique complète (connecteur Claude/MCP) | `https://portail.tarncompta.fr` |
-| `ACME_EMAIL` | E-mail Let's Encrypt (avis d'expiration du certificat) | `aymeric@tarncompta.fr` |
+| Variable     | Rôle                                                   | Défaut                          |
+| ------------ | ------------------------------------------------------ | ------------------------------- |
+| `DOMAIN`     | Nom de domaine du portail (certificat HTTPS)           | `portail.tarncompta.fr`         |
+| `PUBLIC_URL` | URL publique complète (connecteur Claude/MCP)          | `https://portail.tarncompta.fr` |
+| `ACME_EMAIL` | E-mail Let's Encrypt (avis d'expiration du certificat) | `aymeric@tarncompta.fr`         |
 
 Après modification : `cd /opt/portail && sudo docker compose up -d` pour appliquer.
 
 Variables avancées (déjà réglées dans `docker-compose.yml`, à modifier seulement si besoin) :
 
-| Variable | Rôle | Défaut |
-| --- | --- | --- |
-| `PORT` | Port interne de l'application | `3000` |
-| `NAV_TIMEOUT` | Délai max (ms) d'attente des pages des organismes | `60000` |
-| `REMOTE_BROWSER` | `1` = vue du navigateur serveur dans le portail (saisie captcha) | `1` |
-| `SCHEDULE` | `1` = planificateur activé (Paramètres ▸ Planification) | `1` |
-| `SCHEDULE_URSSAF` / `SCHEDULE_CARPIMKO` / `SCHEDULE_CARMF` / `SCHEDULE_CARCDSF` / `SCHEDULE_CARPV` | Activer/désactiver la planification d'un organisme | `1` |
-| `UPDATE_DISABLED` | `1` = désactive la mise à jour en un clic (retour au mode `git pull` + rebuild) | *(désactivé)* |
-| `HEADLESS` | `false` = navigateur du robot visible (débogage local) | `true` |
+| Variable                                                                                           | Rôle                                                                            | Défaut        |
+| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------- |
+| `PORT`                                                                                             | Port interne de l'application                                                   | `3000`        |
+| `NAV_TIMEOUT`                                                                                      | Délai max (ms) d'attente des pages des organismes                               | `60000`       |
+| `REMOTE_BROWSER`                                                                                   | `1` = vue du navigateur serveur dans le portail (saisie captcha)                | `1`           |
+| `SCHEDULE`                                                                                         | `1` = planificateur activé (Paramètres ▸ Planification)                         | `1`           |
+| `SCHEDULE_URSSAF` / `SCHEDULE_CARPIMKO` / `SCHEDULE_CARMF` / `SCHEDULE_CARCDSF` / `SCHEDULE_CARPV` | Activer/désactiver la planification d'un organisme                              | `1`           |
+| `UPDATE_DISABLED`                                                                                  | `1` = désactive la mise à jour en un clic (retour au mode `git pull` + rebuild) | _(désactivé)_ |
+| `HEADLESS`                                                                                         | `false` = navigateur du robot visible (débogage local)                          | `true`        |
 
 ## Mises à jour
 
@@ -185,14 +185,14 @@ tar czf portail-sauvegarde-$(date +%F).tar.gz -C /opt/portail data downloads
 
 ## Dépannage
 
-| Symptôme | Que faire |
-| --- | --- |
-| Le site ne répond pas après l'installation | `cd /opt/portail && sudo docker compose logs app --tail 50` |
-| Erreur de certificat HTTPS | Vérifier le DNS (`nslookup domaine`), puis `sudo docker compose restart caddy` |
-| Récupération impôts bloquée | Cliquer sur « 🖥️ Captcha » en haut du portail et saisir la captcha |
-| Compte caisse marqué 🔒 | Mot de passe refusé par la caisse : le corriger dans la fiche client |
-| Redémarrer le portail | `cd /opt/portail && sudo docker compose restart` |
-| Tout reconstruire (sans perte de données) | `cd /opt/portail && sudo docker compose up -d --build` |
+| Symptôme                                   | Que faire                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------ |
+| Le site ne répond pas après l'installation | `cd /opt/portail && sudo docker compose logs app --tail 50`                    |
+| Erreur de certificat HTTPS                 | Vérifier le DNS (`nslookup domaine`), puis `sudo docker compose restart caddy` |
+| Récupération impôts bloquée                | Cliquer sur « 🖥️ Captcha » en haut du portail et saisir la captcha             |
+| Compte caisse marqué 🔒                    | Mot de passe refusé par la caisse : le corriger dans la fiche client           |
+| Redémarrer le portail                      | `cd /opt/portail && sudo docker compose restart`                               |
+| Tout reconstruire (sans perte de données)  | `cd /opt/portail && sudo docker compose up -d --build`                         |
 
 ## Connecteur Claude (optionnel)
 
