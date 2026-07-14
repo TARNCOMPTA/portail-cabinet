@@ -1,6 +1,6 @@
 {
-  "version": "1.6.8",
-  "notes": "Bouton « Documents » dans les lignes clients URSSAF, CARPIMKO, CARMF, CARCDSF et CARPV (comme l'onglet Impôts)",
+  "version": "1.6.9",
+  "notes": "Impôts : récupération du tableau des habilitations (par compte) et des déclarations de TVA (par client, option à cocher)",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "2860de4a67758334e915524d15944bbad0ea2540f55324e53fcca2743a8fb4f3"
+  "sha256": "fd1f76f2f887b5c1673f9cc299d2e8d795aef99ff96d1f5bc907568afffbe8ec"
 }
