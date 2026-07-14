@@ -21,6 +21,8 @@ import * as captchaRelais from './captcha-relais.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads');
+// Tableaux d'habilitations : rangés par COMPTE espace pro (pas par client).
+export const HABILITATIONS_DIR = resolve(DOWNLOADS_DIR, '_habilitations');
 
 const ACCUEIL_URL = 'https://cfspro.impots.gouv.fr/';
 const CFE_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=consulter.avis.cfe';
@@ -459,12 +461,159 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
 
 // Phases de recuperation demandees (defaut : tout). opts.messagerie (ancien flag)
 // reste accepte pour compatibilite (MCP, anciens appels).
+// Dossier de rangement du tableau d'habilitations d'un compte espace pro.
+export function dossierHabilitations(cabinet) {
+  const cle = sanitize(`${cabinet?.id ?? 'compte'}_${cabinet?.libelle || cabinet?.login || 'espace_pro'}`);
+  return resolve(HABILITATIONS_DIR, cle);
+}
+
+// Clique le 1er element (lien/bouton/onglet/menu) dont le libelle correspond a l'un des
+// motifs. Robuste aux menus PrimeFaces (essaie plusieurs roles + texte brut). true si clique.
+async function cliquerParTexte(page, motifs, { timeout = 6000 } = {}) {
+  for (const m of motifs) {
+    const re = m instanceof RegExp ? m : new RegExp(m, 'i');
+    const candidats = [
+      page.getByRole('link', { name: re }),
+      page.getByRole('button', { name: re }),
+      page.getByRole('menuitem', { name: re }),
+      page.getByRole('tab', { name: re }),
+      page.locator('a, button, span[onclick], td[onclick], li[onclick]').filter({ hasText: re }),
+    ];
+    for (const loc of candidats) {
+      const el = loc.first();
+      if (await el.count().catch(() => 0)) {
+        try {
+          await el.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => {});
+          await el.click({ timeout });
+          return true;
+        } catch {
+          /* candidat suivant */
+        }
+      }
+    }
+  }
+  return false;
+}
+
+// Ecrit une capture + le HTML de la page (diagnostic pour caler les selecteurs a l'aveugle).
+async function dumpDiag(page, dir, prefixe) {
+  try {
+    mkdirSync(dir, { recursive: true });
+    await page.screenshot({ path: resolve(dir, `_diag_${prefixe}.png`), fullPage: true }).catch(() => {});
+    const html = await page.content().catch(() => '');
+    if (html) writeFileSync(resolve(dir, `_diag_${prefixe}.html`), html, 'utf8');
+  } catch {
+    /* diagnostic best-effort */
+  }
+}
+
+// ITEM 1 — Tableau des habilitations du COMPTE (Gerer > Consulter mes services > Tout telecharger).
+// Une fois par session. Ne leve jamais : renvoie {ok, fichier} ou {ok:false, error} + diagnostic.
+async function telechargerHabilitations(page, cabinet, { navTimeout, log }) {
+  const dir = dossierHabilitations(cabinet);
+  mkdirSync(dir, { recursive: true });
+  try {
+    log('Habilitations : ouverture de « Gérer ▸ Consulter mes services ».');
+    await page.goto(ACCUEIL_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(1500);
+    if (!(await cliquerParTexte(page, [/gérer/i, /gerer/i]))) {
+      await dumpDiag(page, dir, 'gerer');
+      throw new Error('lien « Gérer » introuvable');
+    }
+    await page.waitForTimeout(1500);
+    if (!(await cliquerParTexte(page, [/consulter mes services/i, /mes services/i, /les services/i]))) {
+      await dumpDiag(page, dir, 'services');
+      throw new Error('« Consulter mes services » introuvable');
+    }
+    await page.waitForTimeout(2500);
+    const clic = cliquerParTexte(page, [/tout télécharger/i, /tout telecharger/i, /télécharger le tableau/i, /télécharger/i]);
+    const [dl, ok] = await Promise.all([page.waitForEvent('download', { timeout: navTimeout }).catch(() => null), clic]);
+    if (!ok || !dl) {
+      await dumpDiag(page, dir, 'telecharger');
+      throw new Error('bouton « Tout télécharger » introuvable ou aucun téléchargement');
+    }
+    const base = sanitize(dl.suggestedFilename() || 'habilitations.pdf');
+    const dest = resolve(dir, `${new Date().toISOString().slice(0, 10)}_${base}`);
+    await dl.saveAs(dest);
+    log(`Habilitations : tableau enregistré (${dest.split(/[\\/]/).pop()}).`);
+    return { ok: true, fichier: dest };
+  } catch (e) {
+    log(`Habilitations : échec — ${e.message} (diagnostic dans ${dir}).`);
+    return { ok: false, error: e.message };
+  }
+}
+
+// ITEM 2 — Tableau des declarations de TVA d'un CLIENT (Consulter > Compte fiscal > SIREN >
+// Consulter > Acces par impot > TVA > Declarations > Telecharger le tableau). Ne leve jamais :
+// renvoie {docs, existants[, info]} comme les autres phases. Anti-doublon : 1 tableau / jour.
+async function telechargerTvaDeclarations(page, client, clientDir, siren, navTimeout, log) {
+  const jour = new Date().toISOString().slice(0, 10);
+  const eid = `TVA_DECL_${jour}`;
+  if (getDocumentByEventid(client.id, eid)) {
+    log('TVA : tableau déjà récupéré aujourd’hui — ignoré.');
+    return { docs: [], existants: 1 };
+  }
+  try {
+    log('TVA : accès au compte fiscal.');
+    await page.goto(ACCUEIL_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(1200);
+    await cliquerParTexte(page, [/consulter/i]); // ouvre le menu « Consulter » si présent
+    await page.waitForTimeout(800);
+    if (!(await cliquerParTexte(page, [/compte fiscal/i]))) {
+      await dumpDiag(page, clientDir, 'tva_entree');
+      throw new Error('entrée « Compte fiscal » introuvable');
+    }
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await page.waitForTimeout(2000);
+    // Saisie du SIREN dans le champ de recherche du compte fiscal.
+    const champ = page.locator('input[name*="siren" i], input[name*="ident" i], input[type="text"]:visible').first();
+    if (!(await champ.count().catch(() => 0))) {
+      await dumpDiag(page, clientDir, 'tva_recherche');
+      throw new Error('champ de recherche SIREN introuvable');
+    }
+    await champ.fill(siren).catch(() => {});
+    await cliquerParTexte(page, [/consulter/i, /rechercher/i, /valider/i]);
+    await page.waitForLoadState('domcontentloaded').catch(() => {});
+    await page.waitForTimeout(2500);
+    // Accès par impôt ▸ TVA ▸ Déclarations
+    await cliquerParTexte(page, [/accès par impôt/i, /acces par impot/i]);
+    await page.waitForTimeout(1200);
+    if (!(await cliquerParTexte(page, [/taxe sur la valeur ajoutée/i, /taxe sur la valeur ajoutee/i, /\bT\.?V\.?A\.?\b/]))) {
+      await dumpDiag(page, clientDir, 'tva_rubrique');
+      throw new Error('rubrique « Taxe sur la valeur ajoutée » introuvable');
+    }
+    await page.waitForTimeout(1200);
+    await cliquerParTexte(page, [/déclarations/i, /declarations/i]);
+    await page.waitForTimeout(1500);
+    const clic = cliquerParTexte(page, [/télécharger le tableau/i, /telecharger le tableau/i, /tout télécharger/i, /télécharger/i]);
+    const [dl, ok] = await Promise.all([page.waitForEvent('download', { timeout: navTimeout }).catch(() => null), clic]);
+    if (!ok || !dl) {
+      await dumpDiag(page, clientDir, 'tva_telecharger');
+      throw new Error('bouton « Télécharger le tableau » introuvable ou aucun téléchargement');
+    }
+    const base = sanitize(dl.suggestedFilename() || `TVA_declarations_${siren}`);
+    const dest = resolve(clientDir, `TVA_${jour}_${base}`);
+    await dl.saveAs(dest);
+    try {
+      addDocument(client.id, { libelle: `Déclarations TVA (${jour})`, fichier: dest, eventid: eid });
+    } catch {
+      /* doublon éventuel ignoré */
+    }
+    log(`TVA : tableau des déclarations enregistré (${dest.split(/[\\/]/).pop()}).`);
+    return { docs: [{ libelle: 'Déclarations TVA', fichier: dest }], existants: 0 };
+  } catch (e) {
+    log(`TVA : non récupéré — ${e.message} (diagnostic dans le dossier du client).`);
+    return { docs: [], existants: 0, info: `non récupérée (${e.message})` };
+  }
+}
+
 function phasesDe(opts = {}) {
   const p = opts.phases || {};
   return {
     cfe: p.cfe !== false,
     tf: p.tf !== false,
     messagerie: (p.messagerie ?? opts.messagerie) !== false,
+    tva: p.tva !== false,
   };
 }
 
@@ -485,6 +634,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     let cfe = { docs: [], existants: 0, quarantaines: [], nonVerifiables: 0 };
     let tf = { docs: [], existants: 0, quarantaines: [], nonVerifiables: 0 };
     let msg = { docs: [], existants: 0, quarantaines: [], nonVerifiables: 0 };
+    let tva = { docs: [], existants: 0 };
     // Le choix de dossier « avis CFE » ne sert qu'aux avis (la messagerie a son propre
     // parcours) : on le saute entierement en mode « messagerie seule ».
     if (phases.cfe || phases.tf) {
@@ -533,15 +683,18 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     }
     // 5. Messagerie
     if (phases.messagerie) msg = await recupererMessagerie(page, context, client, clientDir, navTimeout, log);
+    // 6. Declarations de TVA (compte fiscal, par SIREN)
+    if (phases.tva) tva = await telechargerTvaDeclarations(page, client, clientDir, siren, navTimeout, log);
 
-    const nouveaux = cfe.docs.length + tf.docs.length + msg.docs.length;
-    const existants = cfe.existants + tf.existants + msg.existants;
+    const nouveaux = cfe.docs.length + tf.docs.length + msg.docs.length + tva.docs.length;
+    const existants = cfe.existants + tf.existants + msg.existants + tva.existants;
     const quarantaines = [...(cfe.quarantaines || []), ...(tf.quarantaines || []), ...(msg.quarantaines || [])];
     const nonVerifiables = (cfe.nonVerifiables || 0) + (tf.nonVerifiables || 0) + (msg.nonVerifiables || 0);
     const parts = [];
     if (phases.cfe) parts.push(`${cfe.docs.length} CFE`);
     if (phases.tf) parts.push(`${tf.docs.length} taxe fonciere`);
     if (phases.messagerie) parts.push(msg.info ? `messagerie : ${msg.info}` : `${msg.docs.length} message(s)`);
+    if (phases.tva) parts.push(tva.info ? `TVA : ${tva.info}` : `${tva.docs.length} TVA`);
     let message = `${parts.join(' + ')} recupere(s)` + (existants ? `, ${existants} deja present(s)` : '');
     if (nonVerifiables > 0) message += ` (${nonVerifiables} non verifiable(s) : PDF sans texte)`;
     if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
@@ -551,7 +704,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
       nb_docs: nouveaux,
     });
     log(`Termine : ${nouveaux} nouveau(x), ${existants} deja present(s).`);
-    return { ok: true, docs: [...cfe.docs, ...tf.docs, ...msg.docs] };
+    return { ok: true, docs: [...cfe.docs, ...tf.docs, ...msg.docs, ...tva.docs] };
   } catch (err) {
     const shot = resolve(clientDir, `_debug_${Date.now()}.png`);
     await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
@@ -617,6 +770,10 @@ export async function scrapeAll(clients, opts = {}) {
   try {
     await attendreConnexionManuelle(page, opts.cabinet, log);
     await minimiserFenetre(context, page, log);
+    // Tableau d'habilitations : une fois par session (par compte), avant les clients.
+    if (opts.habilitations !== false && opts.cabinet) {
+      await telechargerHabilitations(page, opts.cabinet, { navTimeout, log }).catch(() => {});
+    }
     log(`Traitement de ${clients.length} client(s)...`);
     for (let i = 0; i < clients.length; i++) {
       if (opts.shouldStop && opts.shouldStop()) {
@@ -647,6 +804,26 @@ export async function scrapeAll(clients, opts = {}) {
   } catch (err) {
     log(`ERREUR session : ${err.message}`);
     return { ok: false, error: err.message, resume };
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+/** Tableau des habilitations SEUL : connexion manuelle (captcha) puis téléchargement. */
+export async function recupererHabilitations(cabinet, opts = {}) {
+  const log = (m) => {
+    const line = `[habilitations] ${m}`;
+    console.log(line);
+    opts.onLog?.(line);
+  };
+  const { browser, context, page, navTimeout } = await ouvrirSession();
+  try {
+    await attendreConnexionManuelle(page, cabinet, log);
+    await minimiserFenetre(context, page, log);
+    return await telechargerHabilitations(page, cabinet, { navTimeout, log });
+  } catch (err) {
+    log(`ERREUR : ${err.message}`);
+    return { ok: false, error: err.message };
   } finally {
     await browser.close().catch(() => {});
   }

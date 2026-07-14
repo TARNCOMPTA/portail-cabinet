@@ -41,7 +41,7 @@ import {
   listCfeSansPaiement,
   resetPaiementCfe,
 } from './src/db.js';
-import { scrapeClient, listerClients, scrapeAll } from './src/scraper-impots.js';
+import { scrapeClient, listerClients, scrapeAll, recupererHabilitations, dossierHabilitations } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
 import * as carpimko from './src/carpimko-db.js';
 import { scrapeClient as scrapeClientCarpimko } from './src/scraper-carpimko.js';
@@ -283,6 +283,67 @@ app.post('/api/cabinets/:id/sync', async (req, res) => {
   }
 });
 
+// ---- Tableau des habilitations (par compte espace pro) --------------------
+// Liste les tableaux deja telecharges pour un compte.
+app.get('/api/cabinets/:id/habilitations', (req, res) => {
+  const cab = getCabinetFull(Number(req.params.id));
+  if (!cab) return res.status(404).json({ error: 'Cabinet introuvable.' });
+  const dir = dossierHabilitations(cab);
+  let fichiers = [];
+  try {
+    fichiers = readdirSync(dir)
+      .filter((f) => !f.startsWith('_diag') && !f.startsWith('.'))
+      .map((f) => ({ nom: f, taille: statSync(resolve(dir, f)).size, modifie: statSync(resolve(dir, f)).mtime.toISOString() }))
+      .sort((a, b) => b.modifie.localeCompare(a.modifie));
+  } catch {
+    /* dossier absent = aucun tableau */
+  }
+  res.json(fichiers);
+});
+
+// Sert un tableau d'habilitations (anti-LFI : nom simple, resolu DANS le dossier du compte).
+app.get('/api/cabinets/:id/habilitations/file', (req, res) => {
+  const cab = getCabinetFull(Number(req.params.id));
+  if (!cab) return res.status(404).end();
+  const nom = basename(String(req.query.name || ''));
+  const dir = dossierHabilitations(cab);
+  const chemin = resolve(dir, nom);
+  if (!nom || nom.startsWith('_diag') || !chemin.startsWith(dir) || !existsSync(chemin)) return res.status(404).json({ error: 'Fichier introuvable.' });
+  res.download(chemin, nom);
+});
+
+// Recupere le tableau d'habilitations SEUL (session captcha dediee).
+app.post('/api/cabinets/:id/habilitations', async (req, res) => {
+  const id = Number(req.params.id);
+  const cab = getCabinetFull(id);
+  if (!cab) return res.status(404).json({ error: 'Cabinet introuvable.' });
+  const key = 'hab:' + id;
+  if (enCours.has(key)) return res.status(409).json({ error: 'Récupération déjà en cours pour ce compte.' });
+  enCours.add(key);
+  res.json({ started: true });
+  const suiviLocal = !progression.actif;
+  if (suiviLocal) {
+    demarrerSuivi(1);
+    progression.courant = `Habilitations — ${cab.libelle || cab.login}`;
+  }
+  try {
+    const r = await recupererHabilitations(cab, { onLog: progLog });
+    if (suiviLocal)
+      progression.resultats.push({
+        nom: `Habilitations — ${cab.libelle || cab.login}`,
+        ok: !!r?.ok,
+        message: r?.ok ? 'tableau téléchargé' : r?.error || 'échec',
+        nb_docs: r?.ok ? 1 : 0,
+      });
+  } finally {
+    enCours.delete(key);
+    if (suiviLocal) {
+      progression.fait = 1;
+      terminerSuivi();
+    }
+  }
+});
+
 // ---- Clients --------------------------------------------------------------
 app.get('/api/clients', (req, res) => res.json(listClients()));
 
@@ -470,7 +531,7 @@ app.post('/api/captcha/rafraichir', async (req, res) => res.json(await captchaRe
 // Phases impots demandees (defaut : tout) — { cfe, tf, messagerie }, chaque phase
 // est incluse sauf « false » explicite. Permet des lots courts par type de document.
 function phasesImpots(body) {
-  return { cfe: body?.cfe !== false, tf: body?.tf !== false, messagerie: body?.messagerie !== false };
+  return { cfe: body?.cfe !== false, tf: body?.tf !== false, messagerie: body?.messagerie !== false, tva: body?.tva !== false };
 }
 async function lancer(clientId, res, phases = {}) {
   const c = getClient(clientId);
@@ -510,7 +571,7 @@ app.post('/api/clients/:id/scrape', (req, res) => lancer(Number(req.params.id), 
 // Traite un lot de clients : groupe par cabinet, UNE session par cabinet.
 // Disjoncteur : N echecs consecutifs = site impots indisponible/session perdue -> arret
 // du lot (la reprise repartira du premier dossier non recupere au prochain lancement).
-async function lancerLot(clients, phases = {}) {
+async function lancerLot(clients, phases = {}, { habilitations = false } = {}) {
   const baseFolder = getSetting('destination_folder');
   const disj = creerDisjoncteur();
   let arretAuto = false;
@@ -529,6 +590,7 @@ async function lancerLot(clients, phases = {}) {
       baseFolder,
       shouldStop: () => stopAll || arretAuto,
       phases,
+      habilitations, // tableau d'habilitations : une fois par compte, seulement en « Tout récupérer »
       onLog: progLog,
       onClient: (nom) => {
         progression.courant = nom;
@@ -562,7 +624,7 @@ app.post('/api/scrape-all', async (req, res) => {
   const cabinets = new Set(aFaire.filter((c) => c.cabinet_id).map((c) => c.cabinet_id)).size;
   res.json({ started: true, total, cabinets, ignores });
   try {
-    await lancerLot(aFaire, phasesImpots(req.body));
+    await lancerLot(aFaire, phasesImpots(req.body), { habilitations: req.body?.habilitations !== false });
   } finally {
     enCours.delete('all');
     terminerSuivi();

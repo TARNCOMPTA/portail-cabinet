@@ -47,6 +47,7 @@ async function chargerCabinets() {
       <td>${c.nb_clients}</td>
       <td><div class="row-actions">
         <button class="btn small primary" data-cab="sync" data-id="${c.id}">↻ Synchroniser</button>
+        <button class="btn small" data-cab="habilitations" data-id="${c.id}" data-nom="${esc(c.libelle || c.login)}">Habilitations</button>
         <button class="btn small" data-cab="edit" data-id="${c.id}">Modifier</button>
         <button class="btn small danger" data-cab="del" data-id="${c.id}">Suppr.</button>
       </div></td>`;
@@ -121,6 +122,8 @@ $('#table-cabinets').addEventListener('click', async (e) => {
       btn.disabled = false;
       btn.textContent = '↻ Synchroniser';
     }
+  } else if (act === 'habilitations') {
+    ouvrirHabilitations(id, btn.dataset.nom);
   } else if (act === 'edit') {
     formCab.id.value = cab.id;
     formCab.libelle.value = cab.libelle || '';
@@ -462,9 +465,9 @@ form.addEventListener('submit', async (e) => {
 // ---- Tout récupérer (une session par cabinet) ----
 // Phases impots cochées (CFE / TF / messagerie) — null si aucune (avec toast).
 function phasesImpotsCochees() {
-  const p = { cfe: !!$('#chk-cfe')?.checked, tf: !!$('#chk-tf')?.checked, messagerie: !!$('#chk-messagerie')?.checked };
-  if (!p.cfe && !p.tf && !p.messagerie) {
-    toast('Coche au moins une phase (CFE, taxe foncière ou messagerie).', 'err');
+  const p = { cfe: !!$('#chk-cfe')?.checked, tf: !!$('#chk-tf')?.checked, messagerie: !!$('#chk-messagerie')?.checked, tva: !!$('#chk-tva')?.checked };
+  if (!p.cfe && !p.tf && !p.messagerie && !p.tva) {
+    toast('Coche au moins une phase (CFE, taxe foncière, messagerie ou TVA).', 'err');
     return null;
   }
   return p;
@@ -523,6 +526,51 @@ async function ouvrirDocs(id, nom) {
   dialogDocs.showModal();
 }
 $('#docs-fermer').addEventListener('click', () => dialogDocs.close());
+
+// ---- Habilitations (tableau par compte espace pro) ----
+// Reutilise la modale #dialog-docs : liste des tableaux deja telecharges + bouton pour
+// en recuperer un nouveau (ouvre une session captcha cote serveur).
+async function ouvrirHabilitations(id, nom) {
+  $('#docs-titre').textContent = `Habilitations — ${nom || ''}`;
+  const ul = $('#docs-liste');
+  ul.innerHTML = '<li class="vide">Chargement…</li>';
+  dialogDocs.showModal();
+  try {
+    const files = await api(`/api/cabinets/${id}/habilitations`);
+    ul.innerHTML = `<li><button type="button" class="btn small primary" data-hab-run="${id}"><i class="ph ph-download-simple"></i> Récupérer le tableau maintenant</button></li>`;
+    if (!files.length) {
+      ul.innerHTML += '<li class="vide">Aucun tableau téléchargé pour l’instant.</li>';
+    } else {
+      for (const f of files) {
+        const li = document.createElement('li');
+        li.innerHTML = `<span><span class="lib">${esc(f.nom)}</span><br/>
+          <span class="date">${new Date(f.modifie).toLocaleString('fr-FR')}</span></span>
+          <a class="btn small" href="/api/cabinets/${id}/habilitations/file?name=${encodeURIComponent(f.nom)}" target="_blank" rel="noopener">Ouvrir</a>`;
+        ul.appendChild(li);
+      }
+    }
+  } catch (err) {
+    ul.innerHTML = `<li class="vide">${esc(err.message)}</li>`;
+  }
+}
+$('#docs-liste').addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-hab-run]');
+  if (!btn) return;
+  const id = Number(btn.dataset.habRun);
+  btn.disabled = true;
+  btn.textContent = '…';
+  if (remoteBrowser) toast('Fenêtre impôts ouverte côté serveur : clique sur « 🖥️ Captcha » (en haut) pour saisir la captcha.', 'ok');
+  try {
+    await api(`/api/cabinets/${id}/habilitations`, { method: 'POST' });
+    toast('Récupération lancée — saisis la captcha, le tableau se téléchargera ensuite.', 'ok');
+    majEtatGlobal(true);
+    dialogDocs.close();
+  } catch (err) {
+    toast(err.message, 'err');
+    btn.disabled = false;
+    btn.textContent = 'Récupérer le tableau maintenant';
+  }
+});
 
 // ---- Liste noire (clients supprimés, protégés de la synchro) ----------------
 // Helper GLOBAL (impôts prefix 'imp' + URSSAF prefix 'u' via urssaf.js).
