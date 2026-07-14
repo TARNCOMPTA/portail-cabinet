@@ -516,28 +516,57 @@ export async function telechargerHabilitations(page, cabinet, { navTimeout, log 
   const dir = dossierHabilitations(cabinet);
   mkdirSync(dir, { recursive: true });
   try {
-    log('Habilitations : ouverture de « Gérer ▸ Consulter mes services ».');
+    log('Habilitations : ouverture de « Gérer ▸ Gérer les services ».');
     await page.goto(accueilUrl(), { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1500);
-    if (!(await cliquerParTexte(page, [/gérer/i, /gerer/i]))) {
-      await dumpDiag(page, dir, 'gerer');
-      throw new Error('lien « Gérer » introuvable');
+    // Le lien « Gérer les services » ouvre l'appli E-Services dans une NOUVELLE fenetre
+    // (target="EServices"), via /mire/externRedirect.do?idurlm=gerer.services&...&token=<session>.
+    // On cible ce lien precisement (idurlm=gerer.services), on capture le popup ; a defaut on
+    // rouvre son URL (avec le token) dans un nouvel onglet de la MEME session.
+    const lien = page.locator('a[href*="gerer.services"]').first();
+    if (!(await lien.count().catch(() => 0))) {
+      await dumpDiag(page, dir, 'menu');
+      throw new Error('lien « Gérer les services » introuvable');
     }
-    await page.waitForTimeout(1500);
-    if (!(await cliquerParTexte(page, [/consulter mes services/i, /mes services/i, /les services/i]))) {
-      await dumpDiag(page, dir, 'services');
-      throw new Error('« Consulter mes services » introuvable');
+    let espace = null;
+    const [popup] = await Promise.all([
+      page
+        .context()
+        .waitForEvent('page', { timeout: 8000 })
+        .catch(() => null),
+      lien.click({ timeout: 6000 }).catch(() => {}),
+    ]);
+    espace = popup;
+    if (!espace) {
+      // Repli : ouvrir directement l'URL du lien (le token de session y est present).
+      const href = await lien.getAttribute('href').catch(() => null);
+      if (!href) {
+        await dumpDiag(page, dir, 'menu');
+        throw new Error('lien « Gérer les services » sans URL');
+      }
+      espace = await page.context().newPage();
+      await espace.goto(new URL(href, page.url()).href, { waitUntil: 'domcontentloaded' }).catch(() => {});
     }
-    await page.waitForTimeout(2500);
-    const clic = cliquerParTexte(page, [/tout télécharger/i, /tout telecharger/i, /télécharger le tableau/i, /télécharger/i]);
-    const [dl, ok] = await Promise.all([page.waitForEvent('download', { timeout: navTimeout }).catch(() => null), clic]);
+    await espace.waitForLoadState('domcontentloaded').catch(() => {});
+    await espace.waitForTimeout(3000);
+    // Page E-Services atteinte : diagnostic systematique (pour caler « Consulter mes services »
+    // et le bouton de telechargement, dont on ignore le libelle exact).
+    await dumpDiag(espace, dir, 'eservices');
+    await cliquerParTexte(espace, [/consulter mes services/i]).catch(() => {});
+    await espace.waitForTimeout(1500);
+    await dumpDiag(espace, dir, 'services');
+    // Telechargement du tableau (plusieurs libelles possibles).
+    const clic = cliquerParTexte(espace, [/tout télécharger/i, /tout telecharger/i, /télécharger le tableau/i, /télécharger la liste/i, /exporter/i, /télécharger/i]);
+    const [dl, ok] = await Promise.all([espace.waitForEvent('download', { timeout: navTimeout }).catch(() => null), clic]);
     if (!ok || !dl) {
-      await dumpDiag(page, dir, 'telecharger');
-      throw new Error('bouton « Tout télécharger » introuvable ou aucun téléchargement');
+      await dumpDiag(espace, dir, 'telecharger');
+      await espace.close().catch(() => {});
+      throw new Error('bouton de téléchargement introuvable ou aucun téléchargement');
     }
     const base = sanitize(dl.suggestedFilename() || 'habilitations.pdf');
     const dest = resolve(dir, `${new Date().toISOString().slice(0, 10)}_${base}`);
     await dl.saveAs(dest);
+    await espace.close().catch(() => {});
     log(`Habilitations : tableau enregistré (${dest.split(/[\\/]/).pop()}).`);
     return { ok: true, fichier: dest };
   } catch (e) {

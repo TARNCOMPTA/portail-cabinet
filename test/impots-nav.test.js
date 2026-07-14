@@ -23,10 +23,10 @@ function demarrerSiteFactice() {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       res.end(page('Espace pro (factice)', c));
     };
-    if (p === '/') return html(`<h1>Accueil</h1><a href="/gerer">Gérer mes services</a> <a href="/consulter">Consulter</a>`);
-    // --- Parcours HABILITATIONS ---
-    if (p === '/gerer') return html(`<a href="/services">Consulter mes services</a>`);
-    if (p === '/services') return html(`<a href="/dl?f=habilitations.csv">Tout télécharger</a>`);
+    if (p === '/')
+      return html(`<h1>Accueil</h1><a href="/eservices?idurlm=gerer.services&token=T" target="EServices">Gérer les services</a> <a href="/consulter">Consulter</a>`);
+    // --- Parcours HABILITATIONS : le lien ouvre l'appli E-Services dans une nouvelle fenetre ---
+    if (p === '/eservices') return html(`<h2>Mes services</h2><a href="/dl?f=habilitations.csv">Tout télécharger</a>`);
     // --- Parcours TVA (par client) ---
     if (p === '/consulter') return html(`<a href="/cf">Compte fiscal</a>`);
     if (p === '/cf') return html(`<form action="/cf-res" method="get"><input type="text" name="siren" /><button type="submit">Consulter</button></form>`);
@@ -78,10 +78,10 @@ test('cliquerParTexte trouve un lien par libellé (accent/casse tolérés)', asy
   const ctx = await browser.newContext();
   const pg = await ctx.newPage();
   await pg.goto(process.env.IMPOTS_ACCUEIL_URL);
-  const ok = await navmod.cliquerParTexte(pg, [/gérer/i]);
-  assert.equal(ok, true, 'le lien « Gérer » doit être cliqué');
+  const ok = await navmod.cliquerParTexte(pg, [/consulter/i]);
+  assert.equal(ok, true, 'le lien « Consulter » doit être cliqué');
   await pg.waitForLoadState('domcontentloaded').catch(() => {});
-  assert.match(await pg.content(), /Consulter mes services/, 'la navigation doit atteindre la page suivante');
+  assert.match(await pg.content(), /Compte fiscal/, 'la navigation doit atteindre la page suivante');
   await ctx.close();
 });
 
