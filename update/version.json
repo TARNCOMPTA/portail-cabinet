@@ -1,6 +1,6 @@
 {
-  "version": "1.6.7",
-  "notes": "URSSAF : correction definitive de la recherche de comptes - le robot tapait dans le champ de recherche du site public urssaf.fr (jamais execute) au lieu de la recherche du portefeuille. Vrai champ #recherche + touche Entree, diagnostics de recherche dans le journal, reconnexion fiabilisee. Valide en reel sur un compte TI-PAM.",
+  "version": "1.6.8",
+  "notes": "Bouton « Documents » dans les lignes clients URSSAF, CARPIMKO, CARMF, CARCDSF et CARPV (comme l'onglet Impôts)",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "b33098251adccca544d0f0b02db80fa5dee8a5970658a0dd9951986eb6e43b1c"
+  "sha256": "2860de4a67758334e915524d15944bbad0ea2540f55324e53fcca2743a8fb4f3"
 }
