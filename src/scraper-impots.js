@@ -613,7 +613,7 @@ function phasesDe(opts = {}) {
     cfe: p.cfe !== false,
     tf: p.tf !== false,
     messagerie: (p.messagerie ?? opts.messagerie) !== false,
-    tva: p.tva !== false,
+    tva: p.tva === true, // opt-in : jamais activée sans demande explicite
   };
 }
 

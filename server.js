@@ -531,7 +531,8 @@ app.post('/api/captcha/rafraichir', async (req, res) => res.json(await captchaRe
 // Phases impots demandees (defaut : tout) — { cfe, tf, messagerie }, chaque phase
 // est incluse sauf « false » explicite. Permet des lots courts par type de document.
 function phasesImpots(body) {
-  return { cfe: body?.cfe !== false, tf: body?.tf !== false, messagerie: body?.messagerie !== false, tva: body?.tva !== false };
+  // TVA : opt-in (récupérée seulement si explicitement demandée — case décochée par défaut).
+  return { cfe: body?.cfe !== false, tf: body?.tf !== false, messagerie: body?.messagerie !== false, tva: body?.tva === true };
 }
 async function lancer(clientId, res, phases = {}) {
   const c = getClient(clientId);
