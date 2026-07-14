@@ -67,6 +67,7 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
         <td>${statutBadge(c.dernier_statut)} <span class="aide" style="margin:0;">${fmtDate(c.dernier_run)}</span></td>
         <td><span class="row-actions">
           <button class="btn small primary" data-${P}-scrape="${c.id}">Récupérer</button>
+          <button class="btn small" data-${P}-docs="${c.id}">Documents</button>
           <button class="btn small" data-${P}-edit="${c.id}">Modifier</button>
           <button class="btn small danger" data-${P}-del="${c.id}">✕</button>
         </span></td>

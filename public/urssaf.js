@@ -165,6 +165,7 @@
         <td>${statutBadge(c.dernier_statut)} <span class="aide" style="margin:0;">${fmtDate(c.dernier_run)}</span></td>
         <td><span class="row-actions">
           <button class="btn small primary" data-u-scrape="${c.id}"${c.cabinet_id ? '' : ' disabled title="Rattache ce client à un compte"'}>Récupérer</button>
+          <button class="btn small" data-u-docs="${c.id}">Documents</button>
           <button class="btn small" data-u-edit="${c.id}">Modifier</button>
           <button class="btn small danger" data-u-del="${c.id}">✕</button>
         </span></td>
