@@ -29,6 +29,8 @@ const ACCUEIL_URL = 'https://cfspro.impots.gouv.fr/';
 // Surchargeable (tests locaux contre un site factice) : IMPOTS_ACCUEIL_URL.
 const accueilUrl = () => process.env.IMPOTS_ACCUEIL_URL || ACCUEIL_URL;
 const CFE_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=consulter.avis.cfe';
+// Compte fiscal (consultation ADELIE) : meme selecteur de dossier par SIREN que CFE (9 cases).
+const CF_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=consulter.adelie.le+compte+fiscal';
 const CFE_AVIS_URL = 'https://cfspro.impots.gouv.fr/adelie2mapi/xhtml/impots/cfe/avis_cfe.xhtml?emetteur=ADELIE_2';
 const TF_AVIS_URL = 'https://cfspro.impots.gouv.fr/adelie2mapi/xhtml/impots/tf/avisTaxeFonciere.xhtml?emetteur=ADELIE_2';
 const TOUS_DOSSIERS_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=tousMesDossier&idth=consulter.avis.cfe';
@@ -510,6 +512,32 @@ async function dumpDiag(page, dir, prefixe) {
   }
 }
 
+// Retrouve la fenetre ADELIE (consultation compte fiscal) parmi toutes les fenetres du
+// contexte. La selection du dossier soumet vers une fenetre NOMMEE "EServices" (souvent
+// reutilisee d'un client a l'autre) : le simple waitForEvent('page') ne suffit pas.
+async function attendreFenetreAdelie(context, timeout = 12000) {
+  const debut = Date.now();
+  while (Date.now() - debut < timeout) {
+    const p = context.pages().find((pg) => /adelie2mapi/i.test(pg.url()));
+    if (p) {
+      await p.waitForLoadState('domcontentloaded').catch(() => {});
+      return p;
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return null;
+}
+
+// Ferme les fenetres residuelles (ADELIE/EServices/liste de dossiers) d'un client precedent,
+// pour que la fenetre nommee "EServices" soit recreee proprement au client suivant.
+async function fermerFenetresAnnexes(page) {
+  for (const p of page.context().pages()) {
+    if (p !== page && /adelie2mapi|mesDossiers|externRedirect|rechercherDossiers/i.test(p.url())) {
+      await p.close().catch(() => {});
+    }
+  }
+}
+
 // ITEM 1 — Tableau des habilitations du COMPTE (Gerer > Consulter mes services > Tout telecharger).
 // Une fois par session. Ne leve jamais : renvoie {ok, fichier} ou {ok:false, error} + diagnostic.
 export async function telechargerHabilitations(page, cabinet, { navTimeout, log }) {
@@ -556,7 +584,14 @@ export async function telechargerHabilitations(page, cabinet, { navTimeout, log 
     await espace.waitForTimeout(1500);
     await dumpDiag(espace, dir, 'services');
     // Telechargement du tableau (plusieurs libelles possibles).
-    const clic = cliquerParTexte(espace, [/tout télécharger/i, /tout telecharger/i, /télécharger le tableau/i, /télécharger la liste/i, /exporter/i, /télécharger/i]);
+    const clic = cliquerParTexte(espace, [
+      /tout télécharger/i,
+      /tout telecharger/i,
+      /télécharger le tableau/i,
+      /télécharger la liste/i,
+      /exporter/i,
+      /télécharger/i,
+    ]);
     const [dl, ok] = await Promise.all([espace.waitForEvent('download', { timeout: navTimeout }).catch(() => null), clic]);
     if (!ok || !dl) {
       await dumpDiag(espace, dir, 'telecharger');
@@ -586,42 +621,88 @@ export async function telechargerTvaDeclarations(page, client, clientDir, siren,
     return { docs: [], existants: 1 };
   }
   try {
-    log('TVA : accès au compte fiscal.');
-    await page.goto(accueilUrl(), { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(1200);
-    await cliquerParTexte(page, [/consulter/i]); // ouvre le menu « Consulter » si présent
-    await page.waitForTimeout(800);
-    if (!(await cliquerParTexte(page, [/compte fiscal/i]))) {
-      await dumpDiag(page, clientDir, 'tva_entree');
-      throw new Error('entrée « Compte fiscal » introuvable');
+    log('TVA : accès au compte fiscal (sélection du dossier par SIREN).');
+    // Nettoie une eventuelle fenetre ADELIE/EServices d'un client precedent (fenetre nommee reutilisee).
+    await fermerFenetresAnnexes(page);
+    // 1. Selecteur de dossier du compte fiscal (meme mecanique que CFE : 9 cases + bouton image).
+    await page.goto(CF_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(1500);
+    let champs = 0;
+    for (let i = 0; i < 9; i++) {
+      const box = page.locator(`#siren${i}`);
+      if (await box.count().catch(() => 0)) {
+        await box.fill(siren[i] || '').catch(() => {});
+        champs++;
+      }
     }
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(2000);
-    // Saisie du SIREN dans le champ de recherche du compte fiscal.
-    const champ = page.locator('input[name*="siren" i], input[name*="ident" i], input[type="text"]:visible').first();
-    if (!(await champ.count().catch(() => 0))) {
-      await dumpDiag(page, clientDir, 'tva_recherche');
-      throw new Error('champ de recherche SIREN introuvable');
+    if (champs < 9) {
+      await dumpDiag(page, clientDir, 'tva_choisir');
+      throw new Error('page de choix du dossier compte fiscal introuvable (cases SIREN absentes)');
     }
-    await champ.fill(siren).catch(() => {});
-    await cliquerParTexte(page, [/consulter/i, /rechercher/i, /valider/i]);
+    // 1b. « Consulter » (submit) -> liste des dossiers (rechercherDossiers.do, meme onglet).
+    await page
+      .locator('input[name="button.submitValider"], input[type="image"]')
+      .first()
+      .click()
+      .catch(() => {});
     await page.waitForLoadState('domcontentloaded').catch(() => {});
     await page.waitForTimeout(2500);
-    // Accès par impôt ▸ TVA ▸ Déclarations
-    await cliquerParTexte(page, [/accès par impôt/i, /acces par impot/i]);
-    await page.waitForTimeout(1200);
-    if (!(await cliquerParTexte(page, [/taxe sur la valeur ajoutée/i, /taxe sur la valeur ajoutee/i, /\bT\.?V\.?A\.?\b/]))) {
-      await dumpDiag(page, clientDir, 'tva_rubrique');
-      throw new Error('rubrique « Taxe sur la valeur ajoutée » introuvable');
+    let cf = page;
+    // 2. Liste de dossiers -> selection du dossier + valider. Le formulaire soumet vers une
+    //    fenetre NOMMEE "EServices" (ADELIE) : on capture le popup, avec repli sur le balayage
+    //    de toutes les fenetres du contexte (fenetre reutilisee entre clients).
+    if (/rechercherDossiers/i.test(page.url())) {
+      const radio = page.locator('input[name="idDossier"], #sel0').first();
+      if (await radio.count().catch(() => 0)) {
+        if (!(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
+      }
+      const [popup2] = await Promise.all([
+        page
+          .context()
+          .waitForEvent('page', { timeout: 8000 })
+          .catch(() => null),
+        page
+          .locator('input[name="button.submitValider"], input[type="image"]')
+          .first()
+          .click()
+          .catch(() => {}),
+      ]);
+      cf = popup2 || (await attendreFenetreAdelie(page.context())) || page;
+      await cf.waitForLoadState('domcontentloaded').catch(() => {});
+      await cf.waitForTimeout(3000);
     }
-    await page.waitForTimeout(1200);
-    await cliquerParTexte(page, [/déclarations/i, /declarations/i]);
-    await page.waitForTimeout(1500);
-    const clic = cliquerParTexte(page, [/télécharger le tableau/i, /telecharger le tableau/i, /tout télécharger/i, /télécharger/i]);
-    const [dl, ok] = await Promise.all([page.waitForEvent('download', { timeout: navTimeout }).catch(() => null), clic]);
+    // 3. Consultation ADELIE atteinte. Le menu porte des liens stables : on lit l'URL de
+    //    l'entree « déclarations TVA » (#menu_form:tva_declarations -> declarations_tva.xhtml
+    //    ?emetteur=ADELIE_2&num_ocfi=<dossier>) et on y va directement (le num_ocfi varie par
+    //    client -> impossible a figer, on le recupere sur la page).
+    log(`TVA : page compte fiscal = ${cf.url()}`);
+    const lienDecl = cf.locator('a#menu_form\\:tva_declarations, a[id$="tva_declarations"]').first();
+    if (!(await lienDecl.count().catch(() => 0))) {
+      // Sur ADELIE mais pas d'entree TVA = dossier non assujetti (asso, SCI a l'IR...) : cas normal.
+      if (/adelie2mapi/i.test(cf.url())) {
+        if (cf !== page) await cf.close().catch(() => {});
+        log('TVA : ce dossier n’a pas d’accès « déclarations TVA » (non assujetti) — ignoré.');
+        return { docs: [], existants: 0, info: 'pas d’accès TVA pour ce dossier' };
+      }
+      // Sinon la consultation compte fiscal n'a pas ete atteinte : vrai probleme.
+      await dumpDiag(cf, clientDir, 'tva_comptefiscal');
+      throw new Error(`compte fiscal non atteint — page ${cf.url()}`);
+    }
+    const hrefDecl = await lienDecl.getAttribute('href').catch(() => null);
+    if (!hrefDecl) {
+      await dumpDiag(cf, clientDir, 'tva_comptefiscal');
+      throw new Error('lien « déclarations TVA » sans URL');
+    }
+    await cf.goto(new URL(hrefDecl, cf.url()).href, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await cf.waitForTimeout(2500);
+    log(`TVA : page déclarations = ${cf.url()}`);
+    await dumpDiag(cf, clientDir, 'tva_declarations');
+    // 4. Telechargement du tableau des declarations (sur declarations_tva.xhtml).
+    const clic = cliquerParTexte(cf, [/télécharger le tableau/i, /telecharger le tableau/i, /exporter le tableau/i, /exporter/i, /télécharger/i]);
+    const [dl, ok] = await Promise.all([cf.waitForEvent('download', { timeout: navTimeout }).catch(() => null), clic]);
     if (!ok || !dl) {
-      await dumpDiag(page, clientDir, 'tva_telecharger');
-      throw new Error('bouton « Télécharger le tableau » introuvable ou aucun téléchargement');
+      await dumpDiag(cf, clientDir, 'tva_telecharger');
+      throw new Error('bouton de téléchargement du tableau TVA introuvable ou aucun téléchargement');
     }
     const base = sanitize(dl.suggestedFilename() || `TVA_declarations_${siren}`);
     const dest = resolve(clientDir, `TVA_${jour}_${base}`);
@@ -632,8 +713,10 @@ export async function telechargerTvaDeclarations(page, client, clientDir, siren,
       /* doublon éventuel ignoré */
     }
     log(`TVA : tableau des déclarations enregistré (${dest.split(/[\\/]/).pop()}).`);
+    if (cf !== page) await cf.close().catch(() => {});
     return { docs: [{ libelle: 'Déclarations TVA', fichier: dest }], existants: 0 };
   } catch (e) {
+    await fermerFenetresAnnexes(page).catch(() => {});
     log(`TVA : non récupéré — ${e.message} (diagnostic dans le dossier du client).`);
     return { docs: [], existants: 0, info: `non récupérée (${e.message})` };
   }
