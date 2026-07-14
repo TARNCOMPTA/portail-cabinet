@@ -25,6 +25,9 @@ const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads');
 export const HABILITATIONS_DIR = resolve(DOWNLOADS_DIR, '_habilitations');
 
 const ACCUEIL_URL = 'https://cfspro.impots.gouv.fr/';
+// Page d'accueil de l'espace pro pour les NOUVEAUX parcours (habilitations, TVA).
+// Surchargeable (tests locaux contre un site factice) : IMPOTS_ACCUEIL_URL.
+const accueilUrl = () => process.env.IMPOTS_ACCUEIL_URL || ACCUEIL_URL;
 const CFE_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=consulter.avis.cfe';
 const CFE_AVIS_URL = 'https://cfspro.impots.gouv.fr/adelie2mapi/xhtml/impots/cfe/avis_cfe.xhtml?emetteur=ADELIE_2';
 const TF_AVIS_URL = 'https://cfspro.impots.gouv.fr/adelie2mapi/xhtml/impots/tf/avisTaxeFonciere.xhtml?emetteur=ADELIE_2';
@@ -469,7 +472,7 @@ export function dossierHabilitations(cabinet) {
 
 // Clique le 1er element (lien/bouton/onglet/menu) dont le libelle correspond a l'un des
 // motifs. Robuste aux menus PrimeFaces (essaie plusieurs roles + texte brut). true si clique.
-async function cliquerParTexte(page, motifs, { timeout = 6000 } = {}) {
+export async function cliquerParTexte(page, motifs, { timeout = 6000 } = {}) {
   for (const m of motifs) {
     const re = m instanceof RegExp ? m : new RegExp(m, 'i');
     const candidats = [
@@ -509,12 +512,12 @@ async function dumpDiag(page, dir, prefixe) {
 
 // ITEM 1 — Tableau des habilitations du COMPTE (Gerer > Consulter mes services > Tout telecharger).
 // Une fois par session. Ne leve jamais : renvoie {ok, fichier} ou {ok:false, error} + diagnostic.
-async function telechargerHabilitations(page, cabinet, { navTimeout, log }) {
+export async function telechargerHabilitations(page, cabinet, { navTimeout, log }) {
   const dir = dossierHabilitations(cabinet);
   mkdirSync(dir, { recursive: true });
   try {
     log('Habilitations : ouverture de « Gérer ▸ Consulter mes services ».');
-    await page.goto(ACCUEIL_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.goto(accueilUrl(), { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1500);
     if (!(await cliquerParTexte(page, [/gérer/i, /gerer/i]))) {
       await dumpDiag(page, dir, 'gerer');
@@ -546,7 +549,7 @@ async function telechargerHabilitations(page, cabinet, { navTimeout, log }) {
 // ITEM 2 — Tableau des declarations de TVA d'un CLIENT (Consulter > Compte fiscal > SIREN >
 // Consulter > Acces par impot > TVA > Declarations > Telecharger le tableau). Ne leve jamais :
 // renvoie {docs, existants[, info]} comme les autres phases. Anti-doublon : 1 tableau / jour.
-async function telechargerTvaDeclarations(page, client, clientDir, siren, navTimeout, log) {
+export async function telechargerTvaDeclarations(page, client, clientDir, siren, navTimeout, log) {
   const jour = new Date().toISOString().slice(0, 10);
   const eid = `TVA_DECL_${jour}`;
   if (getDocumentByEventid(client.id, eid)) {
@@ -555,7 +558,7 @@ async function telechargerTvaDeclarations(page, client, clientDir, siren, navTim
   }
   try {
     log('TVA : accès au compte fiscal.');
-    await page.goto(ACCUEIL_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.goto(accueilUrl(), { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1200);
     await cliquerParTexte(page, [/consulter/i]); // ouvre le menu « Consulter » si présent
     await page.waitForTimeout(800);
