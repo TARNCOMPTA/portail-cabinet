@@ -1521,8 +1521,44 @@ async function chargerMoi() {
     $('#panel-maj').hidden = false;
     chargerMaj();
     $('#panel-branding').hidden = false;
+    $('#panel-n8n').hidden = false;
+    chargerIntegration();
   }
 }
+
+// ---- Intégration n8n (webhook sortant + API) --------------------------------
+async function chargerIntegration() {
+  try {
+    const r = await api('/api/integration');
+    $('#n8n-url').value = r.webhook_url || '';
+    $('#n8n-secret').placeholder = r.webhook_secret_defini ? 'Défini — laisser vide pour ne pas changer' : 'ex : un-secret-partagé';
+    if (!r.cle_api_definie) $('#n8n-etat').textContent = 'Pense à générer la clé API (panneau ci-dessus) pour les appels entrants depuis n8n.';
+  } catch {
+    /* ignore */
+  }
+}
+$('#n8n-enregistrer')?.addEventListener('click', async () => {
+  try {
+    const corps = { webhook_url: $('#n8n-url').value.trim() };
+    const secret = $('#n8n-secret').value.trim();
+    if (secret) corps.webhook_secret = secret;
+    await api('/api/integration', { method: 'POST', body: JSON.stringify(corps) });
+    $('#n8n-secret').value = '';
+    toast('Intégration enregistrée.', 'ok');
+    chargerIntegration();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+$('#n8n-tester')?.addEventListener('click', async () => {
+  $('#n8n-etat').textContent = 'Envoi du test…';
+  try {
+    const r = await api('/api/integration/test', { method: 'POST' });
+    $('#n8n-etat').textContent = r.ok ? `✔ Reçu par le webhook (HTTP ${r.statut}).` : `✘ ${r.error || 'HTTP ' + r.statut}`;
+  } catch (err) {
+    $('#n8n-etat').textContent = err.message;
+  }
+});
 
 // ---- Mise à jour en ligne (admin) ------------------------------------------
 // Deux points d'entrée : le panneau Paramètres et le badge version de la sidebar

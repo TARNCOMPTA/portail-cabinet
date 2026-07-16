@@ -64,7 +64,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     enCours.add(key);
     res?.json({ started: true, client: creds.nom });
     const suiviLocal = !progression.actif;
-    if (suiviLocal) demarrerSuivi(1);
+    if (suiviLocal) demarrerSuivi(1, source);
     progression.courant = creds.nom;
     try {
       const rr = await scraper(creds, { ...extra, onLog: progLog });
@@ -97,7 +97,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     const aTraiter = reprise.aFaire;
     enCours.add(`${source}:all`);
     ctx.resetArret();
-    demarrerSuivi(aTraiter.length);
+    demarrerSuivi(aTraiter.length, source);
     if (ignores.length) progLog(`${ignores.length} client(s) verrouillé(s) ignoré(s) : ${ignores.join(', ')}`);
     if (reprise.ignores) progLog(`Reprise : ${reprise.ignores} client(s) ${SRC} déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
     // Disjoncteur : N echecs consecutifs = site de la caisse indisponible -> arret du lot

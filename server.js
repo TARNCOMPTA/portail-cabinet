@@ -145,9 +145,10 @@ function progLog(ligne) {
   progression.logs.push(`${new Date().toLocaleTimeString('fr-FR')}  ${ligne}`);
   if (progression.logs.length > 400) progression.logs.splice(0, progression.logs.length - 400);
 }
-function demarrerSuivi(total) {
+function demarrerSuivi(total, source = '') {
   progression.actif = true;
   progression.total = total;
+  progression.source = source;
   progression.fait = 0;
   progression.courant = null;
   progression.resultats = [];
@@ -159,6 +160,43 @@ function terminerSuivi() {
   progression.actif = false;
   progression.courant = null;
   progression.fini_le = new Date().toISOString();
+  // Webhook sortant (n8n & co) : bilan de la recuperation, fire-and-forget.
+  const ok = progression.resultats.filter((r) => r.ok);
+  const ko = progression.resultats.filter((r) => !r.ok);
+  envoyerWebhook('recuperation_terminee', {
+    source: progression.source || null,
+    demarre_le: progression.demarre_le,
+    fini_le: progression.fini_le,
+    clients_traites: progression.resultats.length,
+    succes: ok.length,
+    echecs: ko.length,
+    nouveaux_documents: progression.resultats.reduce((n, r) => n + (r.nb_docs || 0), 0),
+    echecs_detail: ko.slice(0, 50).map((r) => ({ nom: r.nom, message: r.message })),
+  }).catch(() => {});
+}
+
+// ---- Webhook sortant (integration n8n & co) ---------------------------------
+// Notifie une URL externe a chaque fin de recuperation (bilan JSON). URL + secret
+// optionnel configures dans Parametres ▸ Collaborateurs ▸ Integration n8n.
+async function envoyerWebhook(evenement, data) {
+  const url = (getSetting('webhook_url', '') || '').trim();
+  if (!url) return { ok: false, error: 'Aucune URL de webhook configurée.' };
+  const secret = getSetting('webhook_secret', '') || '';
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8000);
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(secret ? { 'X-Webhook-Secret': secret } : {}) },
+      body: JSON.stringify({ evenement, date: new Date().toISOString(), cabinet: nomCabinet(), portail: process.env.PUBLIC_URL || '', ...data }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    return { ok: r.ok, statut: r.status };
+  } catch (e) {
+    console.warn('[webhook] ' + e.message);
+    return { ok: false, error: e.message };
+  }
 }
 
 // ---- Utilisateurs (collaborateurs) ----------------------------------------
@@ -323,7 +361,7 @@ app.post('/api/cabinets/:id/habilitations', async (req, res) => {
   res.json({ started: true });
   const suiviLocal = !progression.actif;
   if (suiviLocal) {
-    demarrerSuivi(1);
+    demarrerSuivi(1, 'impots');
     progression.courant = `Habilitations — ${cab.libelle || cab.login}`;
   }
   try {
@@ -504,6 +542,25 @@ app.post('/api/documents/zip', async (req, res) => {
     .on('error', () => res.end());
 });
 
+// ---- Integration n8n : webhook sortant + rappels API ------------------------
+app.get('/api/integration', requireAdmin, (req, res) =>
+  res.json({
+    webhook_url: getSetting('webhook_url', '') || '',
+    webhook_secret_defini: !!(getSetting('webhook_secret', '') || ''),
+    base_api: `${baseUrl(req)}/api`,
+    cle_api_definie: apiKeyDefinie(),
+  }),
+);
+app.post('/api/integration', requireAdmin, (req, res) => {
+  if (typeof req.body?.webhook_url === 'string') setSetting('webhook_url', req.body.webhook_url.trim());
+  if (typeof req.body?.webhook_secret === 'string' && req.body.webhook_secret !== '') setSetting('webhook_secret', req.body.webhook_secret.trim());
+  if (req.body?.effacer_secret === true) setSetting('webhook_secret', '');
+  res.json({ ok: true, webhook_url: getSetting('webhook_url', '') || '', webhook_secret_defini: !!(getSetting('webhook_secret', '') || '') });
+});
+app.post('/api/integration/test', requireAdmin, async (req, res) => {
+  res.json(await envoyerWebhook('test', { message: 'Webhook du portail opérationnel.' }));
+});
+
 // ---- Reglages -------------------------------------------------------------
 // Nom du cabinet (marque blanche) — lecture publique via /api/branding (avant auth).
 app.post('/api/branding', requireAdmin, (req, res) => {
@@ -545,7 +602,7 @@ async function lancer(clientId, res, phases = {}) {
   res?.json({ started: true, client: c.nom });
   const suiviLocal = !progression.actif; // ne pas ecraser un suivi de lot deja en cours
   if (suiviLocal) {
-    demarrerSuivi(1);
+    demarrerSuivi(1, 'impots');
     progression.courant = c.nom;
   }
   try {
@@ -620,7 +677,7 @@ app.post('/api/scrape-all', async (req, res) => {
   const total = aFaire.filter((c) => c.cabinet_id).length;
   enCours.add('all');
   stopAll = false;
-  demarrerSuivi(total);
+  demarrerSuivi(total, 'impots');
   if (ignores) progLog(`Reprise : ${ignores} dossier(s) déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
   const cabinets = new Set(aFaire.filter((c) => c.cabinet_id).map((c) => c.cabinet_id)).size;
   res.json({ started: true, total, cabinets, ignores });
@@ -641,7 +698,7 @@ app.post('/api/scrape-selection', async (req, res) => {
   const clients = ids.map((id) => getClient(id)).filter(Boolean);
   enCours.add('all');
   stopAll = false;
-  demarrerSuivi(clients.filter((c) => c.cabinet_id).length);
+  demarrerSuivi(clients.filter((c) => c.cabinet_id).length, 'impots');
   res.json({ started: true, total: clients.filter((c) => c.cabinet_id).length });
   try {
     await lancerLot(clients, phasesImpots(req.body));
@@ -915,7 +972,7 @@ app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
   res.json({ started: true, client: client.nom });
   const suiviLocal = !progression.actif;
   if (suiviLocal) {
-    demarrerSuivi(1);
+    demarrerSuivi(1, 'urssaf');
     progression.courant = client.nom;
   }
   try {
@@ -953,7 +1010,7 @@ function lancerUrssafTous() {
   const total = [...parCabinet.values()].reduce((n, arr) => n + arr.length, 0);
   enCours.add('urssaf:all');
   stopAll = false;
-  demarrerSuivi(total);
+  demarrerSuivi(total, 'urssaf');
   if (ignores) progLog(`Reprise : ${ignores} client(s) URSSAF déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
   const disj = creerDisjoncteur();
   let arretAuto = false;

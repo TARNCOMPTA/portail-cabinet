@@ -1343,6 +1343,30 @@
               </div>
             </section>
 
+            <section class="panel" id="panel-n8n" hidden>
+              <h2>Intégration n8n — webhook &amp; API <span class="compteur">admin</span></h2>
+              <p class="aide">
+                <strong>Webhook sortant</strong> : à la fin de chaque récupération, le portail envoie le bilan (JSON) à l'URL ci-dessous — colle l'URL d'un
+                déclencheur « Webhook » n8n. <strong>API entrante</strong> : n8n peut appeler toute l'API du portail avec un nœud HTTP Request et l'en-tête
+                <code>X-API-Key</code> (la clé API ci-dessus) — endpoints décrits dans le fichier <code>INTEGRATION-N8N.md</code> du dépôt.
+              </p>
+              <div class="form-grid">
+                <label style="grid-column: 1 / -1"
+                  >URL du webhook n8n
+                  <input id="n8n-url" type="url" placeholder="https://n8n.moncabinet.fr/webhook/xxxxx" autocomplete="off" />
+                </label>
+                <label style="grid-column: 1 / -1"
+                  >Secret partagé (optionnel — envoyé dans l'en-tête X-Webhook-Secret)
+                  <input id="n8n-secret" type="text" placeholder="" autocomplete="off" spellcheck="false" />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="n8n-enregistrer">Enregistrer</button>
+                <button type="button" class="btn" id="n8n-tester">Envoyer un test</button>
+                <span class="aide" id="n8n-etat" style="margin: 0"></span>
+              </div>
+            </section>
+
             <section class="panel" id="panel-maj" hidden>
               <h2>Mise à jour de l'application <span class="compteur">admin</span></h2>
               <p class="aide">
