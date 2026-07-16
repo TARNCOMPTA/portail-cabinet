@@ -1,6 +1,6 @@
 {
-  "version": "1.7.0",
-  "notes": "Intégration n8n : le portail notifie un webhook à la fin de chaque récupération (bilan JSON, secret partagé optionnel) — configuration dans Paramètres ▸ Collaborateurs ; guide complet INTEGRATION-N8N.md pour appeler l'API du portail depuis n8n avec la clé API.",
+  "version": "1.7.1",
+  "notes": "Le webhook de fin de récupération liste désormais le détail des nouveaux documents (client + libellé + identifiant de téléchargement) — idéal pour les notifications n8n.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "e238e68574dba656a3c55be09127277dc5c800d40b1f92909f48f1ffc2f44eba"
+  "sha256": "d8512ea0c39eca026fe3e3e6fb1bfe8cc3d2c7a45cb85ccf02c7955314ef6dba"
 }
