@@ -1,6 +1,6 @@
 {
-  "version": "1.6.9",
-  "notes": "Impôts : récupération du tableau des habilitations (par compte) et des déclarations de TVA (par client, option à cocher)",
+  "version": "1.7.0",
+  "notes": "Intégration n8n : le portail notifie un webhook à la fin de chaque récupération (bilan JSON, secret partagé optionnel) — configuration dans Paramètres ▸ Collaborateurs ; guide complet INTEGRATION-N8N.md pour appeler l'API du portail depuis n8n avec la clé API.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "fd1f76f2f887b5c1673f9cc299d2e8d795aef99ff96d1f5bc907568afffbe8ec"
+  "sha256": "e238e68574dba656a3c55be09127277dc5c800d40b1f92909f48f1ffc2f44eba"
 }
