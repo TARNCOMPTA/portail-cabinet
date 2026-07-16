@@ -1,6 +1,6 @@
 {
-  "version": "1.7.3",
-  "notes": "Mode de paiement détecté aussi sur les avis de taxe foncière (badges + rétro-analyse au démarrage) et transmis au webhook n8n (champ paiement des avis CFE/TF).",
+  "version": "1.7.4",
+  "notes": "Le mode de paiement (prélevé / mensualisé) n'apparaît plus au niveau du client (un dossier peut mêler CFE et TF) — il s'affiche sur chaque document, dans la fenêtre Documents du client et dans l'onglet Documents.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "413488fed88af7371c358a8d244f6c356a6e21bba59d92bd00199c5e00b44ac8"
+  "sha256": "e21866966154d9df9d762188d892fd3ee714adc15e63c30e1d5748fd8685f572"
 }
