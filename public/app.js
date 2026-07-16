@@ -173,11 +173,13 @@ let clientsPage = 1;
 let clientsTri = { col: 'nom', dir: 1 };
 const selection = new Set();
 
-// Badge du mode de paiement CFE (détecté dans le texte de l'avis) — helper GLOBAL.
+// Badge du mode de paiement CFE/TF (détecté dans le texte de l'avis) — helper GLOBAL.
+// Par DOCUMENT uniquement : un même dossier peut mêler CFE et TF avec des modes
+// différents, un badge au niveau client serait trompeur.
 function badgePaiementCfe(p) {
-  if (p === 'echeance') return '<span class="badge ok" title="L\'avis CFE indique un prélèvement à l\'échéance">Prélevé échéance</span>';
-  if (p === 'mensualise') return '<span class="badge ok" title="L\'avis CFE indique une mensualisation">Mensualisé</span>';
-  if (p === 'aucun') return '<span class="badge err" title="L\'avis CFE indique : pas d\'adhésion à un prélèvement automatique">⚠ Pas de prélèvement</span>';
+  if (p === 'echeance') return '<span class="badge ok" title="L\'avis indique un prélèvement à l\'échéance">Prélevé échéance</span>';
+  if (p === 'mensualise') return '<span class="badge ok" title="L\'avis indique une mensualisation">Mensualisé</span>';
+  if (p === 'aucun') return '<span class="badge err" title="L\'avis indique : pas d\'adhésion à un prélèvement automatique">⚠ Pas de prélèvement</span>';
   return '';
 }
 
@@ -243,7 +245,7 @@ function renderClients() {
     const cab = c.cabinet_libelle ? `<span class="badge cab">${esc(c.cabinet_libelle)}</span>` : '<span class="badge err">aucun</span>';
     tr.innerHTML = `
       <td class="col-check"><input type="checkbox" class="row-check" data-id="${c.id}" ${selection.has(c.id) ? 'checked' : ''} /></td>
-      <td>${esc(c.nom)} ${badgePaiementCfe(c.paiement_cfe)}</td>
+      <td>${esc(c.nom)}</td>
       <td><span class="siret">${esc(c.siret)}</span></td>
       <td>${cab}</td>
       <td>${c.nb_docs}</td>
@@ -518,7 +520,7 @@ async function ouvrirDocs(id, nom) {
   ul.innerHTML = docs.length ? '' : '<li class="vide">Aucun document récupéré.</li>';
   for (const d of docs) {
     const li = document.createElement('li');
-    li.innerHTML = `<span><span class="lib">${esc(d.libelle || d.fichier.split(/[\\/]/).pop())}</span><br/>
+    li.innerHTML = `<span><span class="lib">${esc(d.libelle || d.fichier.split(/[\\/]/).pop())}</span> ${badgePaiementCfe(d.paiement)}<br/>
       <span class="date">${new Date(d.recupere_le + 'Z').toLocaleString('fr-FR')}</span></span>
       <a class="btn small" href="/api/documents/file?path=${encodeURIComponent(d.fichier)}" target="_blank">Ouvrir</a>`;
     ul.appendChild(li);
