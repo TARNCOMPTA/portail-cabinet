@@ -1,6 +1,6 @@
 {
-  "version": "1.7.2",
-  "notes": "Webhook n8n : le texte des messages de la messagerie impôts est joint au détail des nouveaux documents (affichable dans le corps d'un mail).",
+  "version": "1.7.3",
+  "notes": "Mode de paiement détecté aussi sur les avis de taxe foncière (badges + rétro-analyse au démarrage) et transmis au webhook n8n (champ paiement des avis CFE/TF).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "a91b7e5db665b3f480f0fe79a9684caf977379626b52195707e6a88bcef818b0"
+  "sha256": "413488fed88af7371c358a8d244f6c356a6e21bba59d92bd00199c5e00b44ac8"
 }
