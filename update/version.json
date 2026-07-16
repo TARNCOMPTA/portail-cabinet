@@ -1,6 +1,6 @@
 {
-  "version": "1.7.1",
-  "notes": "Le webhook de fin de récupération liste désormais le détail des nouveaux documents (client + libellé + identifiant de téléchargement) — idéal pour les notifications n8n.",
+  "version": "1.7.2",
+  "notes": "Webhook n8n : le texte des messages de la messagerie impôts est joint au détail des nouveaux documents (affichable dans le corps d'un mail).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "d8512ea0c39eca026fe3e3e6fb1bfe8cc3d2c7a45cb85ccf02c7955314ef6dba"
+  "sha256": "a91b7e5db665b3f480f0fe79a9684caf977379626b52195707e6a88bcef818b0"
 }
