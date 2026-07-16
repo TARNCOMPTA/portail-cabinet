@@ -43,7 +43,10 @@ individuel) :
 
 `source` : `impots` | `urssaf` | `carpimko` | `carmf` | `carcdsf` | `carpv`.
 `echecs_detail` est plafonné à 50 entrées, `nouveaux_documents_detail` à 200 (id
-utilisable avec `GET /api/<source>/documents/:id/file` pour télécharger le PDF). L'événement `test` (bouton « Envoyer un
+utilisable avec `GET /api/<source>/documents/:id/file` pour télécharger le PDF).
+Pour la source `impots`, les messages de la messagerie portent en plus un champ
+`"texte"` (contenu du message, plafonné à 3000 caractères) — pratique pour
+l'afficher directement dans le corps d'un mail. L'événement `test` (bouton « Envoyer un
 test ») porte la même enveloppe avec `"evenement": "test"`.
 
 Idées de workflows : e-mail/Teams de synthèse après la tournée nocturne, alerte si

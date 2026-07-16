@@ -177,7 +177,9 @@ function terminerSuivi() {
 }
 
 // Detail des documents enregistres depuis le debut du suivi (pour le webhook :
-// « quel client, quel document ») — plafonne a 200 entrees.
+// « quel client, quel document ») — plafonne a 200 entrees. Les messages de la
+// messagerie impots (eventid MSG_<num>, fichier .txt) portent en plus leur texte
+// (plafonne) pour pouvoir l'afficher directement dans un mail n8n.
 function nouveauxDocsDepuis(source, demarreLe) {
   try {
     const fn = DOCS_PAR_SOURCE[source];
@@ -186,7 +188,15 @@ function nouveauxDocsDepuis(source, demarreLe) {
     return fn()
       .filter((d) => new Date(String(d.recupere_le || '').replace(' ', 'T') + 'Z').getTime() >= seuil)
       .slice(0, 200)
-      .map((d) => ({ id: d.id, client: d.client_nom || null, libelle: d.libelle || (d.fichier || '').split(/[\\/]/).pop() }));
+      .map((d) => {
+        const item = { id: d.id, client: d.client_nom || null, libelle: d.libelle || (d.fichier || '').split(/[\\/]/).pop() };
+        if (source === 'impots' && /^MSG_\d+$/.test(d.eventid || '') && d.fichier && existsSync(d.fichier)) {
+          try {
+            item.texte = readFileSync(d.fichier, 'utf8').slice(0, 3000);
+          } catch {}
+        }
+        return item;
+      });
   } catch {
     return [];
   }
