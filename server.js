@@ -171,8 +171,25 @@ function terminerSuivi() {
     succes: ok.length,
     echecs: ko.length,
     nouveaux_documents: progression.resultats.reduce((n, r) => n + (r.nb_docs || 0), 0),
+    nouveaux_documents_detail: nouveauxDocsDepuis(progression.source, progression.demarre_le),
     echecs_detail: ko.slice(0, 50).map((r) => ({ nom: r.nom, message: r.message })),
   }).catch(() => {});
+}
+
+// Detail des documents enregistres depuis le debut du suivi (pour le webhook :
+// « quel client, quel document ») — plafonne a 200 entrees.
+function nouveauxDocsDepuis(source, demarreLe) {
+  try {
+    const fn = DOCS_PAR_SOURCE[source];
+    if (!fn || !demarreLe) return [];
+    const seuil = new Date(demarreLe).getTime();
+    return fn()
+      .filter((d) => new Date(String(d.recupere_le || '').replace(' ', 'T') + 'Z').getTime() >= seuil)
+      .slice(0, 200)
+      .map((d) => ({ id: d.id, client: d.client_nom || null, libelle: d.libelle || (d.fichier || '').split(/[\\/]/).pop() }));
+  } catch {
+    return [];
+  }
 }
 
 // ---- Webhook sortant (integration n8n & co) ---------------------------------

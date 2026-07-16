@@ -36,12 +36,14 @@ individuel) :
   "succes": 265,
   "echecs": 4,
   "nouveaux_documents": 37,
+  "nouveaux_documents_detail": [{ "id": 1748, "client": "MR BARTHE GHISLAIN", "libelle": "16/06/2026 — Régularisation de vos cotisations" }],
   "echecs_detail": [{ "nom": "SARL X", "message": "Aucun client trouve (…)" }]
 }
 ```
 
 `source` : `impots` | `urssaf` | `carpimko` | `carmf` | `carcdsf` | `carpv`.
-`echecs_detail` est plafonné à 50 entrées. L'événement `test` (bouton « Envoyer un
+`echecs_detail` est plafonné à 50 entrées, `nouveaux_documents_detail` à 200 (id
+utilisable avec `GET /api/<source>/documents/:id/file` pour télécharger le PDF). L'événement `test` (bouton « Envoyer un
 test ») porte la même enveloppe avec `"evenement": "test"`.
 
 Idées de workflows : e-mail/Teams de synthèse après la tournée nocturne, alerte si
