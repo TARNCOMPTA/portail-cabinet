@@ -252,16 +252,18 @@ export function addDocument(client_id, { libelle, fichier, eventid, paiement }) 
 export function setPaiementDocument(id, paiement) {
   db.prepare('UPDATE documents SET paiement = ? WHERE id = ?').run(paiement ?? null, Number(id));
 }
-// Avis CFE pas encore analyses (retro-analyse au demarrage du serveur).
+// Avis CFE/TF pas encore analyses (retro-analyse au demarrage du serveur).
 export function listCfeSansPaiement(limit = 10000) {
   return db
-    .prepare("SELECT id, fichier FROM documents WHERE eventid LIKE 'CFE\\_%' ESCAPE '\\' AND paiement IS NULL AND fichier IS NOT NULL LIMIT ?")
+    .prepare(
+      "SELECT id, fichier FROM documents WHERE (eventid LIKE 'CFE\\_%' ESCAPE '\\' OR eventid LIKE 'TF\\_%' ESCAPE '\\') AND paiement IS NULL AND fichier IS NOT NULL LIMIT ?",
+    )
     .all(limit);
 }
 // Oubli des modes memorises : quand les motifs de detection changent
 // (PAIEMENT_CFE_VERSION), la retro-analyse repart de zero sur tous les avis.
 export function resetPaiementCfe() {
-  db.prepare("UPDATE documents SET paiement = NULL WHERE eventid LIKE 'CFE\\_%' ESCAPE '\\'").run();
+  db.prepare("UPDATE documents SET paiement = NULL WHERE eventid LIKE 'CFE\\_%' ESCAPE '\\' OR eventid LIKE 'TF\\_%' ESCAPE '\\'").run();
 }
 export function getDocumentByEventid(client_id, eventid) {
   return db.prepare('SELECT * FROM documents WHERE client_id = ? AND eventid = ?').get(client_id, eventid);

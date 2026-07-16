@@ -203,10 +203,10 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
         continue; // pas d'addDocument -> retelecharge et reverifie au prochain run
       }
       if (verif.verdict === 'non_verifiable') nonVerifiables++;
-      // Avis CFE : detection du mode de paiement mentionne dans le PDF
-      // (prelevement a l'echeance / mensualisation / pas de prelevement).
+      // Avis CFE et taxe fonciere : detection du mode de paiement mentionne
+      // dans le PDF (prelevement a l'echeance / mensualisation / aucun).
       let paiement = null;
-      if (prefixe === 'CFE') {
+      if (prefixe === 'CFE' || prefixe === 'TF') {
         const texte = await extraireTextePdf(dest).catch(() => null);
         paiement = (texte && detecterPaiementCfe(texte)) || 'inconnu';
       }

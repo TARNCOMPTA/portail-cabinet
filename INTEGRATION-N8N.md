@@ -46,7 +46,9 @@ individuel) :
 utilisable avec `GET /api/<source>/documents/:id/file` pour télécharger le PDF).
 Pour la source `impots`, les messages de la messagerie portent en plus un champ
 `"texte"` (contenu du message, plafonné à 3000 caractères) — pratique pour
-l'afficher directement dans le corps d'un mail. L'événement `test` (bouton « Envoyer un
+l'afficher directement dans le corps d'un mail — et les avis CFE/taxe foncière
+un champ `"paiement"` : `echeance` (prélèvement à l'échéance), `mensualise`,
+`aucun` (pas de prélèvement — à payer) ou `inconnu`. L'événement `test` (bouton « Envoyer un
 test ») porte la même enveloppe avec `"evenement": "test"`.
 
 Idées de workflows : e-mail/Teams de synthèse après la tournée nocturne, alerte si

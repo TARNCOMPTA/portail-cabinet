@@ -190,6 +190,8 @@ function nouveauxDocsDepuis(source, demarreLe) {
       .slice(0, 200)
       .map((d) => {
         const item = { id: d.id, client: d.client_nom || null, libelle: d.libelle || (d.fichier || '').split(/[\\/]/).pop() };
+        // Avis CFE/TF : mode de paiement detecte (echeance|mensualise|aucun|inconnu).
+        if (d.paiement) item.paiement = d.paiement;
         if (source === 'impots' && /^MSG_\d+$/.test(d.eventid || '') && d.fichier && existsSync(d.fichier)) {
           try {
             item.texte = readFileSync(d.fichier, 'utf8').slice(0, 3000);
