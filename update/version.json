@@ -1,6 +1,6 @@
 {
-  "version": "1.7.4",
-  "notes": "Le mode de paiement (prélevé / mensualisé) n'apparaît plus au niveau du client (un dossier peut mêler CFE et TF) — il s'affiche sur chaque document, dans la fenêtre Documents du client et dans l'onglet Documents.",
+  "version": "1.7.5",
+  "notes": "Durcissement sécurité : bannissement d'IP applicatif (bans escaladés persistants) + en-têtes HSTS/Permissions-Policy/COOP + retrait X-Powered-By",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "e21866966154d9df9d762188d892fd3ee714adc15e63c30e1d5748fd8685f572"
+  "sha256": "8336f4eb3b3e6fc71c27e2622abf8bc589344d22d5818e54a56de0754d521a98"
 }
