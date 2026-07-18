@@ -37,6 +37,7 @@ import {
   deleteUserSessions,
   purgerSessionsExpirees,
   listeNoire,
+  bannissementIp,
   setPaiementDocument,
   listCfeSansPaiement,
   resetPaiementCfe,
@@ -67,13 +68,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = resolve(__dirname, 'public');
 const app = express();
 app.set('trust proxy', 1); // derriere le reverse proxy HTTPS : lire X-Forwarded-Proto (cookie Secure)
-// En-tetes de securite (sans dependance) : anti-sniffing, anti-clickjacking, referrer discret.
+app.disable('x-powered-by'); // ne pas divulguer « Express »
+// En-tetes de securite (sans dependance) : anti-sniffing, anti-clickjacking, referrer discret,
+// HTTPS force (HSTS), reduction de la surface d'API navigateur, isolation d'origine.
 app.use((req, res, next) => {
   res.set('X-Content-Type-Options', 'nosniff');
   res.set('X-Frame-Options', 'SAMEORIGIN');
   res.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
+  res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
+  res.set('Cross-Origin-Opener-Policy', 'same-origin');
   next();
 });
+// Anti-brute-force applicatif : bloque tôt toute IP bannie (bans escaladés persistants).
+app.use((req, res, next) => bannissementIp.porte(req, res, next));
 app.use(express.json());
 
 // --- Marque blanche : nom du cabinet configurable (Paramètres ▸ Collaborateurs) ---
@@ -294,6 +302,13 @@ app.post('/api/apikey/regenerer', requireAdmin, (req, res) => {
 app.delete('/api/apikey', requireAdmin, (req, res) => {
   revoquerApiKey();
   res.json({ ok: true, definie: false });
+});
+
+// ---- Sécurité : IP bannies (anti-brute-force applicatif) ----
+app.get('/api/securite/ip-bannies', requireAdmin, (req, res) => res.json(bannissementIp.liste()));
+app.delete('/api/securite/ip-bannies/:ip', requireAdmin, (req, res) => {
+  if (!bannissementIp.debloquer(req.params.ip)) return res.status(404).json({ error: 'IP non bannie' });
+  res.json({ ok: true });
 });
 
 // ---- Connecteur MCP « organisation » (OAuth) : URL + Client ID/Secret -----

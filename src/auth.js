@@ -1,7 +1,7 @@
 // Authentification des collaborateurs du cabinet (multi-utilisateurs).
 // Mots de passe haches (scrypt), sessions par cookie httpOnly stockees en base.
 import crypto from 'node:crypto';
-import { getUserByEmail, touchUserLogin, createSession, getSessionUser, deleteSession, getSetting, setSetting } from './db.js';
+import { getUserByEmail, touchUserLogin, createSession, getSessionUser, deleteSession, getSetting, setSetting, bannissementIp } from './db.js';
 
 // ---- Clé API (pour le MCP / accès programmatique) ----
 // Une clé revocable, distincte des mots de passe des comptes. Donne un accès
@@ -136,10 +136,12 @@ export function installAuthRoutes(app) {
     if (!u || !u.actif || !verifyPassword(pwd, u.password_hash)) {
       throttleIp.echec(ip);
       throttleCompte.echec(email);
+      bannissementIp.echec(req, 2, 'connexion échouée'); // alimente le bannissement escaladé
       return res.status(401).json({ error: 'E-mail ou mot de passe incorrect.' });
     }
     throttleIp.reussite(ip); // connexion reussie : on remet les compteurs a zero
     throttleCompte.reussite(email);
+    bannissementIp.reussite(req);
     const token = crypto.randomBytes(32).toString('hex');
     createSession(token, u.id, new Date(Date.now() + SESSION_MS).toISOString());
     touchUserLogin(u.id);

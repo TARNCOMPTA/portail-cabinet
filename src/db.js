@@ -7,6 +7,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encrypt, decrypt } from './crypto.js';
 import { creerListeNoire } from './liste-noire.js';
+import { creerBannissementIp } from './securite-ip.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = resolve(__dirname, '..', 'data');
@@ -16,6 +17,9 @@ db.exec('PRAGMA journal_mode = WAL;');
 
 // Liste noire des clients supprimes (la synchro ne les recree pas).
 export const listeNoire = creerListeNoire(db);
+
+// Bannissement d'IP applicatif (anti-brute-force persistant).
+export const bannissementIp = creerBannissementIp(db);
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS clients (
