@@ -17,6 +17,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './urssaf-db.js';
 import { launchArgs } from './navigateur.js';
+import { sanitize, dateIso } from './scraper-commun.js';
 import { verifierEtClasser, correspondanceNom } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,13 +25,6 @@ const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'urssaf');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36';
 const TDBEC_ACCUEIL = 'https://tdbec.urssaf.fr/accueil';
 
-function sanitize(name) {
-  return String(name)
-    .replace(/[^\w.\- ]+/g, '_')
-    .replace(/\s+/g, '_')
-    .trim()
-    .slice(0, 120);
-}
 // Nom de fichier lisible : garde les accents et les tirets (pour les dates),
 // retire seulement les caracteres interdits par Windows.
 function nomFichierDoc(libelle) {
@@ -41,11 +35,6 @@ function nomFichierDoc(libelle) {
       .trim()
       .slice(0, 130) || 'document';
   return `${base}.pdf`;
-}
-// Convertit une date URSSAF "JJ/MM/AAAA" en "AAAA-MM-JJ" (triable). Sinon "".
-function dateIso(d) {
-  const m = String(d || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
 }
 function addRunSafe(clientId, run) {
   try {

@@ -6,14 +6,9 @@ import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { verifierEtClasser } from './validation-pdf.js';
+import { sanitize } from './scraper-commun.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const sanitize = (name) =>
-  String(name)
-    .replace(/[^\w.\- ]+/g, '_')
-    .replace(/\s+/g, '_')
-    .trim()
-    .slice(0, 120);
 const libProfession = (p) => (p === 'sf' ? 'sage-femme' : p === 'cd' ? 'chirurgien-dentiste' : '');
 
 /**

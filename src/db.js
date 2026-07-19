@@ -186,9 +186,6 @@ export function getClient(id) {
 export function getClientBySiret(siret) {
   return db.prepare('SELECT * FROM clients WHERE siret = ?').get(String(siret).replace(/\s+/g, ''));
 }
-export function listClientsByCabinet(cabinetId) {
-  return db.prepare('SELECT * FROM clients WHERE cabinet_id = ? ORDER BY nom COLLATE NOCASE').all(cabinetId);
-}
 export function createClient({ nom, siret, dossier, cabinet_id }) {
   const info = db
     .prepare('INSERT INTO clients (nom, siret, dossier, cabinet_id) VALUES (?, ?, ?, ?)')

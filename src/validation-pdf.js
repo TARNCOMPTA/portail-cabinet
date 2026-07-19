@@ -11,6 +11,7 @@ import { readFileSync, mkdirSync, renameSync, copyFileSync, unlinkSync, existsSy
 import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
+import { sanitize } from './scraper-commun.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const QUARANTAINE_DIR = resolve(__dirname, '..', 'downloads', '_quarantaine');
@@ -117,13 +118,6 @@ const STOPLIST = new Set([
   'en',
 ]);
 
-function sanitize(name) {
-  return String(name)
-    .replace(/[^\w.\- ]+/g, '_')
-    .replace(/\s+/g, '_')
-    .trim()
-    .slice(0, 120);
-}
 
 function echapperRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

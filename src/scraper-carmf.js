@@ -11,19 +11,13 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun } from './carmf-db.js';
 import { launchArgs } from './navigateur.js';
+import { sanitize } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'carmf');
 const LOGIN_URL = process.env.CARMF_LOGIN_URL || 'https://extranet.carmf.fr/adherents/connecter';
 
-function sanitize(name) {
-  return String(name)
-    .replace(/[^\w.\- ]+/g, '_')
-    .replace(/\s+/g, '_')
-    .trim()
-    .slice(0, 120);
-}
 function addRunSafe(clientId, run) {
   try {
     addRun(clientId, run);

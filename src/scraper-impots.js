@@ -16,6 +16,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './db.js';
 import { launchArgs } from './navigateur.js';
+import { sanitize } from './scraper-commun.js';
 import { verifierEtClasser, extraireTextePdf, detecterPaiementCfe } from './validation-pdf.js';
 import * as captchaRelais from './captcha-relais.js';
 
@@ -55,13 +56,6 @@ function lireDossiersPage(page) {
   });
 }
 
-function sanitize(name) {
-  return String(name)
-    .replace(/[^\w.\- ]+/g, '_')
-    .replace(/\s+/g, '_')
-    .trim()
-    .slice(0, 120);
-}
 function addRunSafe(clientId, run) {
   try {
     addRun(clientId, run);

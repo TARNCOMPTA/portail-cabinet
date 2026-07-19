@@ -14,6 +14,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun } from './carpimko-db.js';
 import { launchArgs } from './navigateur.js';
+import { sanitize, dateIso } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -24,17 +25,6 @@ const DOCUMENTS_URL = 'https://www2.carpimko.com/migration/MesDocuments?tab=docs
 const REGEX_APPEL = /appel\s*de\s*cotisation/i;
 const TOUS_DOCUMENTS_DEFAUT = String(process.env.TOUS_DOCUMENTS ?? 'false').toLowerCase() === 'true';
 
-function sanitize(name) {
-  return String(name)
-    .replace(/[^\w.\- ]+/g, '_')
-    .replace(/\s+/g, '_')
-    .trim()
-    .slice(0, 120);
-}
-function dateIso(fr) {
-  const m = String(fr).match(/(\d{2})\/(\d{2})\/(\d{4})/);
-  return m ? `${m[3]}-${m[2]}-${m[1]}` : 'sans-date';
-}
 function addRunSafe(clientId, run) {
   try {
     addRun(clientId, run);
@@ -248,7 +238,7 @@ export async function scrapeClient(client, opts = {}) {
         if (!d.downloadHref) continue;
         // Nom : prefere le vrai nom de fichier du document (unique) ; sinon date + libelle.
         const nomDoc = d.fileName ? d.fileName.replace(/\.[a-z0-9]+$/i, '') : d.nom || 'document';
-        const baseNom = `${dateIso(d.date)}_${sanitize(nomDoc)}`;
+        const baseNom = `${dateIso(d.date, 'sans-date')}_${sanitize(nomDoc)}`;
         let dest = resolve(clientDir, `${baseNom}.pdf`);
         // Collision dans CE run (2 documents distincts -> meme nom) : on suffixe (2), (3)...
         if (utilises.has(dest.toLowerCase())) {
@@ -260,7 +250,7 @@ export async function scrapeClient(client, opts = {}) {
         utilises.add(dest.toLowerCase());
         // Deja telecharge lors d'un run precedent (fichier present sur le disque).
         if (existsSync(dest) && statSync(dest).size > 100) {
-          addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date) });
+          addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date, 'sans-date') });
           dejaPresents++;
           continue;
         }
@@ -278,7 +268,7 @@ export async function scrapeClient(client, opts = {}) {
             continue; // pas d'addDocument -> retéléchargé et revérifié au prochain run
           }
           if (verif.verdict === 'non_verifiable') nonVerifiables++;
-          addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date) });
+          addDocument(client.id, { libelle: `${d.date} — ${d.nom}`, fichier: dest, date_doc: dateIso(d.date, 'sans-date') });
           docsRecuperes.push({ libelle: d.nom, fichier: dest });
           log(`OK : ${dest.split(/[\\/]/).pop()} (${Math.round(buf.length / 1024)} Ko)`);
         } catch (e) {
