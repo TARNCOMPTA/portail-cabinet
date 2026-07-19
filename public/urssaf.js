@@ -8,21 +8,7 @@
   let page = 1;
   const PAR_PAGE = 20;
 
-  const fmtDate = (s) => {
-    if (!s) return '—';
-    const d = new Date(String(s).replace(' ', 'T') + 'Z'); // horodatage SQLite en UTC -> heure locale
-    return isNaN(d)
-      ? s
-      : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
-          ' ' +
-          d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  };
-  const statutBadge = (st) => {
-    if (st === 'succes') return '<span class="badge ok">OK</span>';
-    if (st === 'echec_mdp') return '<span class="badge err">🔒 mdp</span>';
-    if (st === 'echec') return '<span class="badge err">échec</span>';
-    return '<span class="badge">—</span>';
-  };
+  // fmtDate() et statutBadge() : globales partagées (public/shared-ui.js).
 
   // ---- Comptes cabinet ----
   async function chargerCabinets() {
