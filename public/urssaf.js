@@ -10,7 +10,7 @@
 
   const fmtDate = (s) => {
     if (!s) return '—';
-    const d = new Date(String(s).replace(' ', 'T'));
+    const d = new Date(String(s).replace(' ', 'T') + 'Z'); // horodatage SQLite en UTC -> heure locale
     return isNaN(d)
       ? s
       : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) +
