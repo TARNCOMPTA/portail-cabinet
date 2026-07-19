@@ -1,6 +1,6 @@
 {
-  "version": "1.7.6",
-  "notes": "Correctif : heure de récupération affichée à l'heure locale (URSSAF et caisses) au lieu de l'heure UTC (−2 h)",
+  "version": "1.7.7",
+  "notes": "Refactorisation interne (sans changement fonctionnel) : mutualisation de code (sanitize, helpers d'affichage, sélecteur SIREN, comptes cabinet)",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "bc593df62e5bda71437d71b35fcc37072fadaba29cd5c853520f11217cb5341a"
+  "sha256": "0c47af4ffed0ab923214ec49a42c01670303ab7cf48a5609f7ca8062b8d63b6a"
 }
