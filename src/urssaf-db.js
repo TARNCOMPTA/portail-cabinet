@@ -6,8 +6,8 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { encrypt, decrypt } from './crypto.js';
 import { creerListeNoire } from './liste-noire.js';
+import { creerCabinets } from './cabinets-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = resolve(__dirname, '..', 'data');
@@ -61,66 +61,16 @@ try {
   /* colonne deja presente */
 }
 
-// Dedoublonnage des comptes par login + index unique (meme garde-fou que le module Impots).
-{
-  const dups = db.prepare('SELECT MIN(id) AS keep FROM cabinets GROUP BY lower(login) HAVING COUNT(*) > 1').all();
-  for (const { keep } of dups) {
-    const login = db.prepare('SELECT login FROM cabinets WHERE id = ?').get(keep).login;
-    db.prepare('UPDATE clients SET cabinet_id = ? WHERE cabinet_id IN (SELECT id FROM cabinets WHERE lower(login) = lower(?) AND id != ?)').run(
-      keep,
-      login,
-      keep,
-    );
-    db.prepare('DELETE FROM cabinets WHERE lower(login) = lower(?) AND id != ?').run(login, keep);
-  }
-  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_urssaf_cabinets_login ON cabinets(lower(login))');
-}
-
-// ---- Comptes cabinet ------------------------------------------------------
-export function listCabinets() {
-  return db
-    .prepare(
-      `
-    SELECT c.id, c.libelle, c.login,
-           (SELECT COUNT(*) FROM clients cl WHERE cl.cabinet_id = c.id) AS nb_clients,
-           (c.password_enc IS NOT NULL) AS pwd_ok
-    FROM cabinets c ORDER BY c.libelle COLLATE NOCASE, c.id
-  `,
-    )
-    .all()
-    .map((c) => ({ ...c, pwd_ok: !!c.pwd_ok }));
-}
-export function getCabinetFull(id) {
-  const c = db.prepare('SELECT * FROM cabinets WHERE id = ?').get(id);
-  if (!c) return null;
-  return { id: c.id, libelle: c.libelle, login: c.login, password: c.password_enc ? decrypt(c.password_enc) : '' };
-}
-export function getCabinetByLogin(login) {
-  return db.prepare('SELECT id, libelle, login FROM cabinets WHERE lower(login) = lower(?)').get(String(login || '').trim());
-}
-export function createCabinet({ libelle, login, password }) {
-  const info = db
-    .prepare('INSERT INTO cabinets (libelle, login, password_enc) VALUES (?, ?, ?)')
-    .run((libelle || login || '').trim(), String(login || '').trim(), password ? encrypt(String(password)) : null);
-  return db.prepare('SELECT id, libelle, login FROM cabinets WHERE id = ?').get(info.lastInsertRowid);
-}
-export function updateCabinet(id, { libelle, login, password }) {
-  const c = db.prepare('SELECT * FROM cabinets WHERE id = ?').get(id);
-  if (!c) return null;
-  const enc = password ? encrypt(String(password)) : c.password_enc;
-  db.prepare('UPDATE cabinets SET libelle = ?, login = ?, password_enc = ? WHERE id = ?').run(libelle ?? c.libelle, login ?? c.login, enc, id);
-  return db.prepare('SELECT id, libelle, login FROM cabinets WHERE id = ?').get(id);
-}
-export function deleteCabinet(id) {
-  db.prepare('UPDATE clients SET cabinet_id = NULL WHERE cabinet_id = ?').run(id);
-  db.prepare('DELETE FROM cabinets WHERE id = ?').run(id);
-}
+// ---- Comptes cabinet : CRUD mutualisé (voir cabinets-db.js) ----------------
+// URSSAF : connexion AUTOMATIQUE -> un compte n'est « configuré » que s'il a un mot de
+// passe enregistré => exigeMotDePasse: true. Index propre à cette base.
+export const { listCabinets, getCabinetFull, getCabinetByLogin, createCabinet, updateCabinet, deleteCabinet, cabinetsConfigure } = creerCabinets(db, {
+  indexName: 'idx_urssaf_cabinets_login',
+  exigeMotDePasse: true,
+});
 export function getCabinetFullByClient(clientId) {
   const cl = getClient(clientId);
   return cl?.cabinet_id ? getCabinetFull(cl.cabinet_id) : null;
-}
-export function cabinetsConfigure() {
-  return db.prepare('SELECT COUNT(*) AS n FROM cabinets WHERE password_enc IS NOT NULL').get().n > 0;
 }
 
 // ---- Clients --------------------------------------------------------------
