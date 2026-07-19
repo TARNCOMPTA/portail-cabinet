@@ -233,10 +233,7 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
     // 1. Choix du dossier sous l'habilitation "messagerie" (peut ouvrir un nouvel onglet)
     await page.goto(MSG_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1000);
-    for (let i = 0; i < 9; i++) {
-      const b = page.locator(`#siren${i}`);
-      if (await b.count()) await b.fill(siren[i] || '');
-    }
+    await remplirCasesSiren(page, siren);
     // Detection rapide « Vous n'avez aucune habilitation... » : la page d'erreur revient
     // immediatement apres le clic ACCEDER -> inutile d'attendre le popup gaia (8 s x2).
     const sansHabilitation = () =>
@@ -532,6 +529,20 @@ async function fermerFenetresAnnexes(page) {
   }
 }
 
+// Remplit les 9 cases SIREN (#siren0..8) d'un sélecteur de dossier impots (mire). Renvoie
+// le nombre de cases trouvées (9 si la page de choix du dossier est bien présente).
+async function remplirCasesSiren(page, siren) {
+  let n = 0;
+  for (let i = 0; i < 9; i++) {
+    const box = page.locator(`#siren${i}`);
+    if (await box.count().catch(() => 0)) {
+      await box.fill(siren[i] || '').catch(() => {});
+      n++;
+    }
+  }
+  return n;
+}
+
 // ITEM 1 — Tableau des habilitations du COMPTE (Gerer > Consulter mes services > Tout telecharger).
 // Une fois par session. Ne leve jamais : renvoie {ok, fichier} ou {ok:false, error} + diagnostic.
 export async function telechargerHabilitations(page, cabinet, { navTimeout, log }) {
@@ -621,14 +632,7 @@ export async function telechargerTvaDeclarations(page, client, clientDir, siren,
     // 1. Selecteur de dossier du compte fiscal (meme mecanique que CFE : 9 cases + bouton image).
     await page.goto(CF_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1500);
-    let champs = 0;
-    for (let i = 0; i < 9; i++) {
-      const box = page.locator(`#siren${i}`);
-      if (await box.count().catch(() => 0)) {
-        await box.fill(siren[i] || '').catch(() => {});
-        champs++;
-      }
-    }
+    const champs = await remplirCasesSiren(page, siren);
     if (champs < 9) {
       await dumpDiag(page, clientDir, 'tva_choisir');
       throw new Error('page de choix du dossier compte fiscal introuvable (cases SIREN absentes)');
@@ -750,10 +754,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
       // 1. Choisir le dossier par SIREN
       await page.goto(CFE_CHOISIR_URL, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(1200);
-      for (let i = 0; i < 9; i++) {
-        const box = page.locator(`#siren${i}`);
-        if (await box.count()) await box.fill(siren[i] || '');
-      }
+      await remplirCasesSiren(page, siren);
       await page
         .locator('input[name="button.submitValider"], input[type="image"]')
         .first()
