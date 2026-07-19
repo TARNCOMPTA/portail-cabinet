@@ -1,6 +1,6 @@
 {
-  "version": "1.7.5",
-  "notes": "Durcissement sécurité : bannissement d'IP applicatif (bans escaladés persistants) + en-têtes HSTS/Permissions-Policy/COOP + retrait X-Powered-By",
+  "version": "1.7.6",
+  "notes": "Correctif : heure de récupération affichée à l'heure locale (URSSAF et caisses) au lieu de l'heure UTC (−2 h)",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "8336f4eb3b3e6fc71c27e2622abf8bc589344d22d5818e54a56de0754d521a98"
+  "sha256": "bc593df62e5bda71437d71b35fcc37072fadaba29cd5c853520f11217cb5341a"
 }
