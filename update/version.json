@@ -1,6 +1,6 @@
 {
-  "version": "1.7.7",
-  "notes": "Refactorisation interne (sans changement fonctionnel) : mutualisation de code (sanitize, helpers d'affichage, sélecteur SIREN, comptes cabinet)",
+  "version": "1.7.8",
+  "notes": "Fin des doublons : la CARPIMKO change le nom des fichiers à chaque visite et la CARPV régénère certains courriers — les scrapers reconnaissent maintenant les documents déjà en base (date + libellé). Script scripts/nettoyer-doublons-caisses.mjs pour purger les doublons accumulés.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "0c47af4ffed0ab923214ec49a42c01670303ab7cf48a5609f7ca8062b8d63b6a"
+  "sha256": "58b04f2e2fdec2ca0cf620b7384e44b66af7450e3b27b46d9c9cf51be186b190"
 }
