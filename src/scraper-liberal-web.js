@@ -13,11 +13,12 @@ const libProfession = (p) => (p === 'sf' ? 'sage-femme' : p === 'cd' ? 'chirurgi
 
 /**
  * @param {{nom:string, host:string, sousDossier:string, picristoken:string,
- *          baseIndex:number|((client:any)=>number), addDocument:Function, addRun:Function}} cfg
+ *          baseIndex:number|((client:any)=>number), addDocument:Function, addRun:Function,
+ *          listDocuments?:Function}} cfg
  * @returns {(client:any, opts?:any)=>Promise<any>} scrapeClient
  */
 export function creerScraperLiberalWeb(cfg) {
-  const { nom, host, sousDossier, picristoken, baseIndex, addDocument, addRun } = cfg;
+  const { nom, host, sousDossier, picristoken, baseIndex, addDocument, addRun, listDocuments } = cfg;
   const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', sousDossier);
   const addRunSafe = (clientId, run) => {
     try {
@@ -79,7 +80,17 @@ export function creerScraperLiberalWeb(cfg) {
       log('Connecté. Récupération des documents.');
       const H = { picristoken, authorization, 'content-type': 'application/json' };
 
+      // Dedup EN BASE (libelle + annee) : certaines caisses regenerent un courrier a
+      // chaque visite (ex. CARPV « INT - Echeancier de prelevements » date du jour) —
+      // un exemplaire deja en base pour la meme annee suffit, on ne le reprend pas.
+      const dejaEnBase = new Set();
+      if (listDocuments) for (const doc of listDocuments(client.id)) dejaEnBase.add(`${doc.date_doc || ''}|${doc.libelle || ''}`);
+
       const enregistrer = async (libelle, nomFichier, b64, annee) => {
+        if (dejaEnBase.has(`${annee || ''}|${libelle}`)) {
+          dejaPresents++;
+          return;
+        }
         const buf = Buffer.from(b64, 'base64');
         if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') {
           log(`(${libelle} : réponse non-PDF, ignoré)`);

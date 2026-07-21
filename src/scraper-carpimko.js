@@ -12,7 +12,7 @@ import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addDocument, addRun } from './carpimko-db.js';
+import { addDocument, addRun, listDocuments } from './carpimko-db.js';
 import { launchArgs } from './navigateur.js';
 import { sanitize, dateIso } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
@@ -233,11 +233,28 @@ export async function scrapeClient(client, opts = {}) {
     } else {
       const motDoc = tousDocuments ? 'document(s)' : 'appel(s) de cotisations';
       log(`${cibles.length} ${motDoc} detecte(s).`);
+      // Dedup EN BASE (date du document + libelle) : la CARPIMKO regenere le nom de
+      // fichier a chaque visite (APPEL_..._<horodatage>_<adherent>_<aleatoire>.pdf),
+      // le fichier sur disque ne suffit donc plus a reconnaitre un document deja pris.
+      // Multiset : autorise N documents distincts partageant date + libelle.
+      const dejaEnBase = new Map();
+      for (const doc of listDocuments(client.id)) {
+        const k = `${doc.date_doc || ''}|${doc.libelle || ''}`;
+        dejaEnBase.set(k, (dejaEnBase.get(k) || 0) + 1);
+      }
       const utilises = new Set();
       for (const d of cibles) {
         if (!d.downloadHref) continue;
-        // Nom : prefere le vrai nom de fichier du document (unique) ; sinon date + libelle.
-        const nomDoc = d.fileName ? d.fileName.replace(/\.[a-z0-9]+$/i, '') : d.nom || 'document';
+        const cle = `${dateIso(d.date, 'sans-date')}|${d.date} — ${d.nom}`;
+        const enBase = dejaEnBase.get(cle) || 0;
+        if (enBase > 0) {
+          dejaEnBase.set(cle, enBase - 1);
+          dejaPresents++;
+          continue;
+        }
+        // Nom : prefere le vrai nom de fichier du document, SANS son suffixe de
+        // generation volatil (horodatage + n° adherent + aleatoire) ; sinon date + libelle.
+        const nomDoc = (d.fileName ? d.fileName.replace(/\.[a-z0-9]+$/i, '') : d.nom || 'document').replace(/_\d{8}_\d{6}_\d+_[0-9a-f]{4,}$/i, '');
         const baseNom = `${dateIso(d.date, 'sans-date')}_${sanitize(nomDoc)}`;
         let dest = resolve(clientDir, `${baseNom}.pdf`);
         // Collision dans CE run (2 documents distincts -> meme nom) : on suffixe (2), (3)...
