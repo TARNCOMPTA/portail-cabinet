@@ -1,6 +1,6 @@
 {
-  "version": "1.7.8",
-  "notes": "Fin des doublons : la CARPIMKO change le nom des fichiers à chaque visite et la CARPV régénère certains courriers — les scrapers reconnaissent maintenant les documents déjà en base (date + libellé). Script scripts/nettoyer-doublons-caisses.mjs pour purger les doublons accumulés.",
+  "version": "1.7.9",
+  "notes": "Correctif ECONNRESET sur la synchronisation URSSAF : la liste du portefeuille (api.urssaf.fr/comptes) est désormais récupérée par un fetch exécuté dans le navigateur (comme la messagerie), et non plus via le client HTTP séparé de Playwright que l'URSSAF semble filtrer.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "58b04f2e2fdec2ca0cf620b7384e44b66af7450e3b27b46d9c9cf51be186b190"
+  "sha256": "c88706dde471b62138127b46b61895b21004a7c1256f6758803e54a94a7c4e41"
 }
