@@ -334,12 +334,29 @@ export async function listerClients(cabinet, opts = {}) {
     let totalPages = 1;
     for (let p = 0; p < 50; p++) {
       const url = base.replace(/([?&])page=\d+/, '$1page=' + p);
-      const resp = await context.request.get(url, { headers: { authorization: token } });
-      if (!resp.ok()) {
-        log(`(page ${p} : HTTP ${resp.status()})`);
+      // Requete faite DANS la page (fetch du navigateur), PAS context.request : l'URSSAF a
+      // recemment durci son filtrage et coupe (ECONNRESET, sans reponse HTTP) le client HTTP
+      // separe de Playwright — meme User-Agent affiche, empreinte TLS differente d'un vrai
+      // Chrome. Le fetch depuis la page (meme CORS que la vraie appli tdbec) passe, comme deja
+      // constate pour la pagination de la messagerie dcl plus bas dans ce fichier.
+      let j;
+      try {
+        const r = await page.evaluate(
+          async ({ u, tok }) => {
+            const resp = await fetch(u, { headers: { authorization: tok } });
+            return { ok: resp.ok, statut: resp.status, corps: resp.ok ? await resp.json() : null };
+          },
+          { u: url, tok: token },
+        );
+        if (!r.ok) {
+          log(`(page ${p} : HTTP ${r.statut})`);
+          break;
+        }
+        j = r.corps;
+      } catch (e) {
+        log(`(page ${p} : ${e.message.split('\n')[0]})`);
         break;
       }
-      const j = await resp.json();
       totalPages = j.totalPages ?? totalPages;
       const arr = j.listeActive || j.content || j.comptes || [];
       for (const c of arr) {
