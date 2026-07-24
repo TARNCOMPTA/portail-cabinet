@@ -152,6 +152,21 @@ const suiviDe = (source) => suivis.get(source) || suivis.get('impots');
 // Sources dont l'arret a ete demande par l'utilisateur (bouton « Arreter »).
 const arrets = new Set();
 const arretDemande = (source) => arrets.has(source);
+// Clients RESERVES par un lot en cours (cle `source:id`). Les lots impots et URSSAF
+// traitent leurs clients a l'interieur du scraper : sans reservation, le bouton
+// « Recuperer » d'un client passait pendant le lot -> DEUX sessions simultanees sur le
+// meme compte (captcha impots detournee, session URSSAF « collante » qui ramene les
+// documents d'un autre dossier). Registre separe de `enCours` pour ne pas gonfler
+// /api/status, sonde toutes les 4 s par l'interface.
+const reserves = new Set();
+const reserverClients = (source, ids) => {
+  for (const id of ids) reserves.add(`${source}:${id}`);
+};
+const libererClients = (source, ids) => {
+  for (const id of ids) reserves.delete(`${source}:${id}`);
+};
+const estReserve = (source, id) => reserves.has(`${source}:${id}`);
+
 // Fenetre d'affichage de la vue AGREGEE (/api/progress sans parametre) : ouverte
 // quand une source demarre alors qu'aucune ne tournait. Sa date doit rester STABLE
 // tant que des sources s'enchainent, sinon l'interface reaffiche le panneau a chaque
@@ -673,8 +688,14 @@ async function lancer(clientId, res, phases = {}) {
   if (!c.cabinet_id) return res?.status(400).json({ error: "Ce client n'est rattaché à aucun cabinet." });
   const cab = getCabinetFull(c.cabinet_id);
   if (!cab) return res?.status(400).json({ error: 'Le cabinet de ce client est introuvable.' });
-  if (enCours.has(clientId)) return res?.status(409).json({ error: 'Récupération déjà en cours pour ce client.' });
-  enCours.add(clientId);
+  // Cle en CHAINE prefixee comme toutes les autres (avant : nombre brut, incoherent).
+  const cle = `impots:${clientId}`;
+  if (enCours.has(cle)) return res?.status(409).json({ error: 'Récupération déjà en cours pour ce client.' });
+  if (estReserve('impots', clientId))
+    return res
+      ?.status(409)
+      .json({ error: 'Ce client est traité par la récupération globale en cours — attends la fin (deux sessions impôts en parallèle détournent la captcha).' });
+  enCours.add(cle);
   res?.json({ started: true, client: c.nom });
   const suiviLocal = !suiviImpots.actif; // ne pas ecraser un suivi de lot deja en cours
   if (suiviLocal) {
@@ -691,7 +712,7 @@ async function lancer(clientId, res, phases = {}) {
         nb_docs: r?.docs?.length ?? 0,
       });
   } finally {
-    enCours.delete(clientId);
+    enCours.delete(cle);
     if (suiviLocal) {
       suiviImpots.fait = 1;
       terminerSuivi('impots');
@@ -715,32 +736,40 @@ async function lancerLot(clients, phases = {}, { habilitations = false } = {}) {
     if (!parCabinet.has(c.cabinet_id)) parCabinet.set(c.cabinet_id, []);
     parCabinet.get(c.cabinet_id).push(c);
   }
-  for (const [cabinetId, sousClients] of parCabinet) {
-    if (arretDemande('impots') || arretAuto) break;
-    const cab = getCabinetFull(cabinetId);
-    if (!cab) continue;
-    await scrapeAll(sousClients, {
-      cabinet: cab,
-      baseFolder,
-      shouldStop: () => arretDemande('impots') || arretAuto,
-      phases,
-      habilitations, // tableau d'habilitations : une fois par compte, seulement en « Tout récupérer »
-      onLog: journalImpots,
-      onClient: (nom) => {
-        suiviImpots.courant = nom;
-      },
-      onResult: (r) => {
-        suiviImpots.resultats.push(r);
-        suiviImpots.fait++;
-        disj.noter(!!r.ok);
-        if (disj.declenche() && !arretAuto) {
-          arretAuto = true;
-          journalImpots(
-            `⚠ ${ECHECS_CONSECUTIFS_MAX} échecs consécutifs : le site des impôts semble indisponible ou la session déconnectée — arrêt du lot. La prochaine récupération reprendra au premier dossier non récupéré.`,
-          );
-        }
-      },
-    });
+  // Reserve les clients du lot : le bouton « Recuperer » d'un de ces clients sera
+  // refuse tant que le lot tourne (deux sessions impots = captcha detournee).
+  const idsLot = clients.filter((c) => c.cabinet_id).map((c) => c.id);
+  reserverClients('impots', idsLot);
+  try {
+    for (const [cabinetId, sousClients] of parCabinet) {
+      if (arretDemande('impots') || arretAuto) break;
+      const cab = getCabinetFull(cabinetId);
+      if (!cab) continue;
+      await scrapeAll(sousClients, {
+        cabinet: cab,
+        baseFolder,
+        shouldStop: () => arretDemande('impots') || arretAuto,
+        phases,
+        habilitations, // tableau d'habilitations : une fois par compte, seulement en « Tout récupérer »
+        onLog: journalImpots,
+        onClient: (nom) => {
+          suiviImpots.courant = nom;
+        },
+        onResult: (r) => {
+          suiviImpots.resultats.push(r);
+          suiviImpots.fait++;
+          disj.noter(!!r.ok);
+          if (disj.declenche() && !arretAuto) {
+            arretAuto = true;
+            journalImpots(
+              `⚠ ${ECHECS_CONSECUTIFS_MAX} échecs consécutifs : le site des impôts semble indisponible ou la session déconnectée — arrêt du lot. La prochaine récupération reprendra au premier dossier non récupéré.`,
+            );
+          }
+        },
+      });
+    }
+  } finally {
+    libererClients('impots', idsLot);
   }
 }
 
@@ -1092,6 +1121,14 @@ app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
   if (!cab) return res.status(400).json({ error: "Ce client n'est rattaché à aucun compte URSSAF." });
   const key = 'urssaf:' + id;
   if (enCours.has(key)) return res.status(409).json({ error: 'Une récupération est déjà en cours pour ce client.' });
+  // Deux sessions URSSAF sur le meme compte cabinet ramenent les documents d'un AUTRE
+  // dossier (session « collante ») — le scraper l'interdit explicitement.
+  if (estReserve('urssaf', id))
+    return res
+      .status(409)
+      .json({
+        error: 'Ce client est traité par la récupération globale en cours — attends la fin (deux sessions URSSAF sur le même compte mélangent les dossiers).',
+      });
   enCours.add(key);
   res.json({ started: true, client: client.nom });
   const suiviLocal = !suiviUrssaf.actif;
@@ -1133,6 +1170,9 @@ function lancerUrssafTous() {
   }
   const total = [...parCabinet.values()].reduce((n, arr) => n + arr.length, 0);
   enCours.add('urssaf:all');
+  // Reserve les clients du lot (voir reserverClients) : pas de 2e session sur le meme compte.
+  const idsLot = [...parCabinet.values()].flat().map((c) => c.id);
+  reserverClients('urssaf', idsLot);
   demarrerSuivi('urssaf', total);
   if (ignores) journalUrssaf(`Reprise : ${ignores} client(s) URSSAF déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
   const disj = creerDisjoncteur();
@@ -1166,6 +1206,7 @@ function lancerUrssafTous() {
       }
     } finally {
       enCours.delete('urssaf:all');
+      libererClients('urssaf', idsLot);
       terminerSuivi('urssaf');
       journalUrssaf('Récupération URSSAF terminée.');
     }
