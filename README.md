@@ -5,14 +5,14 @@
 Chaque cabinet installe **son propre portail** sur **son propre serveur**, avec son nom, son
 domaine et ses données. Rien n'est partagé entre cabinets, rien ne remonte vers l'éditeur.
 
-| Organisme                              | Documents récupérés                                | Automatisable ?                                                                |
-| -------------------------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------ |
-| **Impôts** (espace pro impots.gouv.fr) | Avis CFE/IFER, taxe foncière, messagerie sécurisée | Semi-auto (captcha à saisir une fois par session, directement dans le portail) |
-| **URSSAF** (tiers déclarant)           | Documents du portefeuille clients                  | ✅ Oui, planifiable                                                            |
-| **CARPIMKO**                           | Documents des clients (1 identifiant par client)   | ✅ Oui, planifiable                                                            |
-| **CARMF**                              | Documents des clients                              | ✅ Oui, planifiable                                                            |
-| **CARCDSF**                            | Documents des clients                              | ✅ Oui, planifiable                                                            |
-| **CARPV**                              | Documents des clients                              | ✅ Oui, planifiable                                                            |
+| Organisme                              | Documents récupérés                                           | Automatisable ?                                                                |
+| -------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Impôts** (espace pro impots.gouv.fr) | Avis CFE/IFER, taxe foncière, messagerie sécurisée            | Semi-auto (captcha à saisir une fois par session, directement dans le portail) |
+| **URSSAF** (tiers déclarant)           | Documents du portefeuille clients                             | ✅ Oui, planifiable                                                            |
+| **CARPIMKO**                           | Documents des clients (1 identifiant par client)              | ✅ Oui, planifiable                                                            |
+| **CARMF**                              | Appels de cotisation (acompte / solde), attestations, relevés | ✅ Oui, planifiable                                                            |
+| **CARCDSF**                            | Documents des clients                                         | ✅ Oui, planifiable                                                            |
+| **CARPV**                              | Documents des clients                                         | ✅ Oui, planifiable                                                            |
 
 **Dans la boîte :** multi-utilisateurs (admin / collaborateurs), planification par organisme,
 reprise après interruption, anti-doublon, mots de passe chiffrés (AES-256, clé locale au serveur),
