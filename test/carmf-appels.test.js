@@ -35,6 +35,7 @@ function demarrerSiteFactice() {
         </ul>
         <table><tr><td>Appel de cotisations 2024</td>
           <td><a href="#" onclick="printPDF('/duplicatas/appel_cotisation/2024')">PDF</a></td></tr></table>
+        <a href="#" onclick="printPDF('/duplicatas/appel_cotisation')" id="btn-imprimer">Imprimer</a>
         <a href="/adherents/deconnecter">Se déconnecter</a>`);
     // Voie 1 : lien direct
     if (/^\/duplicatas\/sendfile\/\d+$/.test(p)) {
@@ -52,6 +53,8 @@ function demarrerSiteFactice() {
     }
     // Page SANS appel (adherent retraite/exonere) : aucun lien de telechargement.
     if (p === '/vide') return html('<h1>Vos derniers appels de cotisations</h1><p>Aucun document disponible.</p>');
+    // Page dont le seul printPDF est le bouton « Imprimer » (pointe sur elle-meme).
+    if (p === '/imprimer-seul') return html('<h1>Vos derniers appels de cotisations</h1><a href="#" onclick="printPDF(\'/imprimer-seul\')">Imprimer</a>');
     // Session expiree : CakePHP renvoie 200 + HTML au lieu du PDF.
     if (p === '/expire') {
       res.writeHead(200, { 'content-type': 'text/html' });
@@ -139,6 +142,19 @@ test('listerAppels : détecte les appels (sendfile) et le printPDF', async (t) =
   assert.equal(mod.analyserLibelleAppel(acompte.libelle).type, 'acompte');
   // Aucune cible parasite : le lien de déconnexion ne doit pas être pris.
   assert.ok(!trouves.some((c) => /deconnecter/.test(c.href)), 'lien de déconnexion ignoré');
+  // Régression constatée en session réelle : le bouton « Imprimer » pointe sur la PAGE
+  // elle-même (printPDF('/duplicatas/appel_cotisation')) et produisait un faux appel.
+  assert.ok(!trouves.some((c) => c.chemin === '/duplicatas/appel_cotisation'), 'bouton « Imprimer » (impression de la page) exclu');
+  await ctx.close();
+});
+
+test('listerAppels : sans libellé parlant, le repli ne prend pas la page courante', async (t) => {
+  if (!browser) return t.skip('Chromium indisponible');
+  const ctx = await browser.newContext();
+  const pg = await ctx.newPage();
+  await pg.goto(`${base}/imprimer-seul`);
+  // Page dont le SEUL printPDF est le bouton « Imprimer » : rien à récupérer.
+  assert.deepEqual(await mod.listerAppels(pg), []);
   await ctx.close();
 });
 

@@ -64,11 +64,13 @@ async function dumpDiag(page, dir, prefixe) {
   }
 }
 
-// Liste les appels de cotisation proposes sur la page duplicatas. Le vrai balisage n'est
-// pas connu (espace authentifie) : on cumule plusieurs heuristiques, de la plus fiable
-// (lien dont le TEXTE parle d'appel de cotisation) a la plus large (ligne de tableau avec
-// une annee). Chaque cible : { href, chemin, libelle } — href = lien direct a telecharger,
-// chemin = argument de printPDF (mecanisme jeton /pdf<chemin> -> /fichiers/open/<jeton>).
+// Liste les appels de cotisation proposes sur la page duplicatas. Le balisage exact n'est
+// pas garanti (espace authentifie) : trois heuristiques HIERARCHISEES, de la plus fiable
+// (lien dont le TEXTE parle d'appel de cotisation) a la plus large. Les replis ne servent
+// QUE si la premiere ne trouve rien — sinon le bouton « Imprimer » de la page (qui imprime
+// la page elle-meme, verifie en session reelle) serait pris pour un appel.
+// Cible : { href, chemin, libelle } — href = lien direct, chemin = argument de printPDF
+// (mecanisme jeton /pdf<chemin> -> /fichiers/open/<jeton>).
 export async function listerAppels(page) {
   return page
     .evaluate(() => {
@@ -81,19 +83,29 @@ export async function listerAppels(page) {
           return '';
         }
       };
+      // Chemin de la page courante : le bouton « Imprimer » pointe dessus (impression de la
+      // page, pas un document) -> a exclure quelle que soit l'heuristique.
+      const pageCourante = location.pathname.replace(/\/+$/, '');
+      const estPageCourante = (chemin) => {
+        const c = String(chemin || '')
+          .replace(/^\/pdf/, '')
+          .split('?')[0]
+          .replace(/\/+$/, '');
+        return c !== '' && c === pageCourante;
+      };
       const texteDe = (el) => ((el.closest('tr, li') || el).innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
       const cheminPrintPdf = (el) => {
         const src = `${el.getAttribute('onclick') || ''} ${el.getAttribute('href') || ''}`;
         const m = src.match(/printPDF\s*\(\s*['"`]([^'"`]+)['"`]/);
         return m ? m[1] : '';
       };
-      const out = [];
+      const paquets = [[], [], []]; // 0 = libelle parlant, 1 = lien DL, 2 = printPDF quelconque
       const vus = new Set();
-      const ajouter = (href, chemin, libelle) => {
+      const ajouter = (rang, href, chemin, libelle) => {
         const cle = `${href}|${chemin}`;
-        if ((!href && !chemin) || vus.has(cle)) return;
+        if ((!href && !chemin) || vus.has(cle) || estPageCourante(chemin)) return;
         vus.add(cle);
-        out.push({ href: href || '', chemin: chemin || '', libelle: libelle || '' });
+        paquets[rang].push({ href: href || '', chemin: chemin || '', libelle: libelle || '' });
       };
       // 1. Elements cliquables dont le texte (ou celui de leur ligne) parle d'appel de cotisation.
       for (const el of document.querySelectorAll('a, button, [onclick]')) {
@@ -101,19 +113,20 @@ export async function listerAppels(page) {
         const chemin = cheminPrintPdf(el);
         const href = el.getAttribute('href') || '';
         const estDl = href && RE_DL.test(href);
-        if (RE_APPEL.test(txt) && (chemin || estDl)) ajouter(estDl ? abs(href) : '', chemin, txt);
+        if (RE_APPEL.test(txt) && (chemin || estDl)) ajouter(0, estDl ? abs(href) : '', chemin, txt);
       }
-      // 2. Tout lien de telechargement de la page (sendfile / pdf), meme sans libelle parlant.
+      // 2. Repli : tout lien de telechargement de la page (sendfile / pdf).
       for (const a of document.querySelectorAll('a[href]')) {
         const href = a.getAttribute('href') || '';
-        if (RE_DL.test(href)) ajouter(abs(href), '', texteDe(a));
+        if (RE_DL.test(href)) ajouter(1, abs(href), '', texteDe(a));
       }
-      // 3. Tout printPDF de la page (repli si les libelles ne parlent pas d'appel).
+      // 3. Repli : tout printPDF de la page.
       for (const el of document.querySelectorAll('[onclick], a[href^="javascript:"]')) {
         const chemin = cheminPrintPdf(el);
-        if (chemin) ajouter('', chemin, texteDe(el));
+        if (chemin) ajouter(2, '', chemin, texteDe(el));
       }
-      return out;
+      // Le premier paquet non vide gagne : pas de melange des niveaux de fiabilite.
+      return paquets.find((p) => p.length) || [];
     })
     .catch(() => []);
 }
