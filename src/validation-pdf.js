@@ -103,6 +103,30 @@ const STOPLIST = new Set([
   'ste',
   'societe',
   'pharmacie',
+  // Formes juridiques et prefixes vus dans les fiches reelles du cabinet
+  // (INDI_, STEF_, STEP_, SLRL_, SPFL_, GIE_, GFA_, SCEA_, ASS_).
+  'indi',
+  'indivision',
+  'stef',
+  'step',
+  'slrl',
+  'spfl',
+  'sepl',
+  'gie',
+  'gfa',
+  'scea',
+  'ass',
+  'association',
+  'holding',
+  // Mentions d'etat civil : « nee », « epouse », « veuve » ne distinguent personne
+  // et faussaient le compte des mots significatifs.
+  'nee',
+  'ne',
+  'epouse',
+  'epoux',
+  'veuve',
+  'veuf',
+  'succession',
   'de',
   'du',
   'des',
@@ -117,7 +141,6 @@ const STOPLIST = new Set([
   'chez',
   'en',
 ]);
-
 
 function echapperRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -194,21 +217,55 @@ export function contientNumero(texte, numero) {
   return new RegExp(`(?<!\\d)(?<!\\d${SEP})${motif}`).test(String(texte || ''));
 }
 
-/** Matching par tokens du nom : tokens significatifs (≥ 3 lettres, hors civilités et
- *  formes juridiques), frontières de mot (MARTIN ne matche pas MARTINIQUE). OK si le
- *  token le plus long est présent ET au moins la moitié des tokens le sont —
- *  tolère prénom absent, ordre inversé, civilité. */
+/** Matching par tokens du nom : mots significatifs UNIQUES (≥ 3 lettres, hors civilités,
+ *  formes juridiques, professions et mentions d'état civil), cherchés avec frontières de
+ *  mot (MARTIN ne matche pas MARTINIQUE). Règle : un nom d'un seul mot distinctif doit y
+ *  être ; dès qu'il y a plusieurs mots, il faut DEUX correspondances. Le mot le plus long
+ *  n'est plus exigé (c'est souvent un prénom absent du document). Tolère l'ordre inversé,
+ *  la civilité, les sigles pointés (« M.I.C. ») et les initiales espacées (« SCI M D P »). */
 export function correspondanceNom(texte, nom) {
   const t = normaliser(texte);
-  const tokens = normaliser(nom)
-    .split(/[^a-z0-9]+/)
-    .filter((tok) => tok.length >= 3 && !STOPLIST.has(tok));
+  // Mots du nom, points retires : « M.I.C. » -> « mic » (sinon cette raison sociale
+  // n'a aucun mot de 3 lettres et ne pourrait JAMAIS etre validee par le nom).
+  const motsBruts = normaliser(nom)
+    .split(/[^a-z0-9.]+/)
+    .filter(Boolean);
+  const mots = motsBruts.map((m) => m.replace(/\./g, ''));
+  // Mots qui contenaient un point (« PRO.SEC » -> « prosec ») : leur recherche doit
+  // tolerer le point, sinon le token nettoye ne se retrouve pas dans le document.
+  const pointes = new Set(motsBruts.filter((m) => m.includes('.')).map((m) => m.replace(/\./g, '')));
+  // Tokens UNIQUES et significatifs (>= 3 lettres, hors civilites / formes juridiques /
+  // mots-outils). Deduplication indispensable : « MME BONNEMAISON nee BONNEMAISON
+  // VERONIQUE » ne doit pas compter « bonnemaison » deux fois.
+  let tokens = [...new Set(mots.filter((tok) => tok.length >= 3 && !STOPLIST.has(tok)))];
+  // Sigles courts (« SCI 3C », « SCI M D P ») : aucun mot significatif -> on recolle les
+  // initiales restantes en un seul token, reconnu ensuite avec ou sans separateurs.
+  let sigle = false;
+  if (!tokens.length) {
+    const recolle = mots.filter((m) => !STOPLIST.has(m)).join('');
+    if (recolle.length >= 2) {
+      tokens = [recolle];
+      sigle = true;
+    }
+  }
   if (!tokens.length) return false;
-  const present = (tok) => new RegExp(`(?<![a-z0-9])${echapperRegex(tok)}(?![a-z0-9])`).test(t);
-  const plusLong = tokens.reduce((a, b) => (b.length > a.length ? b : a));
-  if (!present(plusLong)) return false;
-  const nbPresents = tokens.filter(present).length;
-  return nbPresents >= Math.ceil(tokens.length / 2);
+  // Les tokens COURTS sont des sigles : on tolere les separateurs entre les lettres,
+  // car le token est nettoye (« mic ») alors que le document imprime « M.I.C. ».
+  const present = (tok) => {
+    const motif = sigle || tok.length <= 5 || pointes.has(tok) ? tok.split('').map(echapperRegex).join('[\\s.]*') : echapperRegex(tok);
+    return new RegExp(`(?<![a-z0-9])${motif}(?![a-z0-9])`).test(t);
+  };
+  const trouves = tokens.filter(present).length;
+  // Regle : un nom d'un seul mot distinctif (« CAMBON ») doit y etre ; des qu'il y a
+  // plusieurs mots, il faut DEUX correspondances.
+  //  - on n'exige plus le token le PLUS LONG : c'est souvent un prenom (« MME POUMIRAU
+  //    nee CALMET CHRISTINE » -> « christine »), absent du document -> quarantaine a tort ;
+  //  - un seul mot commun ne suffit plus : un courrier « SCM BOUISSOU DURAND ET BOAS »
+  //    n'est plus attribue a « MME DURAND LUCIE » (mesure sur la base reelle : 1 client
+  //    sur 5 etait validable par le document d'un autre). Compromis assume : un document
+  //    qui n'imprimerait QUE le patronyme d'un client qui a un prenom part en quarantaine
+  //    plutot que d'etre range dans le mauvais dossier.
+  return tokens.length === 1 ? trouves === 1 : trouves >= 2;
 }
 
 /** Identifiants attendus dans le PDF selon la source et la fiche client.

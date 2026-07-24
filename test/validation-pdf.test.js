@@ -103,7 +103,37 @@ test('correspondanceNom : accents, casse, ordre, civilités', () => {
   assert.ok(correspondanceNom('Madame Marie DUPONT', 'DUPONT Marie'));
   assert.ok(correspondanceNom('M. HERAULT Jean', 'Monsieur Jean HÉRAULT'));
   assert.ok(correspondanceNom('SELARL PHARMACIE DES LILAS', 'Pharmacie des Lilas'));
-  assert.ok(correspondanceNom('DUPONT', 'DUPONT Marie')); // prénom absent : token le plus long présent
+});
+
+test('correspondanceNom : le prénom absent NE suffit plus (protège du dossier voisin)', () => {
+  // Ancienne règle : « le mot le plus long + la moitié des mots » -> un seul mot commun
+  // suffisait. Mesuré sur la base réelle : 1 client sur 5 était validable par le
+  // document d'un AUTRE. Désormais un nom de plusieurs mots exige DEUX correspondances.
+  assert.ok(!correspondanceNom('DUPONT', 'DUPONT Marie'), 'patronyme seul : refusé');
+  assert.ok(!correspondanceNom('SCM BOUISSOU, DURAND ET BOAS', 'MME DURAND LUCIE'), 'raison sociale d’un tiers : refusée');
+  assert.ok(correspondanceNom('DUPONT Marie', 'DUPONT Marie'), 'nom complet : accepté');
+});
+
+test('correspondanceNom : le mot le plus long n’est plus exigé (prénom absent du document)', () => {
+  // Cas réel : « MME POUMIRAU née CALMET CHRISTINE ». L'ancienne règle exigeait
+  // « christine » (le plus long) -> quarantaine à tort si le document ne l'imprime pas.
+  assert.ok(correspondanceNom('POUMIRAU CALMET — appel de cotisations', 'MME POUMIRAU née CALMET CHRISTINE'));
+  assert.ok(correspondanceNom('MARTIN Marie, cotisations 2026', 'MME MARTIN Marie-Josephine'));
+});
+
+test('correspondanceNom : noms d’usage dédoublonnés (née X née X)', () => {
+  // « bonnemaison » ne doit compter qu'UNE fois, sinon un seul mot vaudrait deux.
+  assert.ok(!correspondanceNom('SCI BONNEMAISON IMMOBILIER', 'MME BONNEMAISON née BONNEMAISON VERONIQUE'));
+  assert.ok(correspondanceNom('BONNEMAISON VERONIQUE', 'MME BONNEMAISON née BONNEMAISON VERONIQUE'));
+});
+
+test('correspondanceNom : sigles (M.I.C., SCI 3C, PRO.SEC) reconnus malgré les points', () => {
+  // Sans traitement, ces raisons sociales n'ont aucun mot de 3 lettres : elles
+  // partaient systématiquement en quarantaine (6 clients réels concernés).
+  assert.ok(correspondanceNom('Avis pour SARL M.I.C. — 2026', 'SARL M.I.C.'));
+  assert.ok(correspondanceNom('SAS J.E.C.L. cotisation', 'SAS J.E.C.L.'));
+  assert.ok(correspondanceNom('Dossier SCI 3C', 'SCI 3C'));
+  assert.ok(correspondanceNom('SARL HYPERION PRO.SEC', 'SARL HYPERION PRO.SEC'));
 });
 
 test('correspondanceNom : frontières de mot et non-correspondance', () => {
@@ -140,7 +170,7 @@ test('verifierCorrespondance : ordre siret > siren > adhérent > nom', () => {
     motif: 'siret',
   });
   assert.deepEqual(verifierCorrespondance('adhérent 7654321', { adherent: '7654321', nom: 'Z' }), { ok: true, motif: 'adherent' });
-  assert.deepEqual(verifierCorrespondance('Mme DUPONT', { siren: '123456789', nom: 'DUPONT Marie' }), { ok: true, motif: 'nom' });
+  assert.deepEqual(verifierCorrespondance('Mme DUPONT Marie', { siren: '123456789', nom: 'DUPONT Marie' }), { ok: true, motif: 'nom' });
   assert.equal(verifierCorrespondance('rien de tout ça', { siren: '123456789', nom: 'DUPONT Marie' }).ok, false);
 });
 
