@@ -1,6 +1,6 @@
 {
-  "version": "1.7.9",
-  "notes": "Correctif ECONNRESET sur la synchronisation URSSAF : la liste du portefeuille (api.urssaf.fr/comptes) est désormais récupérée par un fetch exécuté dans le navigateur (comme la messagerie), et non plus via le client HTTP séparé de Playwright que l'URSSAF semble filtrer.",
+  "version": "1.8.0",
+  "notes": "CARMF : récupération des appels de cotisation (acompte et solde) en plus des attestations",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "c88706dde471b62138127b46b61895b21004a7c1256f6758803e54a94a7c4e41"
+  "sha256": "fd96607c3d42c7fe8aac145c99e535a13f39e39cc3ff02292e089a622fd43f72"
 }
