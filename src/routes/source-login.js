@@ -64,8 +64,12 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     enCours.add(key);
     res?.json({ started: true, client: creds.nom });
     const suiviLocal = !progression.actif;
-    if (suiviLocal) demarrerSuivi(1, source);
-    progression.courant = creds.nom;
+    // `courant` seulement si on tient le suivi : sinon une recuperation d'un client
+    // isole ecraserait le « client en cours » du lot de la meme caisse.
+    if (suiviLocal) {
+      demarrerSuivi(1, source);
+      progression.courant = creds.nom;
+    }
     try {
       const rr = await scraper(creds, { ...extra, onLog: progLog });
       if (suiviLocal)

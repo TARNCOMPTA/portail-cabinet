@@ -209,7 +209,24 @@ function buildServer() {
   server.tool('etat_recuperation', 'État de la récupération en cours sur le portail (progression + dernières lignes du journal).', {}, async () => {
     try {
       const p = await apiFetch('/api/progress');
-      return txt({ actif: p.actif, fait: p.fait, total: p.total, en_cours: p.courant, derniers_logs: (p.logs || []).slice(-8) });
+      // Plusieurs organismes peuvent tourner en parallele : on remonte le total agrege
+      // ET le detail par source (fait/total/client en cours).
+      const detail = Object.values(p.sources || {}).map((s) => ({
+        source: s.source,
+        actif: !!s.actif,
+        fait: s.fait,
+        total: s.total,
+        en_cours: s.courant || null,
+      }));
+      return txt({
+        actif: p.actif,
+        fait: p.fait,
+        total: p.total,
+        en_cours: p.courant,
+        sources_actives: p.actives || [],
+        par_source: detail,
+        derniers_logs: (p.logs || []).slice(-8),
+      });
     } catch (e) {
       return erreur(e);
     }

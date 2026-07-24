@@ -926,6 +926,35 @@ td .row-actions {
   color: var(--ink-soft);
   white-space: nowrap;
 }
+/* Détail par organisme quand plusieurs récupérations tournent en parallèle. */
+.progress-sources {
+  margin: 2px 22px 8px;
+  display: grid;
+  gap: 6px;
+}
+.progress-src {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.progress-src .progress-barre {
+  height: 8px;
+}
+.progress-src-nom {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  min-width: 78px;
+  color: var(--ink-soft);
+}
+.progress-src-etat {
+  margin: 0;
+  min-width: 150px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .progress-courant {
   margin: 4px 22px 8px;
   color: var(--ink-soft);

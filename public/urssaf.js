@@ -317,7 +317,8 @@
   });
   $('#u-stop').addEventListener('click', async () => {
     try {
-      await api('/api/scrape-all/stop', { method: 'POST' });
+      // Arrêt de la source URSSAF seulement : les autres organismes continuent.
+      await api('/api/scrape-all/stop', { method: 'POST', body: JSON.stringify({ source: 'urssaf' }) });
       toast('Arrêt demandé — fin après le client en cours.', 'ok');
     } catch (err) {
       toast(err.message, 'err');

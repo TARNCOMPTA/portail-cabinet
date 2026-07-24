@@ -490,7 +490,8 @@ $('#btn-scrape-all').addEventListener('click', async () => {
 });
 $('#btn-stop-all').addEventListener('click', async () => {
   try {
-    await api('/api/scrape-all/stop', { method: 'POST' });
+    // Arrêt de la source IMPÔTS seulement : les autres organismes continuent.
+    await api('/api/scrape-all/stop', { method: 'POST', body: JSON.stringify({ source: 'impots' }) });
     toast('Arrêt demandé — fin après le client en cours.', 'ok');
   } catch (err) {
     toast(err.message, 'err');
@@ -723,14 +724,39 @@ async function suivreProgression() {
   const pct = p.total > 0 ? Math.round((p.fait / p.total) * 100) : 0;
   $('#progress-fill').style.width = pct + '%';
   $('#progress-compteur').textContent = `${p.fait} / ${p.total}`;
+  // Plusieurs organismes peuvent tourner en parallèle : on nomme ceux qui sont actifs.
+  const actives = Array.isArray(p.actives) ? p.actives : [];
+  const libelleSources = actives.map((s) => s.toUpperCase()).join(', ');
   if (p.actif) {
-    $('#progress-titre').textContent = 'Récupération en cours…';
+    $('#progress-titre').textContent =
+      actives.length > 1 ? `Récupérations en cours — ${libelleSources}` : `Récupération en cours…${libelleSources ? ` (${libelleSources})` : ''}`;
     $('#progress-courant').textContent = p.courant ? `⏳ Client en cours : ${p.courant}` : '';
     $('#progress-masquer').hidden = true;
   } else {
     $('#progress-titre').textContent = 'Récupération terminée';
     $('#progress-courant').textContent = '';
     $('#progress-masquer').hidden = false;
+  }
+  // Détail par organisme (barre + compteur + client en cours), utile dès qu'il y en a
+  // plusieurs dans la même fenêtre ; masqué s'il n'y en a qu'un (affichage inchangé).
+  const detail = $('#progress-sources');
+  const parSource = Object.values(p.sources || {});
+  if (detail) {
+    detail.hidden = parSource.length < 2;
+    detail.innerHTML = detail.hidden
+      ? ''
+      : parSource
+          .map((s) => {
+            const pc = s.total > 0 ? Math.min(100, Math.round((s.fait / s.total) * 100)) : 0;
+            const etat = s.actif ? (s.courant ? `⏳ ${esc(s.courant)}` : '⏳ …') : '✔ terminé';
+            return `<div class="progress-src">
+              <span class="progress-src-nom">${esc(String(s.source).toUpperCase())}</span>
+              <div class="progress-barre"><div class="progress-fill" style="width:${pc}%"></div></div>
+              <span class="progress-compteur">${s.fait} / ${s.total}</span>
+              <span class="aide progress-src-etat">${etat}</span>
+            </div>`;
+          })
+          .join('');
   }
   const ok = p.resultats.filter((r) => r.ok);
   const ko = p.resultats.filter((r) => !r.ok);

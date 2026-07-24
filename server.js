@@ -136,53 +136,85 @@ app.use(requireAuth);
 app.use(express.static(PUBLIC_DIR));
 
 const enCours = new Set();
-let stopAll = false;
 
-// ---- Suivi d'avancement (en memoire, lu par l'interface via /api/progress) --
-const progression = {
-  actif: false,
-  total: 0,
-  fait: 0,
-  courant: null,
-  demarre_le: null,
-  fini_le: null,
-  resultats: [],
-  logs: [],
-};
-function progLog(ligne) {
-  progression.logs.push(`${new Date().toLocaleTimeString('fr-FR')}  ${ligne}`);
-  if (progression.logs.length > 400) progression.logs.splice(0, progression.logs.length - 400);
+// ---- Suivi d'avancement PAR SOURCE (en memoire, lu via /api/progress) -------
+// Plusieurs organismes peuvent etre recuperes EN PARALLELE : chaque source a donc
+// son propre suivi et son propre drapeau d'arret (avant : un objet + un drapeau
+// globaux, le 2e lot effacait le suivi du 1er et « Arreter » coupait tout).
+// Les objets sont crees UNE FOIS ici et MUTES sur place : src/routes/source-login.js
+// capture la reference a la construction du routeur (au boot), un remplacement
+// d'objet la rendrait fantome (panneau figé a 0/0, sans erreur).
+const SOURCES = ['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv'];
+const suivis = new Map(
+  SOURCES.map((s) => [s, { source: s, actif: false, total: 0, fait: 0, courant: null, demarre_le: null, fini_le: null, resultats: [], logs: [] }]),
+);
+const suiviDe = (source) => suivis.get(source) || suivis.get('impots');
+// Sources dont l'arret a ete demande par l'utilisateur (bouton « Arreter »).
+const arrets = new Set();
+const arretDemande = (source) => arrets.has(source);
+// Fenetre d'affichage de la vue AGREGEE (/api/progress sans parametre) : ouverte
+// quand une source demarre alors qu'aucune ne tournait. Sa date doit rester STABLE
+// tant que des sources s'enchainent, sinon l'interface reaffiche le panneau a chaque
+// nouveau demarrage (public/app.js remet progressMasque a false quand elle change).
+const fenetre = { demarre_le: null };
+
+// Fabrique de journal : les scrapers recoivent un callback `onLog(ligne)` a UN seul
+// argument (9 sites d'appel) — d'ou une fonction par source plutot qu'un parametre
+// supplementaire qu'un site d'appel oublierait silencieusement.
+function journalDe(source) {
+  const p = suiviDe(source);
+  return (ligne) => {
+    p.logs.push(`${new Date().toLocaleTimeString('fr-FR')}  ${ligne}`);
+    if (p.logs.length > 400) p.logs.splice(0, p.logs.length - 400);
+  };
 }
-function demarrerSuivi(total, source = '') {
-  progression.actif = true;
-  progression.total = total;
-  progression.source = source;
-  progression.fait = 0;
-  progression.courant = null;
-  progression.resultats = [];
-  progression.logs = [];
-  progression.demarre_le = new Date().toISOString();
-  progression.fini_le = null;
+function demarrerSuivi(source, total) {
+  if (!Number.isFinite(total)) throw new Error(`demarrerSuivi(${source}) : total invalide (${total})`);
+  const p = suiviDe(source);
+  p.actif = true;
+  p.total = total;
+  p.fait = 0;
+  p.courant = null;
+  p.resultats = [];
+  p.logs = [];
+  p.demarre_le = new Date().toISOString();
+  p.fini_le = null;
+  // Un nouveau lancement annule un arret demande SUR CETTE SOURCE uniquement
+  // (a placer apres le garde 409 des routes, sinon un 2e POST effacerait le
+  // drapeau du lot en cours).
+  arrets.delete(source);
+  // Nouvelle fenetre d'affichage seulement si aucune AUTRE source ne tournait.
+  if (![...suivis.values()].some((x) => x !== p && x.actif)) fenetre.demarre_le = p.demarre_le;
 }
-function terminerSuivi() {
-  progression.actif = false;
-  progression.courant = null;
-  progression.fini_le = new Date().toISOString();
-  // Webhook sortant (n8n & co) : bilan de la recuperation, fire-and-forget.
-  const ok = progression.resultats.filter((r) => r.ok);
-  const ko = progression.resultats.filter((r) => !r.ok);
+function terminerSuivi(source) {
+  const p = suiviDe(source);
+  p.actif = false;
+  p.courant = null;
+  p.fini_le = new Date().toISOString();
+  arrets.delete(source); // filet : l'arret ne doit pas fuir sur le lot suivant
+  // Webhook sortant (n8n & co) : bilan de CETTE source, fire-and-forget.
+  const ok = p.resultats.filter((r) => r.ok);
+  const ko = p.resultats.filter((r) => !r.ok);
   envoyerWebhook('recuperation_terminee', {
-    source: progression.source || null,
-    demarre_le: progression.demarre_le,
-    fini_le: progression.fini_le,
-    clients_traites: progression.resultats.length,
+    source,
+    demarre_le: p.demarre_le,
+    fini_le: p.fini_le,
+    clients_traites: p.resultats.length,
     succes: ok.length,
     echecs: ko.length,
-    nouveaux_documents: progression.resultats.reduce((n, r) => n + (r.nb_docs || 0), 0),
-    nouveaux_documents_detail: nouveauxDocsDepuis(progression.source, progression.demarre_le),
+    nouveaux_documents: p.resultats.reduce((n, r) => n + (r.nb_docs || 0), 0),
+    nouveaux_documents_detail: nouveauxDocsDepuis(source, p.demarre_le),
     echecs_detail: ko.slice(0, 50).map((r) => ({ nom: r.nom, message: r.message })),
   }).catch(() => {});
 }
+
+// Raccourcis pour les deux sources cablees en direct dans ce fichier (impots et
+// urssaf) : les objets de suivi sont stables, les journaux sont crees une fois.
+// Les 4 caisses passent par le routeur generique (voir ctxSource plus bas).
+const suiviImpots = suiviDe('impots');
+const suiviUrssaf = suiviDe('urssaf');
+const journalImpots = journalDe('impots');
+const journalUrssaf = journalDe('urssaf');
 
 // Detail des documents enregistres depuis le debut du suivi (pour le webhook :
 // « quel client, quel document ») — plafonne a 200 entrees. Les messages de la
@@ -403,15 +435,15 @@ app.post('/api/cabinets/:id/habilitations', async (req, res) => {
   if (enCours.has(key)) return res.status(409).json({ error: 'Récupération déjà en cours pour ce compte.' });
   enCours.add(key);
   res.json({ started: true });
-  const suiviLocal = !progression.actif;
+  const suiviLocal = !suiviImpots.actif;
   if (suiviLocal) {
-    demarrerSuivi(1, 'impots');
-    progression.courant = `Habilitations — ${cab.libelle || cab.login}`;
+    demarrerSuivi('impots', 1);
+    suiviImpots.courant = `Habilitations — ${cab.libelle || cab.login}`;
   }
   try {
-    const r = await recupererHabilitations(cab, { onLog: progLog });
+    const r = await recupererHabilitations(cab, { onLog: journalImpots });
     if (suiviLocal)
-      progression.resultats.push({
+      suiviImpots.resultats.push({
         nom: `Habilitations — ${cab.libelle || cab.login}`,
         ok: !!r?.ok,
         message: r?.ok ? 'tableau téléchargé' : r?.error || 'échec',
@@ -420,8 +452,8 @@ app.post('/api/cabinets/:id/habilitations', async (req, res) => {
   } finally {
     enCours.delete(key);
     if (suiviLocal) {
-      progression.fait = 1;
-      terminerSuivi();
+      suiviImpots.fait = 1;
+      terminerSuivi('impots');
     }
   }
 });
@@ -644,15 +676,15 @@ async function lancer(clientId, res, phases = {}) {
   if (enCours.has(clientId)) return res?.status(409).json({ error: 'Récupération déjà en cours pour ce client.' });
   enCours.add(clientId);
   res?.json({ started: true, client: c.nom });
-  const suiviLocal = !progression.actif; // ne pas ecraser un suivi de lot deja en cours
+  const suiviLocal = !suiviImpots.actif; // ne pas ecraser un suivi de lot deja en cours
   if (suiviLocal) {
-    demarrerSuivi(1, 'impots');
-    progression.courant = c.nom;
+    demarrerSuivi('impots', 1);
+    suiviImpots.courant = c.nom;
   }
   try {
-    const r = await scrapeClient(c, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog, phases });
+    const r = await scrapeClient(c, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: journalImpots, phases });
     if (suiviLocal)
-      progression.resultats.push({
+      suiviImpots.resultats.push({
         nom: c.nom,
         ok: !!r?.ok,
         message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : r?.error || 'erreur',
@@ -661,8 +693,8 @@ async function lancer(clientId, res, phases = {}) {
   } finally {
     enCours.delete(clientId);
     if (suiviLocal) {
-      progression.fait = 1;
-      terminerSuivi();
+      suiviImpots.fait = 1;
+      terminerSuivi('impots');
     }
   }
 }
@@ -684,26 +716,26 @@ async function lancerLot(clients, phases = {}, { habilitations = false } = {}) {
     parCabinet.get(c.cabinet_id).push(c);
   }
   for (const [cabinetId, sousClients] of parCabinet) {
-    if (stopAll || arretAuto) break;
+    if (arretDemande('impots') || arretAuto) break;
     const cab = getCabinetFull(cabinetId);
     if (!cab) continue;
     await scrapeAll(sousClients, {
       cabinet: cab,
       baseFolder,
-      shouldStop: () => stopAll || arretAuto,
+      shouldStop: () => arretDemande('impots') || arretAuto,
       phases,
       habilitations, // tableau d'habilitations : une fois par compte, seulement en « Tout récupérer »
-      onLog: progLog,
+      onLog: journalImpots,
       onClient: (nom) => {
-        progression.courant = nom;
+        suiviImpots.courant = nom;
       },
       onResult: (r) => {
-        progression.resultats.push(r);
-        progression.fait++;
+        suiviImpots.resultats.push(r);
+        suiviImpots.fait++;
         disj.noter(!!r.ok);
         if (disj.declenche() && !arretAuto) {
           arretAuto = true;
-          progLog(
+          journalImpots(
             `⚠ ${ECHECS_CONSECUTIFS_MAX} échecs consécutifs : le site des impôts semble indisponible ou la session déconnectée — arrêt du lot. La prochaine récupération reprendra au premier dossier non récupéré.`,
           );
         }
@@ -720,16 +752,15 @@ app.post('/api/scrape-all', async (req, res) => {
   const { aFaire, ignores } = filtrerReprise(listClients());
   const total = aFaire.filter((c) => c.cabinet_id).length;
   enCours.add('all');
-  stopAll = false;
-  demarrerSuivi(total, 'impots');
-  if (ignores) progLog(`Reprise : ${ignores} dossier(s) déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
+  demarrerSuivi('impots', total);
+  if (ignores) journalImpots(`Reprise : ${ignores} dossier(s) déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
   const cabinets = new Set(aFaire.filter((c) => c.cabinet_id).map((c) => c.cabinet_id)).size;
   res.json({ started: true, total, cabinets, ignores });
   try {
     await lancerLot(aFaire, phasesImpots(req.body), { habilitations: req.body?.habilitations !== false });
   } finally {
     enCours.delete('all');
-    terminerSuivi();
+    terminerSuivi('impots');
   }
 });
 
@@ -741,20 +772,30 @@ app.post('/api/scrape-selection', async (req, res) => {
   if (enCours.has('all')) return res.status(409).json({ error: 'Une récupération est déjà en cours.' });
   const clients = ids.map((id) => getClient(id)).filter(Boolean);
   enCours.add('all');
-  stopAll = false;
-  demarrerSuivi(clients.filter((c) => c.cabinet_id).length, 'impots');
+  demarrerSuivi('impots', clients.filter((c) => c.cabinet_id).length);
   res.json({ started: true, total: clients.filter((c) => c.cabinet_id).length });
   try {
     await lancerLot(clients, phasesImpots(req.body));
   } finally {
     enCours.delete('all');
-    terminerSuivi();
+    terminerSuivi('impots');
   }
 });
 
+// Arret d'une recuperation. { source: 'carmf' } n'arrete QUE cette source ; sans
+// source (anciens appels), on arrete tout. La source est normalisee et validee :
+// une valeur inconnue renverrait « ok » sans rien arreter — le pire pour ce bouton.
 app.post('/api/scrape-all/stop', (req, res) => {
-  stopAll = true;
-  res.json({ ok: true });
+  const brut = String(req.body?.source || '')
+    .trim()
+    .toLowerCase();
+  if (!brut) {
+    for (const s of SOURCES) arrets.add(s);
+    return res.json({ ok: true, sources: SOURCES });
+  }
+  if (!SOURCES.includes(brut)) return res.status(400).json({ error: `Source inconnue : ${brut}` });
+  arrets.add(brut);
+  res.json({ ok: true, sources: [brut] });
 });
 
 // ---- Mise a jour ----------------------------------------------------------
@@ -771,7 +812,44 @@ app.post('/api/update/apply', requireAdmin, async (req, res) => {
 // ---- Historique -----------------------------------------------------------
 app.get('/api/runs', (req, res) => res.json(listRuns(500)));
 app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets: cabinetsConfigure() }));
-app.get('/api/progress', (req, res) => res.json(progression));
+// Avancement. `?source=carmf` renvoie le suivi de cette seule source. Sans parametre :
+// vue AGREGEE de la fenetre en cours (champs historiques conserves — src/mcp-http.js et
+// l'interface les lisent) ENRICHIE de `sources` (detail par organisme) et `actives`.
+app.get('/api/progress', (req, res) => {
+  const src = String(req.query.source || '')
+    .trim()
+    .toLowerCase();
+  if (src) {
+    if (!SOURCES.includes(src)) return res.status(400).json({ error: `Source inconnue : ${src}` });
+    return res.json(suiviDe(src));
+  }
+  const dansFenetre = [...suivis.values()].filter((p) => p.demarre_le && (!fenetre.demarre_le || p.demarre_le >= fenetre.demarre_le));
+  const actives = dansFenetre.filter((p) => p.actif);
+  // Journaux fusionnes : prefixes par organisme (sinon illisible a plusieurs) et
+  // tries sur leur horodatage de debut de ligne. Plafond global, pas 400 x 6.
+  const logs = dansFenetre
+    .flatMap((p) => p.logs.map((l) => ({ cle: l, texte: dansFenetre.length > 1 ? `${p.source.toUpperCase()} · ${l}` : l })))
+    .sort((a, b) => a.cle.localeCompare(b.cle))
+    .map((x) => x.texte)
+    .slice(-600);
+  res.json({
+    actif: actives.length > 0,
+    total: dansFenetre.reduce((n, p) => n + p.total, 0),
+    fait: dansFenetre.reduce((n, p) => n + p.fait, 0),
+    courant:
+      actives
+        .map((p) => p.courant)
+        .filter(Boolean)
+        .join(' · ') || null,
+    source: (actives.length ? actives : dansFenetre).map((p) => p.source).join(',') || null,
+    demarre_le: fenetre.demarre_le,
+    fini_le: actives.length ? null : dansFenetre.reduce((m, p) => (!m || (p.fini_le && p.fini_le > m) ? p.fini_le || m : m), null),
+    resultats: dansFenetre.flatMap((p) => p.resultats.map((r) => ({ ...r, source: p.source }))),
+    logs,
+    sources: Object.fromEntries(dansFenetre.map((p) => [p.source, p])),
+    actives: actives.map((p) => p.source),
+  });
+});
 // Indique a l'interface si la vue navigateur a distance (noVNC) est disponible (serveur).
 app.get('/api/config', (req, res) => res.json({ remoteBrowser: !!process.env.REMOTE_BROWSER }));
 
@@ -859,22 +937,24 @@ app.get('/api/debug/file', (req, res) => {
 //  Routes generiques mutualisees (src/routes/source-login.js). Etat de progression
 //  partage via ctxSource. Ajouter une caisse = une entree dans routeursSources.
 // ===========================================================================
-const ctxSource = {
+// Un contexte PAR SOURCE : chaque caisse a son suivi, son journal et son arret.
+// `progression` doit etre l'objet STABLE (le routeur capture la reference au boot) et
+// les fonctions sont deja liees a la source — le routeur appelle demarrerSuivi(total,
+// source), le 2e argument est simplement ignore.
+const ctxPour = (source) => ({
   enCours,
-  progression,
-  progLog,
-  demarrerSuivi,
-  terminerSuivi,
-  doitArreter: () => stopAll,
-  resetArret: () => {
-    stopAll = false;
-  },
-};
+  progression: suiviDe(source),
+  progLog: journalDe(source),
+  demarrerSuivi: (total) => demarrerSuivi(source, total),
+  terminerSuivi: () => terminerSuivi(source),
+  doitArreter: () => arretDemande(source),
+  resetArret: () => arrets.delete(source),
+});
 const routeursSources = {
-  carpimko: creerRouteurSourceLogin('carpimko', { db: carpimko, scraper: scrapeClientCarpimko, tousDocuments: true, ctx: ctxSource }),
-  carmf: creerRouteurSourceLogin('carmf', { db: carmf, scraper: scrapeClientCarmf, ctx: ctxSource }),
-  carcdsf: creerRouteurSourceLogin('carcdsf', { db: carcdsf, scraper: scrapeClientCarcdsf, ctx: ctxSource }),
-  carpv: creerRouteurSourceLogin('carpv', { db: carpv, scraper: scrapeClientCarpv, ctx: ctxSource }),
+  carpimko: creerRouteurSourceLogin('carpimko', { db: carpimko, scraper: scrapeClientCarpimko, tousDocuments: true, ctx: ctxPour('carpimko') }),
+  carmf: creerRouteurSourceLogin('carmf', { db: carmf, scraper: scrapeClientCarmf, ctx: ctxPour('carmf') }),
+  carcdsf: creerRouteurSourceLogin('carcdsf', { db: carcdsf, scraper: scrapeClientCarcdsf, ctx: ctxPour('carcdsf') }),
+  carpv: creerRouteurSourceLogin('carpv', { db: carpv, scraper: scrapeClientCarpv, ctx: ctxPour('carpv') }),
 };
 for (const [srcNom, obj] of Object.entries(routeursSources)) app.use('/api/' + srcNom, obj.router);
 
@@ -909,7 +989,7 @@ app.post('/api/urssaf/cabinets/:id/sync', async (req, res) => {
   if (enCours.has(key)) return res.status(409).json({ error: 'Synchronisation déjà en cours pour ce compte.' });
   enCours.add(key);
   try {
-    const rows = await listerClientsUrssaf(cab, { onLog: progLog });
+    const rows = await listerClientsUrssaf(cab, { onLog: journalUrssaf });
     // Liste noire : les clients supprimes volontairement ne sont pas recrees.
     const aImporter = rows.filter((r) => !urssafDb.listeNoire.estListeNoire(r.siret));
     const bilan = urssafDb.importClients(aImporter, id);
@@ -948,7 +1028,7 @@ app.post('/api/urssaf/clients/:id/sync', async (req, res) => {
   const key = 'urssaf:syncclient:' + c.id;
   enCours.add(key);
   try {
-    const rows = await listerClientsUrssaf(cab, { onLog: progLog });
+    const rows = await listerClientsUrssaf(cab, { onLog: journalUrssaf });
     const siret = String(c.siret || '').replace(/\D/g, '');
     const ligne = rows.find((r) => String(r.siret || '').replace(/\D/g, '') === siret);
     if (!ligne) return res.json({ ok: false, introuvable: true, total: rows.length });
@@ -1014,28 +1094,28 @@ app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
   if (enCours.has(key)) return res.status(409).json({ error: 'Une récupération est déjà en cours pour ce client.' });
   enCours.add(key);
   res.json({ started: true, client: client.nom });
-  const suiviLocal = !progression.actif;
+  const suiviLocal = !suiviUrssaf.actif;
   if (suiviLocal) {
-    demarrerSuivi(1, 'urssaf');
-    progression.courant = client.nom;
+    demarrerSuivi('urssaf', 1);
+    suiviUrssaf.courant = client.nom;
   }
   try {
-    const r = await scrapeClientUrssaf(client, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: progLog });
+    const r = await scrapeClientUrssaf(client, { cabinet: cab, baseFolder: getSetting('destination_folder'), onLog: journalUrssaf });
     if (suiviLocal)
-      progression.resultats.push({
+      suiviUrssaf.resultats.push({
         nom: client.nom,
         ok: !!r?.ok,
         message: r?.ok ? `${r.docs?.length ?? 0} document(s)` : r?.error || 'erreur',
         nb_docs: r?.docs?.length ?? 0,
       });
   } catch (e) {
-    progLog(`ERREUR : ${e.message}`);
-    if (suiviLocal) progression.resultats.push({ nom: client.nom, ok: false, message: e.message, nb_docs: 0 });
+    journalUrssaf(`ERREUR : ${e.message}`);
+    if (suiviLocal) suiviUrssaf.resultats.push({ nom: client.nom, ok: false, message: e.message, nb_docs: 0 });
   } finally {
     enCours.delete(key);
     if (suiviLocal) {
-      progression.fait = 1;
-      terminerSuivi();
+      suiviUrssaf.fait = 1;
+      terminerSuivi('urssaf');
     }
   }
 });
@@ -1053,32 +1133,31 @@ function lancerUrssafTous() {
   }
   const total = [...parCabinet.values()].reduce((n, arr) => n + arr.length, 0);
   enCours.add('urssaf:all');
-  stopAll = false;
-  demarrerSuivi(total, 'urssaf');
-  if (ignores) progLog(`Reprise : ${ignores} client(s) URSSAF déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
+  demarrerSuivi('urssaf', total);
+  if (ignores) journalUrssaf(`Reprise : ${ignores} client(s) URSSAF déjà récupéré(s) il y a moins de ${REPRISE_HEURES} h, ignoré(s).`);
   const disj = creerDisjoncteur();
   let arretAuto = false;
   (async () => {
     try {
       for (const [cabinetId, sousClients] of parCabinet) {
-        if (stopAll || arretAuto) break;
+        if (arretDemande('urssaf') || arretAuto) break;
         const cab = urssafDb.getCabinetFull(cabinetId);
         if (!cab) continue;
         await scrapeAllUrssaf(sousClients, {
           cabinet: cab,
           baseFolder: getSetting('destination_folder'),
-          shouldStop: () => stopAll || arretAuto,
-          onLog: progLog,
+          shouldStop: () => arretDemande('urssaf') || arretAuto,
+          onLog: journalUrssaf,
           onClient: (nom) => {
-            progression.courant = nom;
+            suiviUrssaf.courant = nom;
           },
           onResult: (r) => {
-            progression.resultats.push(r);
-            progression.fait++;
+            suiviUrssaf.resultats.push(r);
+            suiviUrssaf.fait++;
             disj.noter(!!r.ok);
             if (disj.declenche() && !arretAuto) {
               arretAuto = true;
-              progLog(
+              journalUrssaf(
                 `⚠ ${ECHECS_CONSECUTIFS_MAX} échecs consécutifs : le site URSSAF semble indisponible ou la session déconnectée — arrêt du lot. La prochaine récupération reprendra au premier dossier non récupéré.`,
               );
             }
@@ -1087,8 +1166,8 @@ function lancerUrssafTous() {
       }
     } finally {
       enCours.delete('urssaf:all');
-      terminerSuivi();
-      progLog('Récupération URSSAF terminée.');
+      terminerSuivi('urssaf');
+      journalUrssaf('Récupération URSSAF terminée.');
     }
   })();
   return { started: true, total, ignores };
@@ -1145,8 +1224,10 @@ if (
         if (JOURS_EN[pl.jour] === p.weekday && heure === pl.heure && dernier[cle] !== jourCle) {
           dernier[cle] = jourCle; // une seule fois par jour
           console.log(`\n  [planif] Récupération ${pl.source.toUpperCase()} automatique — ${jourCle}`);
-          progLog(`Récupération ${pl.source.toUpperCase()} automatique (planifiée).`);
-          LANCEURS[pl.source]();
+          const lance = LANCEURS[pl.source]();
+          // APRES le lancement : demarrerSuivi vide le journal, une ligne ecrite avant
+          // disparaissait aussitot. Et seulement si le lot a demarre (sinon ligne fantome).
+          if (lance?.started !== false) journalDe(pl.source)(`Récupération ${pl.source.toUpperCase()} automatique (planifiée).`);
         }
       }
     } catch (e) {

@@ -198,7 +198,8 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
   });
   el('stop')?.addEventListener('click', async () => {
     try {
-      await api('/api/scrape-all/stop', { method: 'POST' });
+      // Arrêt de CETTE caisse seulement : les autres organismes continuent.
+      await api('/api/scrape-all/stop', { method: 'POST', body: JSON.stringify({ source }) });
       toast('Arrêt demandé — fin après le client en cours.', 'ok');
     } catch (err) {
       toast(err.message, 'err');
