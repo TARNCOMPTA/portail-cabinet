@@ -1,6 +1,6 @@
 {
-  "version": "1.8.0",
-  "notes": "CARMF : récupération des appels de cotisation (acompte et solde) en plus des attestations",
+  "version": "1.9.0",
+  "notes": "Fiabilité : reconnaissance du nom sur les PDF corrigée, plus de double récupération d'un client, plus de faux « mot de passe refusé » quand une caisse est en panne, et clé de chiffrement protégée. Plus : suivi et arrêt par organisme (récupérations en parallèle).",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "fd96607c3d42c7fe8aac145c99e535a13f39e39cc3ff02292e089a622fd43f72"
+  "sha256": "e8c64eba40e6d8827f2219d331d374a9521c7fad626400fc46a5b7de1e8c284b"
 }
