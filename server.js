@@ -42,6 +42,7 @@ import {
   listCfeSansPaiement,
   resetPaiementCfe,
 } from './src/db.js';
+import { verifierCle } from './src/crypto.js';
 import { scrapeClient, listerClients, scrapeAll, recupererHabilitations, dossierHabilitations } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
 import * as carpimko from './src/carpimko-db.js';
@@ -1124,11 +1125,9 @@ app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
   // Deux sessions URSSAF sur le meme compte cabinet ramenent les documents d'un AUTRE
   // dossier (session « collante ») — le scraper l'interdit explicitement.
   if (estReserve('urssaf', id))
-    return res
-      .status(409)
-      .json({
-        error: 'Ce client est traité par la récupération globale en cours — attends la fin (deux sessions URSSAF sur le même compte mélangent les dossiers).',
-      });
+    return res.status(409).json({
+      error: 'Ce client est traité par la récupération globale en cours — attends la fin (deux sessions URSSAF sur le même compte mélangent les dossiers).',
+    });
   enCours.add(key);
   res.json({ started: true, client: client.nom });
   const suiviLocal = !suiviUrssaf.actif;
@@ -1279,6 +1278,33 @@ if (
 }
 
 const PORT = Number(process.env.PORT || 3003);
+
+// GARDE-FOU CLE DE CHIFFREMENT : si data/secret.key a ete perdue ou remplacee, tous les
+// mots de passe clients deviennent illisibles (chaine vide) et le portail les traiterait
+// comme « mot de passe vide » -> chaque client passe en echec_mdp donc verrouille, et les
+// tournees se vident sans explication. Mieux vaut refuser de demarrer avec la consigne.
+{
+  const cle = verifierCle();
+  if (!cle.ok) {
+    console.error(`
+  ============================================================
+   ARRET : la cle de chiffrement ne correspond plus aux donnees
+  ============================================================
+   data/secret.key n'est pas celle qui a chiffre les mots de passe
+   enregistres. Demarrer ainsi verrouillerait tous les comptes clients.
+
+   Que faire :
+    1. RESTAURER data/secret.key depuis la sauvegarde (solution normale),
+       puis redemarrer ;
+    2. si la cle est definitivement perdue : supprimer data/secret.check,
+       redemarrer, puis RESSAISIR les mots de passe des comptes et des
+       clients (ils sont irrecuperables sans la cle).
+  ============================================================
+`);
+    process.exit(1);
+  }
+  if (cle.initialise) console.log('  Cle de chiffrement : temoin de controle initialise.');
+}
 
 // Mise a jour AUTOMATIQUE au demarrage : si une version plus recente est publiee, on
 // l'installe sans rien demander (telechargement + staging + redemarrage applique par

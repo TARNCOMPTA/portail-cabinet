@@ -9,6 +9,9 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = resolve(__dirname, '..', 'data');
 const KEY_FILE = resolve(DATA_DIR, 'secret.key');
+// Temoin chiffre avec la cle : permet de detecter qu'elle a change (voir verifierCle).
+const CHECK_FILE = resolve(DATA_DIR, 'secret.check');
+const TEMOIN = 'portail-cabinet/cle-ok';
 
 function getKey() {
   mkdirSync(DATA_DIR, { recursive: true });
@@ -37,4 +40,30 @@ export function decrypt(stored) {
   } catch {
     return '';
   }
+}
+
+/**
+ * Verifie que la cle en place est bien celle qui a chiffre les donnees existantes.
+ *
+ * Sans ce controle, la perte de data/secret.key est SILENCIEUSE : getKey() fabrique une
+ * cle neuve, tous les mots de passe clients se dechiffrent alors en chaine vide, et le
+ * portail les traite comme « mot de passe vide » -> chaque client passe en echec_mdp donc
+ * verrouille, et les tournees se vident sans explication.
+ *
+ * Au premier appel (ou apres une restauration complete), un temoin chiffre est ecrit ;
+ * ensuite il doit se dechiffrer. Renvoie { ok, initialise }.
+ */
+export function verifierCle() {
+  getKey();
+  if (!existsSync(CHECK_FILE)) {
+    writeFileSync(CHECK_FILE, encrypt(TEMOIN), 'utf8');
+    return { ok: true, initialise: true };
+  }
+  let lu = '';
+  try {
+    lu = decrypt(readFileSync(CHECK_FILE, 'utf8').trim());
+  } catch {
+    lu = '';
+  }
+  return { ok: lu === TEMOIN, initialise: false };
 }
