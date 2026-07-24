@@ -175,14 +175,26 @@ export async function scrapeClient(client, opts = {}) {
     await page.waitForTimeout(2000);
 
     if (/Comptes\/Connexion/i.test(page.url())) {
+      // Encore sur la page de connexion : laisser une derniere chance (page lente) avant
+      // de trancher — 2 s de delai fixe ne suffisent pas toujours.
+      await page.waitForURL((u) => !/Comptes\/Connexion/i.test(String(u)), { timeout: 8000 }).catch(() => {});
+    }
+    if (/Comptes\/Connexion/i.test(page.url())) {
       const erreur = await page
         .locator('.validation-summary-errors, .field-validation-error, .alert-danger')
         .first()
         .innerText()
         .catch(() => '');
-      const detail = erreur ? erreur.trim().replace(/\s+/g, ' ') : '(identifiants incorrects ?)';
-      const e = new Error(`Connexion refusee : ${detail}`);
-      e.kind = 'mdp'; // -> verrou anti-blocage de compte
+      const detail = erreur ? erreur.trim().replace(/\s+/g, ' ') : '';
+      // Ne verrouiller le compte que si le site AFFICHE un refus. Sans message, on est
+      // peut-etre simplement sur une page lente ou en erreur : echec reessayable, sinon
+      // le client sort des tournees automatiques avec un mot de passe pourtant valide.
+      const e = new Error(
+        detail
+          ? `Connexion refusee : ${detail}`
+          : 'Connexion CARPIMKO non aboutie (page toujours sur le formulaire, aucun message d’erreur) — nouvelle tentative au prochain passage.',
+      );
+      if (detail) e.kind = 'mdp'; // -> verrou anti-blocage de compte
       throw e;
     }
     log('Connecte.');

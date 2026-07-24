@@ -221,14 +221,23 @@ export async function scrapeClient(client, opts = {}) {
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(1500);
 
+    // Compte deja bloque par la CARMF : ne pas insister (et ne pas re-verrouiller ici,
+    // le message doit rester explicite pour le collaborateur).
+    if (/\/adherents\/compte_bloque/i.test(page.url())) throw new Error('Compte CARMF bloqué par la caisse — contacter la CARMF (ne pas réessayer).');
     if (/\/adherents\/connecter/i.test(page.url())) {
       const err = await page
         .locator('.message, .error, .alert, .flash, [class*="erreur"], [class*="error"]')
         .first()
         .innerText()
         .catch(() => '');
-      const e = new Error('Connexion refusée' + (err ? ` : ${err.replace(/\s+/g, ' ').slice(0, 160)}` : ' (identifiants incorrects ?)'));
-      e.kind = 'mdp';
+      const detail = err ? err.replace(/\s+/g, ' ').slice(0, 160).trim() : '';
+      // Le clic de soumission est fait « en silence » (.catch) : sans message d'erreur
+      // affiche, on ne peut PAS conclure que le mot de passe est faux (clic manque, page
+      // lente, site en vrac). Verrouiller a tort exclut le client de toutes les tournees.
+      const e = new Error(
+        detail ? `Connexion refusée : ${detail}` : 'Connexion CARMF non aboutie (aucun message d’erreur affiché) — nouvelle tentative au prochain passage.',
+      );
+      if (detail) e.kind = 'mdp';
       throw e;
     }
     log("Connecté à l'espace CARMF.");

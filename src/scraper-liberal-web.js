@@ -70,8 +70,19 @@ export function creerScraperLiberalWeb(cfg) {
       const authorization = rc.headers.get('authorization');
       if (!rc.ok || jc.codeRetour !== 0 || !authorization) {
         const msg = (jc.libelle || '').trim();
-        const e = new Error('Connexion refusée' + (msg ? ` : ${msg}` : ' (identifiants incorrects ou double authentification requise ?)'));
-        e.kind = 'mdp';
+        // Ne verrouiller le compte du client QUE si la caisse refuse vraiment ses
+        // identifiants. Une panne / maintenance (500, 502, 503, 429) ou une reponse
+        // illisible n'est PAS un mauvais mot de passe : sinon une heure
+        // d'indisponibilite de la caisse sortait TOUS ses clients des tournees
+        // automatiques (un client verrouille est exclu des lots), jusqu'a ce que
+        // quelqu'un ressaisisse un mot de passe pourtant valide.
+        const panne = rc.status >= 500 || rc.status === 429 || (!rc.ok && !msg);
+        const e = new Error(
+          panne
+            ? `Site ${nom} indisponible (HTTP ${rc.status}) — nouvelle tentative au prochain passage.`
+            : 'Connexion refusée' + (msg ? ` : ${msg}` : ' (identifiants incorrects ou double authentification requise ?)'),
+        );
+        if (!panne) e.kind = 'mdp';
         throw e;
       }
       const sig = jc.signaletiqueAccueil || {};
