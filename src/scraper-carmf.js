@@ -258,7 +258,7 @@ export async function scrapeClient(client, opts = {}) {
     // Enregistre un PDF telecharge : verification d'appartenance puis addDocument.
     const enregistrer = async (buf, dest, libelle, dateDoc) => {
       writeFileSync(dest, buf);
-      const verif = await verifierEtClasser({ fichier: dest, source: 'carmf', client });
+      const verif = await verifierEtClasser({ fichier: dest, source: 'carmf', client, meta: { libelle, dateDoc } });
       if (verif.verdict === 'quarantaine') {
         quarantaines.push(verif.raison);
         log(`⚠️ QUARANTAINE : ${verif.raison}`);

@@ -15,6 +15,7 @@ import {
   listDocuments,
   listAllDocuments,
   getDocument,
+  addDocument as addDocumentImpots,
   listRuns,
   getSetting,
   setSetting,
@@ -43,6 +44,7 @@ import {
   resetPaiementCfe,
 } from './src/db.js';
 import { verifierCle } from './src/crypto.js';
+import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine } from './src/quarantaine.js';
 import { scrapeClient, listerClients, scrapeAll, recupererHabilitations, dossierHabilitations } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
 import * as carpimko from './src/carpimko-db.js';
@@ -578,6 +580,57 @@ const DOC_PAR_SOURCE = {
   carcdsf: carcdsf.getDocument,
   carpv: carpv.getDocument,
 };
+// Enregistrement d'un document, par source (utilise par la reintegration depuis la
+// quarantaine). Impots et URSSAF indexent par `eventid`, les caisses par `date_doc`.
+const AJOUT_PAR_SOURCE = {
+  impots: (clientId, m) => addDocumentImpots(clientId, { libelle: m.libelle, fichier: m.fichier, eventid: m.eventid }),
+  urssaf: (clientId, m) => urssafDb.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, eventid: m.eventid }),
+  carpimko: (clientId, m) => carpimko.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
+  carmf: (clientId, m) => carmf.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
+  carcdsf: (clientId, m) => carcdsf.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
+  carpv: (clientId, m) => carpv.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
+};
+
+// ---- Quarantaine (documents rejetes par la verification d'appartenance) -----
+app.get('/api/quarantaine', (req, res) => res.json(listerQuarantaine()));
+
+// Sert le PDF pour verification visuelle (chemin verrouille dans le dossier de quarantaine).
+app.get('/api/quarantaine/file', (req, res) => {
+  const p = cheminSur(String(req.query.id || ''));
+  if (!p || !existsSync(p) || p.endsWith('.json')) return res.status(404).json({ error: 'Document introuvable.' });
+  res.sendFile(p);
+});
+
+// « C'est bien ce client » : remet le fichier a sa place ET recree la ligne en base
+// (sans quoi il serait retelecharge puis remis en quarantaine au passage suivant).
+app.post('/api/quarantaine/reintegrer', (req, res) => {
+  const id = String(req.body?.id || '');
+  const r = reintegrer(id);
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  const ajouter = AJOUT_PAR_SOURCE[r.meta.source];
+  if (!ajouter) {
+    r.annuler();
+    return res.status(400).json({ error: `Source inconnue : ${r.meta.source}` });
+  }
+  try {
+    ajouter(r.meta.clientId, {
+      libelle: r.meta.libelle || basename(r.destination),
+      fichier: r.destination,
+      eventid: r.meta.eventid || null,
+      dateDoc: r.meta.dateDoc || null,
+    });
+  } catch (e) {
+    r.annuler(); // la base a refuse : on remet le fichier en quarantaine
+    return res.status(500).json({ error: `Enregistrement impossible : ${e.message}` });
+  }
+  res.json({ ok: true, destination: r.destination });
+});
+
+app.delete('/api/quarantaine', (req, res) => {
+  const r = supprimerQuarantaine(String(req.body?.id || req.query.id || ''));
+  if (!r.ok) return res.status(400).json({ error: r.error });
+  res.json({ ok: true });
+});
 
 // Genere un lien de telechargement direct (usage unique, 10 min) pour un document
 // d'une source donnee. Resolu cote serveur via l'id (pas de chemin arbitraire).

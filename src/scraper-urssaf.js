@@ -686,7 +686,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') throw new Error('reponse non-PDF');
         writeFileSync(dest, buf);
         // Verification d'appartenance : le PDF doit mentionner le SIRET/SIREN ou le nom.
-        const verif = await verifierEtClasser({ fichier: dest, source: 'urssaf', client });
+        const verif = await verifierEtClasser({ fichier: dest, source: 'urssaf', client, meta: { libelle: libelleDoc, eventid: docId } });
         if (verif.verdict === 'quarantaine') {
           quarantaines.push(verif.raison);
           log(`⚠️ QUARANTAINE : ${verif.raison}`);

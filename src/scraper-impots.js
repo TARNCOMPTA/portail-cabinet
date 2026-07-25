@@ -190,7 +190,7 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
       const [dl] = await Promise.all([page.waitForEvent('download', { timeout: navTimeout }), lien.click()]);
       await dl.saveAs(dest);
       // Verification d'appartenance : l'avis doit mentionner le SIREN ou le nom du client.
-      const verif = await verifierEtClasser({ fichier: dest, source: 'impots', client });
+      const verif = await verifierEtClasser({ fichier: dest, source: 'impots', client, meta: { libelle: `${prefixe} ${annee} ${ref}`, eventid: eid } });
       if (verif.verdict === 'quarantaine') {
         quarantaines.push(verif.raison);
         log(`⚠️ QUARANTAINE : ${verif.raison}`);
@@ -427,7 +427,12 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
             await dl.saveAs(destPj);
             // Verification d'appartenance des PJ au format PDF (les scans restent tolerés).
             if (/\.pdf$/i.test(destPj)) {
-              const verif = await verifierEtClasser({ fichier: destPj, source: 'impots', client });
+              const verif = await verifierEtClasser({
+                fichier: destPj,
+                source: 'impots',
+                client,
+                meta: { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), eventid: `${eid}_PJ${k + 1}` },
+              });
               if (verif.verdict === 'quarantaine') {
                 quarantaines.push(verif.raison);
                 log(`⚠️ QUARANTAINE : ${verif.raison}`);

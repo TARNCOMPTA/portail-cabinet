@@ -7,7 +7,7 @@
 // avertissement. verifierEtClasser ne lève jamais : une erreur interne de validation
 // ne doit pas faire échouer un téléchargement légitime.
 
-import { readFileSync, mkdirSync, renameSync, copyFileSync, unlinkSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync, copyFileSync, unlinkSync, existsSync } from 'node:fs';
 import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getDocument } from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -336,12 +336,17 @@ function libelleAttendus(attendus) {
  * @param {{id:number, nom:string, siret?:string, login?:string}} p.client
  * @param {object} [p.attendus] identifiants à chercher (défaut : attendusPour(source, client))
  * @param {string} [p.dossierQuarantaine] racine de quarantaine (tests)
+ * @param {{libelle?:string, eventid?:string, dateDoc?:string}} [p.meta] métadonnées
+ *   d'enregistrement du document. Elles sont écrites dans un manifeste à côté du PDF mis
+ *   en quarantaine : sans elles, une réintégration depuis le portail ne pourrait pas
+ *   recréer la ligne en base — le document serait retéléchargé puis remis en quarantaine
+ *   au passage suivant, en boucle.
  * @returns {Promise<{verdict:'ok'|'quarantaine'|'non_verifiable', raison:string|null, fichier:string}>}
  *   verdict 'ok'             : enregistrer le document normalement ;
  *   verdict 'non_verifiable' : enregistrer, mais compter l'avertissement ;
  *   verdict 'quarantaine'    : fichier DÉPLACÉ — ne pas appeler addDocument.
  */
-export async function verifierEtClasser({ fichier, source, client, attendus, dossierQuarantaine }) {
+export async function verifierEtClasser({ fichier, source, client, attendus, dossierQuarantaine, meta }) {
   const nomFichier = basename(fichier);
   try {
     const cherche = attendus || attendusPour(source, client);
@@ -351,10 +356,37 @@ export async function verifierEtClasser({ fichier, source, client, attendus, dos
     const res = verifierCorrespondance(texte, cherche);
     if (res.ok) return { verdict: 'ok', raison: res.motif, fichier };
     const dossier = resolve(dossierQuarantaine || QUARANTAINE_DIR, source, sanitize(`${client.id}_${client.nom}`));
+    const raison = `${libelleAttendus(cherche)} introuvable(s) dans "${nomFichier}"`;
     const dest = mettreEnQuarantaine(fichier, dossier);
+    // Manifeste : tout ce qu'il faut pour reintegrer le document depuis le portail
+    // (remettre le fichier a sa place ET recreer la ligne en base).
+    try {
+      writeFileSync(
+        `${dest}.json`,
+        JSON.stringify(
+          {
+            source,
+            clientId: client?.id ?? null,
+            clientNom: client?.nom ?? null,
+            origine: fichier,
+            libelle: meta?.libelle ?? null,
+            eventid: meta?.eventid ?? null,
+            dateDoc: meta?.dateDoc ?? null,
+            raison,
+            attendus: cherche,
+            date: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+    } catch {
+      /* manifeste best-effort : la mise en quarantaine reste valable sans lui */
+    }
     return {
       verdict: 'quarantaine',
-      raison: `${libelleAttendus(cherche)} introuvable(s) dans "${nomFichier}" — fichier déplacé en quarantaine`,
+      raison: `${raison} — fichier déplacé en quarantaine`,
       fichier: dest,
     };
   } catch (e) {

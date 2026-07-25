@@ -1362,6 +1362,7 @@ function activerOnglet(nom) {
   if (nom === 'par-client') chargerParClient();
   if (nom === 'messages') chargerMessages();
   if (nom === 'documents') chargerDocuments();
+  if (nom === 'quarantaine') chargerQuarantaine();
 }
 document.querySelectorAll('.tab-btn').forEach((b) => b.addEventListener('click', () => activerOnglet(b.dataset.tab)));
 activerOnglet('dashboard');
@@ -1854,9 +1855,88 @@ async function chargerConfig() {
   }
 }
 
+// ---- Quarantaine : documents rejetés par la vérification d'appartenance -----
+// Sans cet écran, un document mis de côté n'apparaissait NULLE PART dans le portail :
+// il fallait fouiller le serveur en ligne de commande pour le récupérer.
+let quarantaineCache = [];
+let quarantaineFiltre = '';
+const LIB_SOURCE = { impots: 'Impôts', urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV' };
+
+async function chargerQuarantaine() {
+  try {
+    quarantaineCache = await api('/api/quarantaine');
+  } catch {
+    return;
+  }
+  const badge = $('#nav-quarantaine-count');
+  if (badge) badge.textContent = quarantaineCache.length || '';
+  rendreQuarantaine();
+}
+
+function rendreQuarantaine() {
+  const tb = $('#table-quarantaine tbody');
+  if (!tb) return;
+  const q = quarantaineFiltre.toLowerCase();
+  const liste = q ? quarantaineCache.filter((d) => `${d.clientNom} ${d.fichier} ${d.source} ${d.libelle || ''}`.toLowerCase().includes(q)) : quarantaineCache;
+  $('#q-compte').textContent = liste.length ? `${liste.length} document(s)` : '';
+  $('#q-vide').hidden = liste.length !== 0;
+  tb.innerHTML = liste
+    .map(
+      (d) => `<tr>
+        <td>${esc(d.clientNom || '—')}</td>
+        <td><span class="badge">${esc(LIB_SOURCE[d.source] || d.source)}</span></td>
+        <td><span class="lib">${esc(d.libelle || d.fichier)}</span><br /><span class="date">${esc(d.fichier)}</span></td>
+        <td class="aide" style="margin:0">${esc(d.raison)}</td>
+        <td><span class="date">${esc(d.date)}</span></td>
+        <td><span class="row-actions">
+          <a class="btn small" href="/api/quarantaine/file?id=${encodeURIComponent(d.id)}" target="_blank" rel="noopener">Ouvrir</a>
+          ${
+            d.reintegrable
+              ? `<button class="btn small primary" data-q-ok="${esc(d.id)}" title="Ranger dans le dossier du client et l'enregistrer">C’est ce client</button>`
+              : `<button class="btn small" disabled title="Métadonnées absentes : télécharge le document et classe-le à la main">C’est ce client</button>`
+          }
+          <button class="btn small danger" data-q-del="${esc(d.id)}">Supprimer</button>
+        </span></td>
+      </tr>`,
+    )
+    .join('');
+}
+
+$('#table-quarantaine')?.addEventListener('click', async (e) => {
+  const btn = e.target.closest('button[data-q-ok], button[data-q-del]');
+  if (!btn) return;
+  const id = btn.dataset.qOk || btn.dataset.qDel;
+  const doc = quarantaineCache.find((d) => d.id === id);
+  btn.disabled = true;
+  try {
+    if (btn.dataset.qOk) {
+      const r = await api('/api/quarantaine/reintegrer', { method: 'POST', body: JSON.stringify({ id }) });
+      toast(`Document réintégré dans le dossier de ${doc?.clientNom || 'ce client'}.`, 'ok');
+      if (r.destination) console.log('Réintégré :', r.destination);
+    } else {
+      if (!confirm(`Supprimer définitivement « ${doc?.fichier || id} » ?\nLe document sera retéléchargé au prochain passage s'il est toujours en ligne.`)) {
+        btn.disabled = false;
+        return;
+      }
+      await api('/api/quarantaine', { method: 'DELETE', body: JSON.stringify({ id }) });
+      toast('Document supprimé.', 'ok');
+    }
+    await chargerQuarantaine();
+    chargerDocuments();
+  } catch (err) {
+    toast(err.message, 'err');
+    btn.disabled = false;
+  }
+});
+$('#q-recherche')?.addEventListener('input', (e) => {
+  quarantaineFiltre = e.target.value.trim();
+  rendreQuarantaine();
+});
+$('#q-rafraichir')?.addEventListener('click', chargerQuarantaine);
+
 async function rafraichir() {
   await chargerCabinets();
-  await Promise.all([chargerClients(), chargerRuns(), chargerDocuments(), chargerListeNoire('/api', 'imp')]);
+  await Promise.all([chargerClients(), chargerRuns(), chargerDocuments(), chargerQuarantaine(), chargerListeNoire('/api', 'imp')]);
 }
 chargerMoi();
 chargerConfig();

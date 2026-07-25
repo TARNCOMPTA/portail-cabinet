@@ -39,6 +39,9 @@
         <button type="button" class="tab-btn nav-item" data-tab="par-client">
           <i class="ph ph-user-list"></i> Clients <span class="nav-tag count" id="nav-parclient-count"></span>
         </button>
+        <button type="button" class="tab-btn nav-item" data-tab="quarantaine">
+          <i class="ph ph-shield-warning"></i> Quarantaine <span class="nav-tag count" id="nav-quarantaine-count"></span>
+        </button>
 
         <div class="nav-group">Sources de récupération</div>
         <button type="button" class="tab-btn nav-item" data-tab="impots">
@@ -972,6 +975,43 @@
               <button type="button" class="btn small" id="pag-docs-next">Suivant ›</button>
             </div>
             <p class="vide" id="vide-docs-all" style="padding: 0 22px 16px" hidden>Aucun document récupéré pour l'instant.</p>
+          </section>
+        </div>
+
+        <!-- ===================== Quarantaine ===================== -->
+        <div class="tab-pane" id="tab-quarantaine" hidden>
+          <div class="page-head">
+            <div>
+              <h1>Quarantaine</h1>
+              <p>
+                Documents téléchargés qui <strong>ne mentionnent ni l'identifiant ni le nom</strong> du client attendu. Ils sont mis de côté au lieu d'être
+                classés dans le dossier — ouvre le PDF pour trancher.
+              </p>
+            </div>
+            <div class="row-actions">
+              <button type="button" class="btn" id="q-rafraichir"><i class="ph ph-arrows-clockwise"></i> Actualiser</button>
+            </div>
+          </div>
+          <section class="panel flush">
+            <div class="toolbar" style="padding: 18px 22px 0">
+              <input type="search" id="q-recherche" class="quick-search" placeholder="🔍 Rechercher (client, fichier, organisme)…" />
+              <span class="toolbar-spacer"></span>
+              <span class="compteur" id="q-compte"></span>
+            </div>
+            <table id="table-quarantaine">
+              <thead>
+                <tr>
+                  <th>Client</th>
+                  <th>Organisme</th>
+                  <th>Document</th>
+                  <th>Motif du rejet</th>
+                  <th>Date</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+            <p class="vide" id="q-vide" hidden>Aucun document en quarantaine — tous les documents récupérés ont été attribués à leur client. 👍</p>
           </section>
         </div>
 

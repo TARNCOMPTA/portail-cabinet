@@ -202,7 +202,9 @@ test('verifierEtClasser : collision en quarantaine -> suffixe (2)', async () => 
   assert.equal(v.verdict, 'quarantaine');
   assert.match(v.fichier, /mauvais \(2\)\.pdf$/);
   const fichiers = readdirSync(resolve(QUAR, 'impots', '7_DUPONT_Marie'));
-  assert.deepEqual(fichiers.sort(), ['mauvais (2).pdf', 'mauvais.pdf']);
+  // Chaque PDF est accompagné de son manifeste .json (métadonnées de réintégration).
+  assert.deepEqual(fichiers.filter((f) => f.endsWith('.pdf')).sort(), ['mauvais (2).pdf', 'mauvais.pdf']);
+  assert.deepEqual(fichiers.filter((f) => f.endsWith('.json')).sort(), ['mauvais (2).pdf.json', 'mauvais.pdf.json']);
 });
 
 test('verifierEtClasser : PDF sans texte -> non_verifiable, fichier conservé', async () => {

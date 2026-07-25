@@ -116,7 +116,7 @@ export function creerScraperLiberalWeb(cfg) {
         }
         writeFileSync(dest, buf);
         // Vérification d'appartenance : le PDF doit mentionner le n° d'adhérent ou le nom.
-        const verif = await verifierEtClasser({ fichier: dest, source: sousDossier, client });
+        const verif = await verifierEtClasser({ fichier: dest, source: sousDossier, client, meta: { libelle, dateDoc: annee } });
         if (verif.verdict === 'quarantaine') {
           quarantaines.push(verif.raison);
           log(`⚠️ QUARANTAINE : ${verif.raison}`);

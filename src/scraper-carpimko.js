@@ -290,7 +290,12 @@ export async function scrapeClient(client, opts = {}) {
           if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') throw new Error('reponse non-PDF (lien expire ou page HTML)');
           writeFileSync(dest, buf);
           // Vérification d'appartenance : le PDF doit mentionner le n° d'adhérent ou le nom.
-          const verif = await verifierEtClasser({ fichier: dest, source: 'carpimko', client });
+          const verif = await verifierEtClasser({
+            fichier: dest,
+            source: 'carpimko',
+            client,
+            meta: { libelle: `${d.date} — ${d.nom}`, dateDoc: dateIso(d.date, 'sans-date') },
+          });
           if (verif.verdict === 'quarantaine') {
             quarantaines.push(verif.raison);
             log(`⚠️ QUARANTAINE : ${verif.raison}`);
