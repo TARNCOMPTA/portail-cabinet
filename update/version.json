@@ -1,6 +1,6 @@
 {
-  "version": "1.9.0",
-  "notes": "Fiabilité : reconnaissance du nom sur les PDF corrigée, plus de double récupération d'un client, plus de faux « mot de passe refusé » quand une caisse est en panne, et clé de chiffrement protégée. Plus : suivi et arrêt par organisme (récupérations en parallèle).",
+  "version": "1.10.0",
+  "notes": "Nouvel onglet « Quarantaine » : consulter les documents écartés, les réintégrer dans le dossier du client en un clic, ou les supprimer.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "e8c64eba40e6d8827f2219d331d374a9521c7fad626400fc46a5b7de1e8c284b"
+  "sha256": "fdb214dfbb0c44eb5ada6dd70900b9fa39a173b51538e97e6479142501f29528"
 }
