@@ -1,6 +1,6 @@
 {
-  "version": "1.10.0",
-  "notes": "Nouvel onglet « Quarantaine » : consulter les documents écartés, les réintégrer dans le dossier du client en un clic, ou les supprimer.",
+  "version": "1.11.0",
+  "notes": "Quarantaine : pagination, filtres et tri automatique (retrouve à qui appartient vraiment chaque document mis de côté). Alertes : battement de coeur, tournée manquée, comptes verrouillés dans le bilan.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "fdb214dfbb0c44eb5ada6dd70900b9fa39a173b51538e97e6479142501f29528"
+  "sha256": "0b3650514207c5ed3d6278451b59adda200fd226de8f8e0adc57c3dc936f0d46"
 }
