@@ -51,9 +51,59 @@ un champ `"paiement"` : `echeance` (prélèvement à l'échéance), `mensualise`
 `aucun` (pas de prélèvement — à payer) ou `inconnu`. L'événement `test` (bouton « Envoyer un
 test ») porte la même enveloppe avec `"evenement": "test"`.
 
+Le bilan porte aussi `comptes_verrouilles` : les clients dont le mot de passe a été
+refusé (CARPIMKO, CARMF, CARCDSF, CARPV, URSSAF). **Ils sont exclus des tournées
+automatiques** tant que personne ne ressaisit le mot de passe — d'où l'intérêt de les
+faire remonter dans le mail de synthèse plutôt que de les laisser dans un journal
+éphémère.
+
+```json
+"comptes_verrouilles": [{ "nom": "MME DUPONT", "message": "Connexion refusée : mot de passe invalide" }]
+```
+
 Idées de workflows : e-mail/Teams de synthèse après la tournée nocturne, alerte si
 `echecs > 0`, création de tâches pour les clients en échec, archivage GED des nouveaux
 documents (via l'API ci-dessous).
+
+### Événement `tournee_manquee`
+
+Envoyé quand une récupération **planifiée n'a pas eu lieu** : 2 h après l'heure prévue,
+le portail vérifie en base qu'au moins une récupération de cet organisme a bien tourné.
+Sinon (portail arrêté cette nuit-là, figé, ou lancement refusé), il alerte — une seule
+fois par jour et par ligne de planification.
+
+```json
+{
+  "evenement": "tournee_manquee",
+  "source": "carpimko",
+  "prevue_a": "02:00",
+  "jour": "2026-07-26",
+  "message": "La récupération CARPIMKO planifiée à 2 h n'a pas eu lieu (portail arrêté, figé, ou lancement refusé)."
+}
+```
+
+Workflow n8n : envoyer un mail. C'est le signal qu'il faut aller voir le portail.
+
+### Événement `portail_vivant` (battement de cœur)
+
+Envoyé toutes les heures (`HEARTBEAT_MINUTES`, `0` pour désactiver), avec la version, la
+durée de fonctionnement et les récupérations en cours.
+
+```json
+{ "evenement": "portail_vivant", "version": "1.11.0", "demarre_depuis_min": 143, "recuperations_en_cours": ["urssaf"] }
+```
+
+⚠️ **C'est l'ABSENCE de ce signal qui doit alerter** : un portail tombé ne peut pas
+prévenir lui-même. Workflow n8n (« interrupteur d'homme mort ») : un nœud **Webhook**
+qui, à chaque battement, réarme un délai ; si rien n'arrive pendant ~2 h, envoyer un
+mail « le portail ne répond plus ». En pratique : stocker la date du dernier battement
+(Data table, Redis, ou un simple fichier) et faire tourner un **Schedule** toutes les
+30 min qui compare à l'heure courante.
+
+Alternative sans battement : interroger `GET /api/sante` (**public**, aucune
+authentification, aucune donnée sensible) depuis n8n ou un service de surveillance
+(UptimeRobot…). Il renvoie `{"ok":true,"version":"…","uptime_min":…}` et **503** si la
+base ne répond plus — ce qu'un simple « le port est ouvert » ne détecterait pas.
 
 ---
 

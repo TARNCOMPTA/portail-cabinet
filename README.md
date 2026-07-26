@@ -151,15 +151,21 @@ Après modification : `cd /opt/portail && sudo docker compose up -d` pour appliq
 
 Variables avancées (déjà réglées dans `docker-compose.yml`, à modifier seulement si besoin) :
 
-| Variable                                                                                           | Rôle                                                                            | Défaut        |
-| -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------- |
-| `PORT`                                                                                             | Port interne de l'application                                                   | `3000`        |
-| `NAV_TIMEOUT`                                                                                      | Délai max (ms) d'attente des pages des organismes                               | `60000`       |
-| `REMOTE_BROWSER`                                                                                   | `1` = vue du navigateur serveur dans le portail (saisie captcha)                | `1`           |
-| `SCHEDULE`                                                                                         | `1` = planificateur activé (Paramètres ▸ Planification)                         | `1`           |
-| `SCHEDULE_URSSAF` / `SCHEDULE_CARPIMKO` / `SCHEDULE_CARMF` / `SCHEDULE_CARCDSF` / `SCHEDULE_CARPV` | Activer/désactiver la planification d'un organisme                              | `1`           |
-| `UPDATE_DISABLED`                                                                                  | `1` = désactive la mise à jour en un clic (retour au mode `git pull` + rebuild) | _(désactivé)_ |
-| `HEADLESS`                                                                                         | `false` = navigateur du robot visible (débogage local)                          | `true`        |
+| Variable                                                                                           | Rôle                                                                               | Défaut        |
+| -------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ------------- |
+| `PORT`                                                                                             | Port interne de l'application                                                      | `3000`        |
+| `NAV_TIMEOUT`                                                                                      | Délai max (ms) d'attente des pages des organismes                                  | `60000`       |
+| `REMOTE_BROWSER`                                                                                   | `1` = vue du navigateur serveur dans le portail (saisie captcha)                   | `1`           |
+| `SCHEDULE`                                                                                         | `1` = planificateur activé (Paramètres ▸ Planification)                            | `1`           |
+| `SCHEDULE_URSSAF` / `SCHEDULE_CARPIMKO` / `SCHEDULE_CARMF` / `SCHEDULE_CARCDSF` / `SCHEDULE_CARPV` | Activer/désactiver la planification d'un organisme                                 | `1`           |
+| `UPDATE_DISABLED`                                                                                  | `1` = désactive la mise à jour en un clic (retour au mode `git pull` + rebuild)    | _(désactivé)_ |
+| `HEADLESS`                                                                                         | `false` = navigateur du robot visible (débogage local)                             | `true`        |
+| `HEARTBEAT_MINUTES`                                                                                | Intervalle du signal « le portail est vivant » envoyé au webhook ; `0` = désactivé | `60`          |
+
+**Surveillance** : `GET /api/sante` est **public** (aucune donnée sensible) et renvoie
+`503` si la base ne répond plus — utilisable par n8n ou un service de surveillance. Le
+portail envoie aussi un battement de cœur régulier et une alerte quand une récupération
+planifiée n'a pas eu lieu : voir [INTEGRATION-N8N.md](INTEGRATION-N8N.md).
 
 ## Mises à jour
 

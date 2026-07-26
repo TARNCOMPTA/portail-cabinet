@@ -95,6 +95,17 @@ const initialesCabinet = () => {
 };
 // Endpoint PUBLIC (la page de login en a besoin) : nom + initiales, rien de sensible.
 app.get('/api/branding', (req, res) => res.json({ nom: nomCabinet(), initiales: initialesCabinet() }));
+// Controle de sante PUBLIC (pas de donnee sensible) : permet a une surveillance externe
+// (n8n, UptimeRobot, docker healthcheck) de verifier que le portail repond vraiment —
+// un conteneur « demarre » mais fige repond en erreur ou pas du tout.
+app.get('/api/sante', (req, res) => {
+  try {
+    listCabinets(); // touche la base : detecte un disque plein / une base verrouillee
+    res.json({ ok: true, version: versionLocale(), uptime_min: Math.round(process.uptime() / 60) });
+  } catch (e) {
+    res.status(503).json({ ok: false, erreur: e.message });
+  }
+});
 // Favicon genere a la volee avec les initiales du cabinet (meme style que le logo).
 app.get('/favicon.svg', (req, res) => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
@@ -223,6 +234,10 @@ function terminerSuivi(source) {
     nouveaux_documents: p.resultats.reduce((n, r) => n + (r.nb_docs || 0), 0),
     nouveaux_documents_detail: nouveauxDocsDepuis(source, p.demarre_le),
     echecs_detail: ko.slice(0, 50).map((r) => ({ nom: r.nom, message: r.message })),
+    // Comptes verrouilles (mot de passe refuse) : ils sont EXCLUS des tournees tant que
+    // personne ne ressaisit le mot de passe. Sans ce rappel dans le bilan, ils ne
+    // figuraient que dans un journal ephemere -> clients oublies pendant des semaines.
+    comptes_verrouilles: comptesVerrouilles(source),
   }).catch(() => {});
 }
 
@@ -233,6 +248,37 @@ const suiviImpots = suiviDe('impots');
 const suiviUrssaf = suiviDe('urssaf');
 const journalImpots = journalDe('impots');
 const journalUrssaf = journalDe('urssaf');
+
+// Clients dont le compte est verrouille (dernier echec = mot de passe refuse) : ils sont
+// exclus des tournees automatiques. Les impots n'ont pas cette notion (connexion par
+// compte cabinet + captcha, pas de mot de passe par client).
+function comptesVerrouilles(source) {
+  try {
+    const bases = { urssaf: urssafDb, carpimko, carmf, carcdsf, carpv };
+    const base = bases[source];
+    if (!base?.listClients) return [];
+    return base
+      .listClients()
+      .filter((c) => c.verrouille)
+      .slice(0, 100)
+      .map((c) => ({ nom: c.nom, message: c.dernier_message || null }));
+  } catch {
+    return [];
+  }
+}
+
+// Une recuperation de cette source a-t-elle eu lieu depuis l'horodatage donne ?
+// Sert au controle « tournee manquee ». `lance_le` est stocke en UTC par SQLite.
+function aEuUnRunDepuis(source, depuisMs) {
+  try {
+    const bases = { impots: { listRuns }, urssaf: urssafDb, carpimko, carmf, carcdsf, carpv };
+    const base = bases[source];
+    if (!base?.listRuns) return true; // source inconnue : ne pas alerter a tort
+    return base.listRuns(50).some((r) => new Date(String(r.lance_le || '').replace(' ', 'T') + 'Z').getTime() >= depuisMs);
+  } catch {
+    return true; // en cas de doute, pas d'alerte
+  }
+}
 
 // Detail des documents enregistres depuis le debut du suivi (pour le webhook :
 // « quel client, quel document ») — plafonne a 200 entrees. Les messages de la
@@ -1322,12 +1368,48 @@ if (
           // disparaissait aussitot. Et seulement si le lot a demarre (sinon ligne fantome).
           if (lance?.started !== false) journalDe(pl.source)(`Récupération ${pl.source.toUpperCase()} automatique (planifiée).`);
         }
+        // TOURNEE MANQUEE : 2 h apres l'heure prevue, si aucune recuperation de cette
+        // source n'a eu lieu depuis, c'est que le portail etait eteint/fige ou que le
+        // lancement a echoue. On alerte une fois par jour et par ligne. Le controle
+        // s'appuie sur les RUNS en base (et non sur `dernier`, perdu au redemarrage —
+        // or « le serveur etait eteint » est justement le cas qu'on veut detecter).
+        const cleManque = `manque:${pl.source}:${pl.jour}:${pl.heure}`;
+        if (JOURS_EN[pl.jour] === p.weekday && heure >= pl.heure + 2 && dernier[cleManque] !== jourCle) {
+          dernier[cleManque] = jourCle;
+          const depuis = Date.now() - (heure - pl.heure) * 3600000 - 15 * 60000; // marge 15 min
+          if (!aEuUnRunDepuis(pl.source, depuis)) {
+            console.warn(`  [planif] ⚠ Tournée ${pl.source.toUpperCase()} de ${pl.heure} h : AUCUNE exécution constatée.`);
+            envoyerWebhook('tournee_manquee', {
+              source: pl.source,
+              prevue_a: `${String(pl.heure).padStart(2, '0')}:00`,
+              jour: jourCle,
+              message: `La récupération ${pl.source.toUpperCase()} planifiée à ${pl.heure} h n'a pas eu lieu (portail arrêté, figé, ou lancement refusé).`,
+            }).catch(() => {});
+          }
+        }
       }
     } catch (e) {
       console.warn('[planif] ' + e.message);
     }
   }, 60000);
   console.log('  Planificateur actif (config : Paramètres ▸ Planification).');
+}
+
+// ---- Battement de coeur (« le portail est vivant ») -------------------------
+// Le portail ne peut pas prevenir qu'il est TOMBE : c'est l'ABSENCE de ce signal qui
+// doit alerter (interrupteur d'homme mort). Cote n8n : un workflow qui attend ce
+// webhook et envoie un mail s'il ne recoit rien pendant ~2 h. Intervalle configurable
+// (HEARTBEAT_MINUTES, 0 = desactive).
+const HEARTBEAT_MIN = Number(process.env.HEARTBEAT_MINUTES ?? 60);
+if (HEARTBEAT_MIN > 0) {
+  const battre = () =>
+    envoyerWebhook('portail_vivant', {
+      version: versionLocale(),
+      demarre_depuis_min: Math.round(process.uptime() / 60),
+      recuperations_en_cours: [...suivis.values()].filter((s) => s.actif).map((s) => s.source),
+    }).catch(() => {});
+  setInterval(battre, HEARTBEAT_MIN * 60000);
+  setTimeout(battre, 30000); // premier battement 30 s apres le demarrage
 }
 
 const PORT = Number(process.env.PORT || 3003);
