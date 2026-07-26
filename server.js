@@ -44,7 +44,7 @@ import {
   resetPaiementCfe,
 } from './src/db.js';
 import { verifierCle } from './src/crypto.js';
-import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine } from './src/quarantaine.js';
+import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine, supprimerLot } from './src/quarantaine.js';
 import { analyserEntree, indexerPortefeuille } from './src/quarantaine-tri.js';
 import { scrapeClient, listerClients, scrapeAll, recupererHabilitations, dossierHabilitations } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
@@ -686,17 +686,22 @@ const etatTri = () => ({
   analyses: tri.verdicts.size,
 });
 
-app.get('/api/quarantaine', (req, res) => {
-  const tout = quarantaineListe(req.query.rafraichir === '1');
-  const q = String(req.query.q || '')
+// Selection commune a l'affichage et au vidage : le bouton « Vider » doit porter
+// EXACTEMENT sur ce que l'ecran montre, sans quoi on supprimerait plus que prevu.
+function filtrerQuarantaine({ source, verdict, q }, tout = quarantaineListe()) {
+  const texte = String(q || '')
     .trim()
     .toLowerCase();
-  const source = String(req.query.source || '').trim();
-  const verdict = String(req.query.verdict || '').trim();
   let liste = tout;
-  if (source) liste = liste.filter((d) => d.source === source);
-  if (verdict) liste = liste.filter((d) => (tri.verdicts.get(d.id)?.verdict || 'non_analyse') === verdict);
-  if (q) liste = liste.filter((d) => `${d.clientNom} ${d.fichier} ${d.source} ${d.libelle || ''}`.toLowerCase().includes(q));
+  if (source) liste = liste.filter((d) => d.source === String(source).trim());
+  if (verdict) liste = liste.filter((d) => (tri.verdicts.get(d.id)?.verdict || 'non_analyse') === String(verdict).trim());
+  if (texte) liste = liste.filter((d) => `${d.clientNom} ${d.fichier} ${d.source} ${d.libelle || ''}`.toLowerCase().includes(texte));
+  return liste;
+}
+
+app.get('/api/quarantaine', (req, res) => {
+  const tout = quarantaineListe(req.query.rafraichir === '1');
+  const liste = filtrerQuarantaine(req.query, tout);
   const taille = Math.min(200, Math.max(10, Number(req.query.taille) || 50));
   const pages = Math.max(1, Math.ceil(liste.length / taille));
   const page = Math.min(pages, Math.max(1, Number(req.query.page) || 1));
@@ -746,9 +751,7 @@ async function analyserQuarantaine() {
       const chemin = cheminSur(e.id);
       const { clients, index } = portefeuille(e.source);
       const client = e.clientId != null ? clients.find((c) => c.id === e.clientId) || null : null;
-      const r = chemin
-        ? await analyserEntree({ chemin, source: e.source, client, index })
-        : { verdict: 'erreur', motif: 'Chemin de quarantaine invalide.' };
+      const r = chemin ? await analyserEntree({ chemin, source: e.source, client, index }) : { verdict: 'erreur', motif: 'Chemin de quarantaine invalide.' };
       tri.verdicts.set(e.id, r);
       tri.compte[r.verdict] = (tri.compte[r.verdict] || 0) + 1;
       tri.fait++;
@@ -873,6 +876,24 @@ app.delete('/api/quarantaine', (req, res) => {
   tri.verdicts.delete(id);
   invaliderQuarantaine();
   res.json({ ok: true });
+});
+
+// Vide la quarantaine : supprime tout ce que les filtres courants selectionnent (aucun
+// filtre = la totalite). Reserve aux administrateurs, comme les autres actions de masse.
+// Un document supprime n'est PAS perdu : n'ayant jamais ete enregistre en base, il sera
+// retelecharge puis reverifie a la recuperation suivante — a moins qu'il n'ait entre-temps
+// disparu du site de l'organisme.
+app.delete('/api/quarantaine/tout', requireAdmin, (req, res) => {
+  if (tri.actif) return res.status(409).json({ error: 'Analyse en cours — attends la fin avant de vider.' });
+  const filtres = { source: req.body?.source || req.query.source, verdict: req.body?.verdict || req.query.verdict, q: req.body?.q ?? req.query.q };
+  const liste = filtrerQuarantaine(filtres);
+  if (!liste.length) return res.json({ supprimes: 0, echecs: 0, details: [] });
+  const { supprimes, echecs } = supprimerLot(liste.map((d) => d.id));
+  for (const d of liste) tri.verdicts.delete(d.id);
+  tri.compte = compteVide();
+  for (const v of tri.verdicts.values()) tri.compte[v.verdict] = (tri.compte[v.verdict] || 0) + 1;
+  invaliderQuarantaine();
+  res.json({ supprimes, echecs: echecs.length, details: echecs.slice(0, 20) });
 });
 
 // Genere un lien de telechargement direct (usage unique, 10 min) pour un document

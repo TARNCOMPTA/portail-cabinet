@@ -6,7 +6,7 @@
 // d'origine, libellé, eventid/date du document, raison du rejet). Sans ce manifeste on
 // pourrait remettre le fichier en place mais pas recréer sa ligne en base : il serait
 // retéléchargé puis remis en quarantaine au passage suivant, en boucle.
-import { readdirSync, statSync, existsSync, readFileSync, mkdirSync, renameSync, copyFileSync, unlinkSync } from 'node:fs';
+import { readdirSync, statSync, existsSync, readFileSync, mkdirSync, renameSync, copyFileSync, unlinkSync, rmdirSync } from 'node:fs';
 import { resolve, dirname, basename, relative, sep } from 'node:path';
 import { QUARANTAINE_DIR } from './validation-pdf.js';
 
@@ -103,6 +103,52 @@ export function supprimerQuarantaine(id) {
   unlinkSync(p);
   if (existsSync(`${p}.json`)) unlinkSync(`${p}.json`);
   return { ok: true };
+}
+
+/** Retire les dossiers devenus vides (la racine de quarantaine, elle, est conservée).
+ *  Sans ça, vider la quarantaine laisserait des centaines de dossiers clients vides. */
+export function nettoyerDossiersVides() {
+  const racine = resolve(QUARANTAINE_DIR);
+  if (!existsSync(racine)) return 0;
+  let retires = 0;
+  const parcourir = (dir) => {
+    let entrees = [];
+    try {
+      entrees = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entrees) if (e.isDirectory()) parcourir(resolve(dir, e.name));
+    if (dir === racine) return; // on ne supprime jamais le dossier de quarantaine lui-même
+    try {
+      if (!readdirSync(dir).length) {
+        rmdirSync(dir);
+        retires++;
+      }
+    } catch {
+      /* dossier verrouillé ou déjà parti : sans conséquence */
+    }
+  };
+  parcourir(racine);
+  return retires;
+}
+
+/** Suppression en lot (vidage de la quarantaine), dossiers vides nettoyés au passage.
+ *  @returns {{supprimes:number, echecs:string[]}} */
+export function supprimerLot(ids) {
+  let supprimes = 0;
+  const echecs = [];
+  for (const id of ids || []) {
+    try {
+      const r = supprimerQuarantaine(id);
+      if (r.ok) supprimes++;
+      else echecs.push(`${id} : ${r.error}`);
+    } catch (e) {
+      echecs.push(`${id} : ${e.message}`);
+    }
+  }
+  nettoyerDossiersVides();
+  return { supprimes, echecs };
 }
 
 /**

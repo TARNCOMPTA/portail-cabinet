@@ -5,10 +5,10 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { verifierEtClasser } from '../src/validation-pdf.js';
-import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine, QUARANTAINE_DIR } from '../src/quarantaine.js';
+import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine, supprimerLot, nettoyerDossiersVides, QUARANTAINE_DIR } from '../src/quarantaine.js';
 
 // PDF minimal contenant un texte donné (assez d'octets pour passer les garde-fous).
 function pdf(texte) {
@@ -116,6 +116,33 @@ test('supprimer retire le document et son manifeste', async () => {
   assert.ok(!existsSync(p));
   assert.ok(!existsSync(`${p}.json`));
   assert.equal(supprimerQuarantaine(entree.id).ok, false, 'seconde suppression refusée proprement');
+});
+
+test('supprimerLot vide un lot et retire les dossiers devenus vides', async () => {
+  await mettreEnQuarantaine('lot-1.pdf', { libelle: 'A', dateDoc: '2026' });
+  await mettreEnQuarantaine('lot-2.pdf', { libelle: 'B', dateDoc: '2026' });
+  // On vide TOUT le dossier de test (c'est ce que fait « Vider la quarantaine ») : sinon
+  // un reliquat laissé par un test précédent empêcherait légitimement le rmdir.
+  const aJeter = listerQuarantaine().filter((q) => cheminSur(q.id).startsWith(resolve(QDIR)));
+  assert.ok(aJeter.length >= 2);
+  const dossier = dirname(cheminSur(aJeter[0].id));
+  const r = supprimerLot([...aJeter.map((q) => q.id), 'carmf/9999_INCONNU/absent.pdf']);
+  assert.equal(r.supprimes, aJeter.length);
+  assert.equal(r.echecs.length, 1, 'un identifiant inconnu est signalé sans interrompre le lot');
+  assert.ok(!existsSync(dossier), 'le dossier client vidé a été retiré');
+  assert.ok(!listerQuarantaine().some((q) => cheminSur(q.id).startsWith(resolve(QDIR))), 'plus rien en quarantaine de test');
+  assert.ok(existsSync(QUARANTAINE_DIR), 'la racine de quarantaine est conservée');
+});
+
+test('supprimerLot sans identifiant ne fait rien et ne casse pas', () => {
+  assert.deepEqual(supprimerLot([]), { supprimes: 0, echecs: [] });
+  assert.deepEqual(supprimerLot(undefined), { supprimes: 0, echecs: [] });
+  assert.ok(existsSync(QUARANTAINE_DIR));
+});
+
+test('nettoyerDossiersVides ne supprime jamais la racine de quarantaine', () => {
+  nettoyerDossiersVides();
+  assert.ok(existsSync(QUARANTAINE_DIR), 'la racine survit même quand tout est vide');
 });
 
 test('cheminSur verrouille l’accès au dossier de quarantaine (anti-traversée)', () => {

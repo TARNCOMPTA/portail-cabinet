@@ -1539,6 +1539,7 @@ async function chargerMoi() {
   if (av) av.textContent = (moi.email || '?').replace(/@.*/, '').slice(0, 2).toUpperCase();
   $('#user-chip').hidden = false;
   if (moi.role === 'admin') {
+    majBoutonVider(); // la quarantaine a pu se charger avant qu'on connaisse le rôle
     $('#panel-users').hidden = false;
     const sb = $('#subtab-btn-users');
     if (sb) sb.hidden = false;
@@ -1866,6 +1867,7 @@ let quarantaineFiltre = '';
 let quarantaineSource = '';
 let quarantaineVerdict = '';
 let quarantaineElements = [];
+let quarantaineTotaux = { total: 0, filtres: 0 };
 let triTimer = null;
 const LIB_SOURCE = { impots: 'Impôts', urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV' };
 const LIB_VERDICT = {
@@ -1902,11 +1904,19 @@ async function chargerQuarantaine(forcer = false) {
   }
   $('#q-compte').textContent = d.filtres === d.total ? `${d.total} document(s)` : `${d.filtres} sur ${d.total} document(s)`;
   $('#q-vide').hidden = d.filtres !== 0;
+  quarantaineTotaux = { total: d.total, filtres: d.filtres };
+  majBoutonVider();
   rendreQuarantaine();
-  renderPagination($('#q-pagination'), d.page, d.pages, (n) => {
-    quarantainePage = n;
-    chargerQuarantaine();
-  }, d.filtres);
+  renderPagination(
+    $('#q-pagination'),
+    d.page,
+    d.pages,
+    (n) => {
+      quarantainePage = n;
+      chargerQuarantaine();
+    },
+    d.filtres,
+  );
   majTri(d.tri);
 }
 
@@ -1916,7 +1926,9 @@ function rendreQuarantaine() {
   tb.innerHTML = quarantaineElements
     .map((d) => {
       const t = d.tri;
-      const verdict = t ? `<br /><span class="badge ${t.verdict === 'autre' ? 'err' : t.verdict === 'client' ? 'ok' : ''}">${esc(LIB_VERDICT[t.verdict] || t.verdict)}</span> <span class="aide">${esc(t.motif)}</span>` : '';
+      const verdict = t
+        ? `<br /><span class="badge ${t.verdict === 'autre' ? 'err' : t.verdict === 'client' ? 'ok' : ''}">${esc(LIB_VERDICT[t.verdict] || t.verdict)}</span> <span class="aide">${esc(t.motif)}</span>`
+        : '';
       return `<tr>
         <td>${esc(d.clientNom || '—')}</td>
         <td><span class="badge">${esc(LIB_SOURCE[d.source] || d.source)}</span></td>
@@ -1936,6 +1948,53 @@ function rendreQuarantaine() {
     })
     .join('');
 }
+
+// ---- Vidage de la quarantaine (admin) --------------------------------------
+// Le bouton porte sur la SÉLECTION affichée : sans filtre il vide tout, avec un filtre il
+// se limite à ce qu'on voit — pour pouvoir ne purger qu'un organisme ou qu'un verdict.
+const quarantaineFiltree = () => !!(quarantaineFiltre || quarantaineSource || quarantaineVerdict);
+
+function majBoutonVider() {
+  const b = $('#q-vider');
+  if (!b) return;
+  const n = quarantaineFiltree() ? quarantaineTotaux.filtres : quarantaineTotaux.total;
+  b.hidden = moi?.role !== 'admin' || !n;
+  b.innerHTML = `<i class="ph ph-trash"></i> ${quarantaineFiltree() ? `Vider la sélection (${n})` : `Vider la quarantaine (${n})`}`;
+}
+
+$('#q-vider')?.addEventListener('click', async () => {
+  const filtree = quarantaineFiltree();
+  const n = filtree ? quarantaineTotaux.filtres : quarantaineTotaux.total;
+  if (!n) return;
+  const quoi = filtree ? `les ${n} document(s) de la sélection affichée` : `TOUS les ${n} document(s) de la quarantaine`;
+  if (
+    !confirm(
+      `Supprimer définitivement ${quoi} ?\n\n` +
+        'Ces documents n’ont jamais été enregistrés : ils seront retéléchargés et revérifiés à la prochaine récupération. ' +
+        'Seuls ceux qui auraient disparu du site de l’organisme entre-temps seraient perdus.',
+    )
+  )
+    return;
+  const b = $('#q-vider');
+  b.disabled = true;
+  const avant = b.innerHTML;
+  b.innerHTML = '<i class="ph ph-spinner"></i> Suppression…';
+  try {
+    const p = new URLSearchParams();
+    if (quarantaineFiltre) p.set('q', quarantaineFiltre);
+    if (quarantaineSource) p.set('source', quarantaineSource);
+    if (quarantaineVerdict) p.set('verdict', quarantaineVerdict);
+    const r = await api(`/api/quarantaine/tout?${p}`, { method: 'DELETE' });
+    toast(`${r.supprimes} document(s) supprimé(s)${r.echecs ? ` — ${r.echecs} échec(s)` : ''}.`, r.echecs ? 'err' : 'ok');
+    if (r.details?.length) console.warn('Échecs du vidage :', r.details);
+  } catch (e) {
+    toast(e.message, 'err');
+    b.innerHTML = avant;
+  }
+  b.disabled = false;
+  quarantainePage = 1;
+  await chargerQuarantaine(true);
+});
 
 // ---- Tri automatique de la quarantaine -------------------------------------
 function majTri(t) {
@@ -1970,7 +2029,12 @@ function majTri(t) {
 }
 
 $('#q-trier')?.addEventListener('click', async () => {
-  if (!confirm('Analyser tous les documents en quarantaine ?\n\nChaque PDF est relu pour déterminer à qui il appartient. Rien n’est supprimé ni déplacé : tu verras le bilan avant de décider.')) return;
+  if (
+    !confirm(
+      'Analyser tous les documents en quarantaine ?\n\nChaque PDF est relu pour déterminer à qui il appartient. Rien n’est supprimé ni déplacé : tu verras le bilan avant de décider.',
+    )
+  )
+    return;
   try {
     await api('/api/quarantaine/analyser', { method: 'POST' });
     toast('Analyse lancée.', 'ok');
