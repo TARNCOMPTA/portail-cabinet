@@ -1867,7 +1867,9 @@ let quarantaineFiltre = '';
 let quarantaineSource = '';
 let quarantaineVerdict = '';
 let quarantaineElements = [];
-let quarantaineTotaux = { total: 0, filtres: 0 };
+// Compte ET filtres du dernier affichage, mémorisés ensemble : le bouton « Vider » doit
+// raisonner sur ce que l'écran montre, pas sur des filtres modifiés depuis.
+let quarantaineTotaux = { total: 0, filtres: 0, params: {} };
 let triTimer = null;
 const LIB_SOURCE = { impots: 'Impôts', urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV' };
 const LIB_VERDICT = {
@@ -1904,7 +1906,7 @@ async function chargerQuarantaine(forcer = false) {
   }
   $('#q-compte').textContent = d.filtres === d.total ? `${d.total} document(s)` : `${d.filtres} sur ${d.total} document(s)`;
   $('#q-vide').hidden = d.filtres !== 0;
-  quarantaineTotaux = { total: d.total, filtres: d.filtres };
+  quarantaineTotaux = { total: d.total, filtres: d.filtres, params: { q: quarantaineFiltre, source: quarantaineSource, verdict: quarantaineVerdict } };
   majBoutonVider();
   rendreQuarantaine();
   renderPagination(
@@ -1952,19 +1954,23 @@ function rendreQuarantaine() {
 // ---- Vidage de la quarantaine (admin) --------------------------------------
 // Le bouton porte sur la SÉLECTION affichée : sans filtre il vide tout, avec un filtre il
 // se limite à ce qu'on voit — pour pouvoir ne purger qu'un organisme ou qu'un verdict.
-const quarantaineFiltree = () => !!(quarantaineFiltre || quarantaineSource || quarantaineVerdict);
+const aDesFiltres = (p = {}) => !!(p.q || p.source || p.verdict);
 
 function majBoutonVider() {
   const b = $('#q-vider');
   if (!b) return;
-  const n = quarantaineFiltree() ? quarantaineTotaux.filtres : quarantaineTotaux.total;
+  const { total, filtres, params } = quarantaineTotaux;
+  const n = aDesFiltres(params) ? filtres : total;
   b.hidden = moi?.role !== 'admin' || !n;
-  b.innerHTML = `<i class="ph ph-trash"></i> ${quarantaineFiltree() ? `Vider la sélection (${n})` : `Vider la quarantaine (${n})`}`;
+  b.innerHTML = `<i class="ph ph-trash"></i> ${aDesFiltres(params) ? `Vider la sélection (${n})` : `Vider la quarantaine (${n})`}`;
 }
 
 $('#q-vider')?.addEventListener('click', async () => {
-  const filtree = quarantaineFiltree();
-  const n = filtree ? quarantaineTotaux.filtres : quarantaineTotaux.total;
+  // Compte ET filtres proviennent du même affichage : si l'utilisateur a changé un filtre
+  // depuis, le serveur comptera autre chose que `attendu` et refusera plutôt que d'élargir.
+  const { total, filtres, params } = quarantaineTotaux;
+  const filtree = aDesFiltres(params);
+  const n = filtree ? filtres : total;
   if (!n) return;
   const quoi = filtree ? `les ${n} document(s) de la sélection affichée` : `TOUS les ${n} document(s) de la quarantaine`;
   if (
@@ -1980,10 +1986,10 @@ $('#q-vider')?.addEventListener('click', async () => {
   const avant = b.innerHTML;
   b.innerHTML = '<i class="ph ph-spinner"></i> Suppression…';
   try {
-    const p = new URLSearchParams();
-    if (quarantaineFiltre) p.set('q', quarantaineFiltre);
-    if (quarantaineSource) p.set('source', quarantaineSource);
-    if (quarantaineVerdict) p.set('verdict', quarantaineVerdict);
+    const p = new URLSearchParams({ attendu: String(n) });
+    if (params.q) p.set('q', params.q);
+    if (params.source) p.set('source', params.source);
+    if (params.verdict) p.set('verdict', params.verdict);
     const r = await api(`/api/quarantaine/tout?${p}`, { method: 'DELETE' });
     toast(`${r.supprimes} document(s) supprimé(s)${r.echecs ? ` — ${r.echecs} échec(s)` : ''}.`, r.echecs ? 'err' : 'ok');
     if (r.details?.length) console.warn('Échecs du vidage :', r.details);
@@ -1999,7 +2005,20 @@ $('#q-vider')?.addEventListener('click', async () => {
 // ---- Tri automatique de la quarantaine -------------------------------------
 function majTri(t) {
   const panneau = $('#q-tri-panneau');
-  if (!panneau || !t || (!t.actif && !t.analyses)) return;
+  if (!panneau || !t) return;
+  // Une analyse vient de se terminer : on arrête le rafraîchissement automatique.
+  const finAnalyse = !t.actif && triTimer;
+  if (finAnalyse) {
+    clearInterval(triTimer);
+    triTimer = null;
+  }
+  // Plus rien d'analysé (quarantaine vidée, ou verdicts tous appliqués) : le panneau
+  // afficherait des chiffres périmés et des boutons qui ne feraient plus rien.
+  if (!t.actif && !t.analyses) {
+    panneau.hidden = true;
+    if (finAnalyse) chargerQuarantaine(true);
+    return;
+  }
   panneau.hidden = false;
   const pct = t.total ? Math.round((t.fait / t.total) * 100) : 0;
   $('#q-tri-fill').style.width = `${pct}%`;
@@ -2019,13 +2038,9 @@ function majTri(t) {
   $('#q-appliquer-autre').disabled = !c.autre;
   $('#q-appliquer-client').textContent = c.client ? `Récupérer les ${c.client} document(s) rejeté(s) à tort` : 'Aucun document rejeté à tort';
   $('#q-appliquer-autre').textContent = c.autre ? `Supprimer les ${c.autre} document(s) d’autres clients` : 'Aucun document d’un autre client';
-  // Pendant l'analyse on rafraîchit tout seul ; à la fin on s'arrête.
+  // Pendant l'analyse on rafraîchit tout seul (l'arrêt est géré en tête de fonction).
   if (t.actif && !triTimer) triTimer = setInterval(async () => majTri(await api('/api/quarantaine/tri').catch(() => null)), 2000);
-  if (!t.actif && triTimer) {
-    clearInterval(triTimer);
-    triTimer = null;
-    chargerQuarantaine(true);
-  }
+  if (finAnalyse) chargerQuarantaine(true);
 }
 
 $('#q-trier')?.addEventListener('click', async () => {

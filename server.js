@@ -883,10 +883,25 @@ app.delete('/api/quarantaine', (req, res) => {
 // Un document supprime n'est PAS perdu : n'ayant jamais ete enregistre en base, il sera
 // retelecharge puis reverifie a la recuperation suivante — a moins qu'il n'ait entre-temps
 // disparu du site de l'organisme.
+//
+// L'appelant DOIT annoncer le nombre de documents qu'il croit supprimer : on refuse si
+// notre propre selection en compte un autre. Sans ce garde-fou, un ecran laisse ouvert
+// supprimerait bien plus que ce qu'il affiche — le filtre « Pas encore analyse » s'inverse
+// en « tout » si l'analyse a ete relancee ou le portail redemarre entre-temps (l'etat des
+// verdicts vit en memoire), et un filtre modifie juste avant le clic decale la selection.
 app.delete('/api/quarantaine/tout', requireAdmin, (req, res) => {
   if (tri.actif) return res.status(409).json({ error: 'Analyse en cours — attends la fin avant de vider.' });
   const filtres = { source: req.body?.source || req.query.source, verdict: req.body?.verdict || req.query.verdict, q: req.body?.q ?? req.query.q };
+  const attendu = Number(req.body?.attendu ?? req.query.attendu);
+  if (!Number.isInteger(attendu) || attendu < 0) {
+    return res.status(400).json({ error: 'Nombre de documents attendu manquant — actualise l’écran avant de vider.' });
+  }
   const liste = filtrerQuarantaine(filtres);
+  if (liste.length !== attendu) {
+    return res.status(409).json({
+      error: `La sélection a changé depuis l’affichage (${liste.length} document(s) au lieu de ${attendu}) — actualise l’écran avant de vider.`,
+    });
+  }
   if (!liste.length) return res.json({ supprimes: 0, echecs: 0, details: [] });
   const { supprimes, echecs } = supprimerLot(liste.map((d) => d.id));
   for (const d of liste) tri.verdicts.delete(d.id);
