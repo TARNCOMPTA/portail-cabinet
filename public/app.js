@@ -1858,55 +1858,172 @@ async function chargerConfig() {
 // ---- Quarantaine : documents rejetés par la vérification d'appartenance -----
 // Sans cet écran, un document mis de côté n'apparaissait NULLE PART dans le portail :
 // il fallait fouiller le serveur en ligne de commande pour le récupérer.
-let quarantaineCache = [];
+// La quarantaine peut compter des MILLIERS de lignes : tout est filtré et paginé côté
+// serveur (afficher la liste entière figeait la page, au point qu'une suppression
+// semblait sans effet).
+let quarantainePage = 1;
 let quarantaineFiltre = '';
+let quarantaineSource = '';
+let quarantaineVerdict = '';
+let quarantaineElements = [];
+let triTimer = null;
 const LIB_SOURCE = { impots: 'Impôts', urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV' };
+const LIB_VERDICT = {
+  client: 'Appartient bien à ce client',
+  autre: 'Appartient à un autre client',
+  indetermine: 'Indéterminé',
+  illisible: 'PDF sans texte',
+  erreur: 'Illisible',
+};
 
-async function chargerQuarantaine() {
+async function chargerQuarantaine(forcer = false) {
+  let d;
+  const p = new URLSearchParams({ page: quarantainePage, taille: 50 });
+  if (quarantaineFiltre) p.set('q', quarantaineFiltre);
+  if (quarantaineSource) p.set('source', quarantaineSource);
+  if (quarantaineVerdict) p.set('verdict', quarantaineVerdict);
+  if (forcer) p.set('rafraichir', '1');
   try {
-    quarantaineCache = await api('/api/quarantaine');
+    d = await api(`/api/quarantaine?${p}`);
   } catch {
     return;
   }
+  quarantaineElements = d.elements || [];
+  quarantainePage = d.page;
   const badge = $('#nav-quarantaine-count');
-  if (badge) badge.textContent = quarantaineCache.length || '';
+  if (badge) badge.textContent = d.total || '';
+  // Le filtre par organisme se remplit avec ce qui existe réellement.
+  const sel = $('#q-filtre-source');
+  if (sel && sel.options.length <= 1) {
+    for (const [src, n] of Object.entries(d.parSource || {})) {
+      sel.insertAdjacentHTML('beforeend', `<option value="${esc(src)}">${esc(LIB_SOURCE[src] || src)} (${n})</option>`);
+    }
+    sel.value = quarantaineSource;
+  }
+  $('#q-compte').textContent = d.filtres === d.total ? `${d.total} document(s)` : `${d.filtres} sur ${d.total} document(s)`;
+  $('#q-vide').hidden = d.filtres !== 0;
   rendreQuarantaine();
+  renderPagination($('#q-pagination'), d.page, d.pages, (n) => {
+    quarantainePage = n;
+    chargerQuarantaine();
+  }, d.filtres);
+  majTri(d.tri);
 }
 
 function rendreQuarantaine() {
   const tb = $('#table-quarantaine tbody');
   if (!tb) return;
-  const q = quarantaineFiltre.toLowerCase();
-  const liste = q ? quarantaineCache.filter((d) => `${d.clientNom} ${d.fichier} ${d.source} ${d.libelle || ''}`.toLowerCase().includes(q)) : quarantaineCache;
-  $('#q-compte').textContent = liste.length ? `${liste.length} document(s)` : '';
-  $('#q-vide').hidden = liste.length !== 0;
-  tb.innerHTML = liste
-    .map(
-      (d) => `<tr>
+  tb.innerHTML = quarantaineElements
+    .map((d) => {
+      const t = d.tri;
+      const verdict = t ? `<br /><span class="badge ${t.verdict === 'autre' ? 'err' : t.verdict === 'client' ? 'ok' : ''}">${esc(LIB_VERDICT[t.verdict] || t.verdict)}</span> <span class="aide">${esc(t.motif)}</span>` : '';
+      return `<tr>
         <td>${esc(d.clientNom || '—')}</td>
         <td><span class="badge">${esc(LIB_SOURCE[d.source] || d.source)}</span></td>
         <td><span class="lib">${esc(d.libelle || d.fichier)}</span><br /><span class="date">${esc(d.fichier)}</span></td>
-        <td class="aide" style="margin:0">${esc(d.raison)}</td>
+        <td class="aide" style="margin:0">${esc(d.raison)}${verdict}</td>
         <td><span class="date">${esc(d.date)}</span></td>
         <td><span class="row-actions">
           <a class="btn small" href="/api/quarantaine/file?id=${encodeURIComponent(d.id)}" target="_blank" rel="noopener">Ouvrir</a>
           ${
             d.reintegrable
               ? `<button class="btn small primary" data-q-ok="${esc(d.id)}" title="Ranger dans le dossier du client et l'enregistrer">C’est ce client</button>`
-              : `<button class="btn small" disabled title="Métadonnées absentes : télécharge le document et classe-le à la main">C’est ce client</button>`
+              : `<button class="btn small" disabled title="Métadonnées absentes : supprime-le, il sera récupéré et classé au prochain passage">C’est ce client</button>`
           }
           <button class="btn small danger" data-q-del="${esc(d.id)}">Supprimer</button>
         </span></td>
-      </tr>`,
-    )
+      </tr>`;
+    })
     .join('');
 }
+
+// ---- Tri automatique de la quarantaine -------------------------------------
+function majTri(t) {
+  const panneau = $('#q-tri-panneau');
+  if (!panneau || !t || (!t.actif && !t.analyses)) return;
+  panneau.hidden = false;
+  const pct = t.total ? Math.round((t.fait / t.total) * 100) : 0;
+  $('#q-tri-fill').style.width = `${pct}%`;
+  $('#q-tri-encours').hidden = !t.actif;
+  $('#q-tri-resultat').hidden = t.actif;
+  $('#q-tri-etat').textContent = t.actif
+    ? `Analyse en cours : ${t.fait} / ${t.total} document(s)…`
+    : t.erreur
+      ? `Analyse interrompue : ${t.erreur}`
+      : `${t.analyses} document(s) analysé(s).`;
+  const c = t.compte || {};
+  $('#q-tri-compte').innerHTML = Object.entries(LIB_VERDICT)
+    .filter(([k]) => c[k])
+    .map(([k, lib]) => `<li><strong>${c[k]}</strong> — ${esc(lib)}</li>`)
+    .join('');
+  $('#q-appliquer-client').disabled = !c.client;
+  $('#q-appliquer-autre').disabled = !c.autre;
+  $('#q-appliquer-client').textContent = c.client ? `Récupérer les ${c.client} document(s) rejeté(s) à tort` : 'Aucun document rejeté à tort';
+  $('#q-appliquer-autre').textContent = c.autre ? `Supprimer les ${c.autre} document(s) d’autres clients` : 'Aucun document d’un autre client';
+  // Pendant l'analyse on rafraîchit tout seul ; à la fin on s'arrête.
+  if (t.actif && !triTimer) triTimer = setInterval(async () => majTri(await api('/api/quarantaine/tri').catch(() => null)), 2000);
+  if (!t.actif && triTimer) {
+    clearInterval(triTimer);
+    triTimer = null;
+    chargerQuarantaine(true);
+  }
+}
+
+$('#q-trier')?.addEventListener('click', async () => {
+  if (!confirm('Analyser tous les documents en quarantaine ?\n\nChaque PDF est relu pour déterminer à qui il appartient. Rien n’est supprimé ni déplacé : tu verras le bilan avant de décider.')) return;
+  try {
+    await api('/api/quarantaine/analyser', { method: 'POST' });
+    toast('Analyse lancée.', 'ok');
+    majTri(await api('/api/quarantaine/tri'));
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+});
+$('#q-tri-stop')?.addEventListener('click', async () => {
+  await api('/api/quarantaine/tri/stop', { method: 'POST' }).catch(() => {});
+  toast('Arrêt demandé.', 'ok');
+});
+$('#q-tri-fermer')?.addEventListener('click', () => {
+  $('#q-tri-panneau').hidden = true;
+});
+
+async function appliquerTri(verdict, question) {
+  if (!confirm(question)) return;
+  const btn = verdict === 'client' ? $('#q-appliquer-client') : $('#q-appliquer-autre');
+  btn.disabled = true;
+  try {
+    const r = await api('/api/quarantaine/appliquer', { method: 'POST', body: JSON.stringify({ verdicts: [verdict] }) });
+    const parts = [];
+    if (r.reintegres) parts.push(`${r.reintegres} remis dans le dossier du client`);
+    if (r.supprimes) parts.push(`${r.supprimes} retiré(s) de la quarantaine`);
+    if (r.echecs) parts.push(`${r.echecs} échec(s)`);
+    toast(parts.join(', ') || 'Rien à faire.', r.echecs ? 'err' : 'ok');
+    if (r.details?.length) console.warn('Échecs du tri :', r.details);
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+  await chargerQuarantaine(true);
+  chargerDocuments();
+}
+
+$('#q-appliquer-client')?.addEventListener('click', () =>
+  appliquerTri(
+    'client',
+    'Ces documents mentionnent bien leur client : ils ont été mis de côté à tort.\n\nCeux dont on connaît la destination sont remis dans le dossier du client. Les autres sont retirés de la quarantaine et seront récupérés puis classés automatiquement au prochain passage.\n\nContinuer ?',
+  ),
+);
+$('#q-appliquer-autre')?.addEventListener('click', () =>
+  appliquerTri(
+    'autre',
+    'Ces documents appartiennent à D’AUTRES clients du cabinet (nom et identifiant vérifiés dans le PDF). Ils n’ont rien à faire dans ces dossiers et seront supprimés définitivement.\n\nLes vrais documents de chaque client, eux, sont récupérés normalement lors des passages suivants.\n\nSupprimer ?',
+  ),
+);
 
 $('#table-quarantaine')?.addEventListener('click', async (e) => {
   const btn = e.target.closest('button[data-q-ok], button[data-q-del]');
   if (!btn) return;
   const id = btn.dataset.qOk || btn.dataset.qDel;
-  const doc = quarantaineCache.find((d) => d.id === id);
+  const doc = quarantaineElements.find((d) => d.id === id);
   btn.disabled = true;
   try {
     if (btn.dataset.qOk) {
@@ -1921,18 +2038,33 @@ $('#table-quarantaine')?.addEventListener('click', async (e) => {
       await api('/api/quarantaine', { method: 'DELETE', body: JSON.stringify({ id }) });
       toast('Document supprimé.', 'ok');
     }
-    await chargerQuarantaine();
+    await chargerQuarantaine(true);
     chargerDocuments();
   } catch (err) {
     toast(err.message, 'err');
     btn.disabled = false;
   }
 });
+let qRechercheTimer = null;
 $('#q-recherche')?.addEventListener('input', (e) => {
   quarantaineFiltre = e.target.value.trim();
-  rendreQuarantaine();
+  clearTimeout(qRechercheTimer);
+  qRechercheTimer = setTimeout(() => {
+    quarantainePage = 1;
+    chargerQuarantaine();
+  }, 250);
 });
-$('#q-rafraichir')?.addEventListener('click', chargerQuarantaine);
+$('#q-filtre-source')?.addEventListener('change', (e) => {
+  quarantaineSource = e.target.value;
+  quarantainePage = 1;
+  chargerQuarantaine();
+});
+$('#q-filtre-verdict')?.addEventListener('change', (e) => {
+  quarantaineVerdict = e.target.value;
+  quarantainePage = 1;
+  chargerQuarantaine();
+});
+$('#q-rafraichir')?.addEventListener('click', () => chargerQuarantaine(true));
 
 async function rafraichir() {
   await chargerCabinets();

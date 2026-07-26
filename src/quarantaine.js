@@ -57,13 +57,16 @@ export function listerQuarantaine() {
       // Repli quand le manifeste manque (fichier mis en quarantaine avant cette version) :
       // la source et le client se deduisent du chemin <source>/<clientId_nom>/...
       const parts = relatif(p).split('/');
+      const idDossier = (parts[1] || '').match(/^(\d+)_/);
       out.push({
         id: relatif(p),
         fichier: e.name,
         taille: st.size,
         date: (meta.date || st.mtime.toISOString()).slice(0, 19).replace('T', ' '),
         source: meta.source || parts[0] || '',
-        clientId: meta.clientId ?? null,
+        // Le client sert au tri automatique meme sans manifeste ; la reintegration, elle,
+        // reste conditionnee au manifeste (seul lui connait le chemin d'origine exact).
+        clientId: meta.clientId ?? (idDossier ? Number(idDossier[1]) : null),
         clientNom: meta.clientNom || (parts[1] || '').replace(/^\d+_/, '').replace(/_/g, ' '),
         raison: meta.raison || 'Document non attribuable à ce client (vérification d’appartenance).',
         libelle: meta.libelle || null,

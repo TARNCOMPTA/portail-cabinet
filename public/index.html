@@ -989,12 +989,44 @@
               </p>
             </div>
             <div class="row-actions">
+              <button type="button" class="btn primary" id="q-trier"><i class="ph ph-magic-wand"></i> Trier automatiquement</button>
               <button type="button" class="btn" id="q-rafraichir"><i class="ph ph-arrows-clockwise"></i> Actualiser</button>
             </div>
           </div>
+
+          <!-- Tri automatique : analyse à blanc, puis application de ce que l'utilisateur valide. -->
+          <section class="panel" id="q-tri-panneau" hidden>
+            <h2 style="margin-top: 0"><i class="ph ph-magic-wand"></i> Tri automatique</h2>
+            <p class="aide" id="q-tri-etat">Analyse en cours…</p>
+            <div class="progress-barre"><div class="progress-fill" id="q-tri-fill"></div></div>
+            <div id="q-tri-resultat" hidden>
+              <ul class="q-verdicts" id="q-tri-compte"></ul>
+              <div class="row-actions" style="margin-top: 14px">
+                <button type="button" class="btn primary" id="q-appliquer-client">Récupérer les documents rejetés à tort</button>
+                <button type="button" class="btn danger" id="q-appliquer-autre">Supprimer les documents d’autres clients</button>
+                <button type="button" class="btn" id="q-tri-fermer">Fermer</button>
+              </div>
+            </div>
+            <div class="row-actions" id="q-tri-encours" hidden style="margin-top: 12px">
+              <button type="button" class="btn danger" id="q-tri-stop">Arrêter l’analyse</button>
+            </div>
+          </section>
+
           <section class="panel flush">
             <div class="toolbar" style="padding: 18px 22px 0">
               <input type="search" id="q-recherche" class="quick-search" placeholder="🔍 Rechercher (client, fichier, organisme)…" />
+              <select id="q-filtre-source">
+                <option value="">Tous les organismes</option>
+              </select>
+              <select id="q-filtre-verdict" title="Verdict du dernier tri automatique">
+                <option value="">Tous les verdicts</option>
+                <option value="client">Appartient bien au client</option>
+                <option value="autre">Appartient à un autre client</option>
+                <option value="indetermine">Indéterminé</option>
+                <option value="illisible">PDF sans texte</option>
+                <option value="erreur">Illisible</option>
+                <option value="non_analyse">Pas encore analysé</option>
+              </select>
               <span class="toolbar-spacer"></span>
               <span class="compteur" id="q-compte"></span>
             </div>
@@ -1012,6 +1044,7 @@
               <tbody></tbody>
             </table>
             <p class="vide" id="q-vide" hidden>Aucun document en quarantaine — tous les documents récupérés ont été attribués à leur client. 👍</p>
+            <div class="pagination" id="q-pagination" style="padding-bottom: 16px"></div>
           </section>
         </div>
 

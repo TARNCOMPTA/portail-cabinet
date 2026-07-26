@@ -45,6 +45,7 @@ import {
 } from './src/db.js';
 import { verifierCle } from './src/crypto.js';
 import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine } from './src/quarantaine.js';
+import { analyserEntree, indexerPortefeuille } from './src/quarantaine-tri.js';
 import { scrapeClient, listerClients, scrapeAll, recupererHabilitations, dossierHabilitations } from './src/scraper-impots.js';
 import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MAX } from './src/reprise.js';
 import * as carpimko from './src/carpimko-db.js';
@@ -638,7 +639,198 @@ const AJOUT_PAR_SOURCE = {
 };
 
 // ---- Quarantaine (documents rejetes par la verification d'appartenance) -----
-app.get('/api/quarantaine', (req, res) => res.json(listerQuarantaine()));
+// Le scan du dossier est SYNCHRONE (des milliers de fichiers + leur manifeste) : le
+// refaire a chaque affichage figerait la boucle d'evenements. On garde donc la liste en
+// memoire, invalidee des qu'on y touche et rafraichie au bout d'une minute.
+const CLIENTS_PAR_SOURCE = {
+  impots: () => listClients(),
+  urssaf: () => urssafDb.listClients(),
+  carpimko: () => carpimko.listClients(),
+  carmf: () => carmf.listClients(),
+  carcdsf: () => carcdsf.listClients(),
+  carpv: () => carpv.listClients(),
+};
+const QUARANTAINE_TTL = 60_000;
+let cacheQuarantaine = { liste: null, le: 0 };
+function quarantaineListe(forcer = false) {
+  if (forcer || !cacheQuarantaine.liste || Date.now() - cacheQuarantaine.le > QUARANTAINE_TTL) {
+    cacheQuarantaine = { liste: listerQuarantaine(), le: Date.now() };
+  }
+  return cacheQuarantaine.liste;
+}
+const invaliderQuarantaine = () => {
+  cacheQuarantaine = { liste: null, le: 0 };
+};
+
+// Etat du tri automatique (une seule analyse a la fois, comme les recuperations).
+const tri = {
+  actif: false,
+  total: 0,
+  fait: 0,
+  demarre_le: null,
+  fini_le: null,
+  erreur: null,
+  compte: {},
+  verdicts: new Map(), // id de quarantaine -> { verdict, motif, proprietaire? }
+};
+let triArret = false;
+const compteVide = () => ({ client: 0, autre: 0, indetermine: 0, illisible: 0, erreur: 0 });
+const etatTri = () => ({
+  actif: tri.actif,
+  total: tri.total,
+  fait: tri.fait,
+  demarre_le: tri.demarre_le,
+  fini_le: tri.fini_le,
+  erreur: tri.erreur,
+  compte: tri.compte,
+  analyses: tri.verdicts.size,
+});
+
+app.get('/api/quarantaine', (req, res) => {
+  const tout = quarantaineListe(req.query.rafraichir === '1');
+  const q = String(req.query.q || '')
+    .trim()
+    .toLowerCase();
+  const source = String(req.query.source || '').trim();
+  const verdict = String(req.query.verdict || '').trim();
+  let liste = tout;
+  if (source) liste = liste.filter((d) => d.source === source);
+  if (verdict) liste = liste.filter((d) => (tri.verdicts.get(d.id)?.verdict || 'non_analyse') === verdict);
+  if (q) liste = liste.filter((d) => `${d.clientNom} ${d.fichier} ${d.source} ${d.libelle || ''}`.toLowerCase().includes(q));
+  const taille = Math.min(200, Math.max(10, Number(req.query.taille) || 50));
+  const pages = Math.max(1, Math.ceil(liste.length / taille));
+  const page = Math.min(pages, Math.max(1, Number(req.query.page) || 1));
+  const parSource = {};
+  for (const d of tout) parSource[d.source] = (parSource[d.source] || 0) + 1;
+  res.json({
+    total: tout.length,
+    filtres: liste.length,
+    page,
+    pages,
+    taille,
+    parSource,
+    tri: etatTri(),
+    elements: liste.slice((page - 1) * taille, page * taille).map((d) => ({ ...d, tri: tri.verdicts.get(d.id) || null })),
+  });
+});
+
+// Analyse (a blanc) : chaque PDF est repasse dans la regle actuelle et, s'il est toujours
+// rejete, on cherche a quel client du cabinet il appartient reellement. Rien n'est
+// deplace ni supprime ici : l'utilisateur applique ensuite ce qu'il valide.
+async function analyserQuarantaine() {
+  const liste = quarantaineListe(true);
+  tri.actif = true;
+  tri.total = liste.length;
+  tri.fait = 0;
+  tri.demarre_le = new Date().toISOString();
+  tri.fini_le = null;
+  tri.erreur = null;
+  tri.compte = compteVide();
+  tri.verdicts = new Map();
+  const portefeuilles = new Map(); // source -> { clients, index }
+  const portefeuille = (source) => {
+    if (!portefeuilles.has(source)) {
+      let clients = [];
+      try {
+        clients = CLIENTS_PAR_SOURCE[source] ? CLIENTS_PAR_SOURCE[source]() : [];
+      } catch {
+        clients = [];
+      }
+      portefeuilles.set(source, { clients, index: indexerPortefeuille(clients) });
+    }
+    return portefeuilles.get(source);
+  };
+  try {
+    for (const e of liste) {
+      if (triArret) break;
+      const chemin = cheminSur(e.id);
+      const { clients, index } = portefeuille(e.source);
+      const client = e.clientId != null ? clients.find((c) => c.id === e.clientId) || null : null;
+      const r = chemin
+        ? await analyserEntree({ chemin, source: e.source, client, index })
+        : { verdict: 'erreur', motif: 'Chemin de quarantaine invalide.' };
+      tri.verdicts.set(e.id, r);
+      tri.compte[r.verdict] = (tri.compte[r.verdict] || 0) + 1;
+      tri.fait++;
+      // L'extraction PDF est gourmande : on rend la main regulierement pour que le
+      // portail reste reactif pendant les longues analyses.
+      if (tri.fait % 20 === 0) await new Promise((suite) => setImmediate(suite));
+    }
+  } catch (e) {
+    tri.erreur = e.message;
+  }
+  tri.actif = false;
+  tri.fini_le = new Date().toISOString();
+}
+
+app.post('/api/quarantaine/analyser', (req, res) => {
+  if (tri.actif) return res.status(409).json({ error: 'Une analyse est déjà en cours.' });
+  triArret = false;
+  analyserQuarantaine().catch((e) => {
+    tri.actif = false;
+    tri.erreur = e.message;
+  });
+  res.json({ started: true });
+});
+
+app.get('/api/quarantaine/tri', (req, res) => res.json(etatTri()));
+
+app.post('/api/quarantaine/tri/stop', (req, res) => {
+  triArret = true;
+  res.json({ ok: true });
+});
+
+// Applique les verdicts choisis.
+//   « client » : le document est bien celui du client. Avec manifeste on le remet en
+//                place et on recree sa ligne ; sinon on le retire de la quarantaine — la
+//                prochaine recuperation le retelechargera et le classera proprement
+//                (avec son identifiant d'evenement, donc sans doublon).
+//   « autre »  : document d'un autre client, il n'a rien a faire la : suppression.
+app.post('/api/quarantaine/appliquer', (req, res) => {
+  if (tri.actif) return res.status(409).json({ error: 'Analyse en cours — attends la fin avant d’appliquer.' });
+  const demandes = Array.isArray(req.body?.verdicts) ? req.body.verdicts.filter((v) => v === 'client' || v === 'autre') : [];
+  if (!demandes.length) return res.status(400).json({ error: 'Aucun verdict à appliquer.' });
+  const bilan = { reintegres: 0, supprimes: 0, echecs: 0, details: [] };
+  for (const e of quarantaineListe()) {
+    const v = tri.verdicts.get(e.id);
+    if (!v || !demandes.includes(v.verdict)) continue;
+    try {
+      if (v.verdict === 'client' && e.reintegrable) {
+        const r = reintegrer(e.id);
+        if (!r.ok) throw new Error(r.error);
+        const ajouter = AJOUT_PAR_SOURCE[r.meta.source];
+        if (!ajouter) {
+          r.annuler();
+          throw new Error(`Source inconnue : ${r.meta.source}`);
+        }
+        try {
+          ajouter(r.meta.clientId, {
+            libelle: r.meta.libelle || basename(r.destination),
+            fichier: r.destination,
+            eventid: r.meta.eventid || null,
+            dateDoc: r.meta.dateDoc || null,
+          });
+        } catch (err) {
+          r.annuler();
+          throw err;
+        }
+        bilan.reintegres++;
+      } else {
+        const r = supprimerQuarantaine(e.id);
+        if (!r.ok) throw new Error(r.error);
+        bilan.supprimes++;
+      }
+      tri.verdicts.delete(e.id);
+    } catch (err) {
+      bilan.echecs++;
+      if (bilan.details.length < 20) bilan.details.push(`${e.clientNom} — ${e.fichier} : ${err.message}`);
+    }
+  }
+  invaliderQuarantaine();
+  tri.compte = compteVide();
+  for (const v of tri.verdicts.values()) tri.compte[v.verdict] = (tri.compte[v.verdict] || 0) + 1;
+  res.json(bilan);
+});
 
 // Sert le PDF pour verification visuelle (chemin verrouille dans le dossier de quarantaine).
 app.get('/api/quarantaine/file', (req, res) => {
@@ -669,12 +861,17 @@ app.post('/api/quarantaine/reintegrer', (req, res) => {
     r.annuler(); // la base a refuse : on remet le fichier en quarantaine
     return res.status(500).json({ error: `Enregistrement impossible : ${e.message}` });
   }
+  tri.verdicts.delete(id);
+  invaliderQuarantaine();
   res.json({ ok: true, destination: r.destination });
 });
 
 app.delete('/api/quarantaine', (req, res) => {
-  const r = supprimerQuarantaine(String(req.body?.id || req.query.id || ''));
+  const id = String(req.body?.id || req.query.id || '');
+  const r = supprimerQuarantaine(id);
   if (!r.ok) return res.status(400).json({ error: r.error });
+  tri.verdicts.delete(id);
+  invaliderQuarantaine();
   res.json({ ok: true });
 });
 

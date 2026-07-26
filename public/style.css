@@ -926,6 +926,24 @@ td .row-actions {
   color: var(--ink-soft);
   white-space: nowrap;
 }
+/* Bilan du tri automatique de la quarantaine (combien de documents par verdict). */
+.q-verdicts {
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+.q-verdicts li {
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+.q-verdicts strong {
+  display: inline-block;
+  min-width: 62px;
+  font-family: var(--mono);
+  color: var(--ink);
+}
 /* Détail par organisme quand plusieurs récupérations tournent en parallèle. */
 .progress-sources {
   margin: 2px 22px 8px;
