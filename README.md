@@ -161,6 +161,17 @@ L'analyse ne déplace ni ne supprime rien : elle affiche un bilan chiffré, et c
 bouton correspondant qui applique. Compter une dizaine de minutes pour plusieurs milliers
 de documents — à lancer de préférence en dehors des tournées automatiques.
 
+### Vider la quarantaine
+
+Le bouton **« Vider la quarantaine »** (réservé aux administrateurs) supprime tout d'un
+coup. Il porte sur **ce que l'écran affiche** : sans filtre il vide tout, avec un filtre
+actif (organisme, verdict ou recherche) il devient « Vider la sélection » et se limite à
+celle-ci — pratique pour ne purger qu'un organisme ou que les documents d'autres clients.
+
+Ce n'est pas une opération risquée : ces documents n'ayant jamais été enregistrés, ils
+seront retéléchargés et revérifiés à la récupération suivante. Seul un document
+entre-temps disparu du site de l'organisme serait réellement perdu.
+
 ---
 
 ## Paramètres
