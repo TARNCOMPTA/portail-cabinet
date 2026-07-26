@@ -135,6 +135,34 @@ compte administrateur, puis dans l'ordre :
 
 ---
 
+## Quarantaine — la vérification d'appartenance
+
+Chaque PDF téléchargé est relu : s'il ne mentionne **ni l'identifiant ni le nom** du
+client attendu, il n'est pas classé dans son dossier mais mis de côté dans l'onglet
+**Quarantaine**. C'est un garde-fou : lors d'un incident de session côté organisme, le
+portail d'un tiers déclarant peut rester « collé » sur un dossier et resservir les mêmes
+documents pour les clients suivants — sans cette relecture, les documents d'un client
+finiraient chez un autre.
+
+Un document en quarantaine n'est **jamais perdu** : n'étant pas enregistré, il est
+retéléchargé à la récupération suivante, puis revérifié.
+
+### Trier la quarantaine
+
+Le bouton **« Trier automatiquement »** relit chaque document et le classe :
+
+| Verdict                              | Ce que ça veut dire                                                   | Action proposée                                                  |
+| ------------------------------------ | --------------------------------------------------------------------- | ---------------------------------------------------------------- |
+| **Appartient bien à ce client**      | Mis de côté à tort (la reconnaissance des noms s'est affinée depuis)  | Remis dans le dossier du client, ou reclassé au prochain passage |
+| **Appartient à un autre client**     | Le PDF porte l'identifiant **et** le nom d'un autre client du cabinet | Suppression (il n'a rien à faire dans ce dossier)                |
+| **Indéterminé** / **PDF sans texte** | Ni l'un ni l'autre — courrier générique, document scanné…             | Rien : ouvrir le PDF et trancher soi-même                        |
+
+L'analyse ne déplace ni ne supprime rien : elle affiche un bilan chiffré, et c'est le
+bouton correspondant qui applique. Compter une dizaine de minutes pour plusieurs milliers
+de documents — à lancer de préférence en dehors des tournées automatiques.
+
+---
+
 ## Paramètres
 
 La configuration du serveur tient dans un fichier **`.env`** à côté de
