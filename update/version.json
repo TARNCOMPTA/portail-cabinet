@@ -1,6 +1,6 @@
 {
-  "version": "1.11.0",
-  "notes": "Quarantaine : pagination, filtres et tri automatique (retrouve à qui appartient vraiment chaque document mis de côté). Alertes : battement de coeur, tournée manquée, comptes verrouillés dans le bilan.",
+  "version": "1.11.1",
+  "notes": "Quarantaine : bouton « Vider » (réservé aux administrateurs), qui suit les filtres affichés et refuse d'agir si la sélection a changé depuis l'affichage. Les dossiers vidés sont nettoyés.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "0b3650514207c5ed3d6278451b59adda200fd226de8f8e0adc57c3dc936f0d46"
+  "sha256": "7f74eb5472a6933362fab571ab5ae2681d0efcb349e1ba021192ea6815a21250"
 }
