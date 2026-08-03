@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import JSZip from 'jszip';
-import { dirname, resolve, basename } from 'node:path';
+import { dirname, resolve, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs';
 import {
@@ -63,7 +63,7 @@ import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, liste
 import * as fusions from './src/fusions-db.js';
 import * as planif from './src/planif-db.js';
 import { verifierMaj, appliquerMaj, versionLocale } from './src/update.js';
-import { installAuthRoutes, requireAuth, requireAdmin, hashPassword, apiKeyDefinie, regenererApiKey, revoquerApiKey } from './src/auth.js';
+import { installAuthRoutes, requireAuth, requireAdmin, hashPassword, verifyPassword, apiKeyDefinie, regenererApiKey, revoquerApiKey } from './src/auth.js';
 import { installOAuth, requireBearer, baseUrl, CALLBACK_HOSTE } from './src/oauth.js';
 import { installMcp } from './src/mcp-http.js';
 import * as captchaRelais from './src/captcha-relais.js';
@@ -83,6 +83,30 @@ app.use((req, res, next) => {
   res.set('Strict-Transport-Security', 'max-age=63072000; includeSubDomains; preload');
   res.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=(), payment=(), usb=()');
   res.set('Cross-Origin-Opener-Policy', 'same-origin');
+  // Content-Security-Policy : defense en profondeur par-dessus l'echappement XSS deja en
+  // place. Tout vient de la meme origine ; seules exceptions justifiees :
+  //  - script/style 'unsafe-inline' : l'interface est servie en fichiers STATIQUES (pas
+  //    de gabarit serveur pour poser un nonce) et embarque un script de theme inline +
+  //    de nombreux styles inline. La CSP bloque tout de meme les scripts d'origine
+  //    EXTERNE (injection/exfiltration), le detournement de <base>, <object>/<embed> ;
+  //  - img data: : la captcha est renvoyee en data:image/png base64.
+  // frame-ancestors 'self' double le X-Frame-Options ; connect-src/form-action 'self'
+  // empechent l'exfiltration et la soumission de formulaire vers une origine tierce.
+  res.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data:",
+      "font-src 'self'",
+      "connect-src 'self'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'self'",
+    ].join('; '),
+  );
   next();
 });
 // Anti-brute-force applicatif : bloque tôt toute IP bannie (bans escaladés persistants).
@@ -340,6 +364,14 @@ app.get('/api/me', (req, res) => res.json({ user: req.user }));
 app.post('/api/me/password', (req, res) => {
   const np = String(req.body?.nouveau || '');
   if (np.length < 8) return res.status(400).json({ error: 'Mot de passe trop court (8 caractères minimum).' });
+  // Re-authentification : le mot de passe ACTUEL est exige avant tout changement. Sans
+  // cela, une session detournee (poste non verrouille, cookie exfiltre) permettait de
+  // changer le mot de passe sans connaitre l'ancien — donc de verrouiller le compte
+  // legitime. L'acces par cle API (viaApiKey) n'a pas de mot de passe : on le refuse ici.
+  if (req.user.viaApiKey) return res.status(403).json({ error: 'Changement de mot de passe indisponible via clé API.' });
+  const actuel = String(req.body?.actuel || '');
+  const u = getUserByEmail(req.user.email);
+  if (!u || !verifyPassword(actuel, u.password_hash)) return res.status(403).json({ error: 'Mot de passe actuel incorrect.' });
   updateUserPassword(req.user.id, hashPassword(np));
   deleteUserSessions(req.user.id);
   res.json({ ok: true });
@@ -1315,7 +1347,10 @@ function listerCaptures(base) {
   walk(base);
   return out.sort((a, b) => b.mtime - a.mtime);
 }
-app.get('/api/debug/captures', (req, res) => {
+// Captures de diagnostic (screenshots des sessions de scraping) : elles peuvent montrer
+// des ecrans de connexion aux caisses, donc des identifiants/PII clients. Reservees aux
+// admins (avant : accessibles a tout collaborateur authentifie). Non appelees par l'UI.
+app.get('/api/debug/captures', requireAdmin, (req, res) => {
   const base = DEBUG_DIRS[String(req.query.source || '').toLowerCase()] || DEBUG_DIRS.carpimko;
   res.json(
     listerCaptures(base)
@@ -1323,17 +1358,19 @@ app.get('/api/debug/captures', (req, res) => {
       .map((c) => ({ fichier: c.path.split(/[\\/]/).pop(), date: new Date(c.mtime).toISOString(), path: c.path })),
   );
 });
-app.get('/api/debug/last', (req, res) => {
+app.get('/api/debug/last', requireAdmin, (req, res) => {
   const base = DEBUG_DIRS[String(req.query.source || '').toLowerCase()] || DEBUG_DIRS.carpimko;
   const caps = listerCaptures(base);
   if (!caps.length) return res.status(404).send('Aucune capture de debug pour cette source.');
   res.sendFile(caps[0].path);
 });
-app.get('/api/debug/file', (req, res) => {
+app.get('/api/debug/file', requireAdmin, (req, res) => {
   // Sert une capture par chemin, en verrouillant l'acces au dossier downloads/.
+  // Le confinement teste `racine + sep` : `startsWith(racine)` seul laissait passer un
+  // dossier FRERE prefixe (ex. downloads-autre/…), une traversee hors du dossier vise.
   const p = resolve(String(req.query.path || ''));
   const racine = resolve(__dirname, 'downloads');
-  if (!p.startsWith(racine) || !/\.(png|json|txt)$/i.test(p) || !existsSync(p)) return res.status(404).end();
+  if ((p !== racine && !p.startsWith(racine + sep)) || !/\.(png|json|txt)$/i.test(p) || !existsSync(p)) return res.status(404).end();
   res.type(/\.png$/i.test(p) ? 'image/png' : 'text/plain').sendFile(p);
 });
 

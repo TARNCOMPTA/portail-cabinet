@@ -123,25 +123,41 @@ const LOGIN_FENETRE = 15 * 60 * 1000; // fenetre de 15 min
 const throttleIp = creerThrottle({ max: 10, fenetreMs: LOGIN_FENETRE });
 const throttleCompte = creerThrottle({ max: 5, fenetreMs: LOGIN_FENETRE });
 
+// Verification d'identifiants collaborateur AVEC anti-brute-force, mutualisee entre la
+// connexion au portail (/api/auth/login) et la page de consentement OAuth
+// (/oauth/authorize). Les deux verifient le meme mot de passe : sans ce point d'entree
+// unique, la page OAuth court-circuitait entierement le throttle + le bannissement
+// (elle est publique et un client_id s'obtient librement via /oauth/register).
+//
+// Renvoie { bloque } si l'IP ou le compte a depasse le seuil (message identique dans les
+// deux cas : ne revele pas l'existence de l'e-mail), { user: null } sur identifiants
+// invalides (compteurs incrementes), ou { user } sur succes (compteurs remis a zero).
+export function verifierIdentifiants(req, email, pwd) {
+  const ip = req.ip || req.socket?.remoteAddress || 'inconnu';
+  if (throttleIp.bloque(ip) || throttleCompte.bloque(email)) return { bloque: true };
+  const u = getUserByEmail(email);
+  if (!u || !u.actif || !verifyPassword(String(pwd), u.password_hash)) {
+    throttleIp.echec(ip);
+    throttleCompte.echec(email);
+    bannissementIp.echec(req, 2, 'connexion échouée'); // alimente le bannissement escaladé
+    return { user: null };
+  }
+  throttleIp.reussite(ip); // succes : on remet les compteurs a zero
+  throttleCompte.reussite(email);
+  bannissementIp.reussite(req);
+  return { user: u };
+}
+
 export function installAuthRoutes(app) {
   app.post('/api/auth/login', (req, res) => {
-    const ip = req.ip || req.socket?.remoteAddress || 'inconnu';
     const email = String(req.body?.email || '')
       .trim()
       .toLowerCase();
+    const r = verifierIdentifiants(req, email, String(req.body?.password || ''));
     // Meme message pour IP et compte bloques : ne revele pas si l'e-mail existe.
-    if (throttleIp.bloque(ip) || throttleCompte.bloque(email)) return res.status(429).json({ error: 'Trop de tentatives. Réessaie dans 15 minutes.' });
-    const pwd = String(req.body?.password || '');
-    const u = getUserByEmail(email);
-    if (!u || !u.actif || !verifyPassword(pwd, u.password_hash)) {
-      throttleIp.echec(ip);
-      throttleCompte.echec(email);
-      bannissementIp.echec(req, 2, 'connexion échouée'); // alimente le bannissement escaladé
-      return res.status(401).json({ error: 'E-mail ou mot de passe incorrect.' });
-    }
-    throttleIp.reussite(ip); // connexion reussie : on remet les compteurs a zero
-    throttleCompte.reussite(email);
-    bannissementIp.reussite(req);
+    if (r.bloque) return res.status(429).json({ error: 'Trop de tentatives. Réessaie dans 15 minutes.' });
+    if (!r.user) return res.status(401).json({ error: 'E-mail ou mot de passe incorrect.' });
+    const u = r.user;
     const token = crypto.randomBytes(32).toString('hex');
     createSession(token, u.id, new Date(Date.now() + SESSION_MS).toISOString());
     touchUserLogin(u.id);

@@ -11,7 +11,7 @@
 import JSZip from 'jszip';
 import crypto from 'node:crypto';
 import { readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const APP_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -78,19 +78,24 @@ export async function appliquerMaj(onLog = () => {}) {
   if (!res.ok) throw new Error(`Telechargement echoue (HTTP ${res.status}).`);
   const buf = Buffer.from(await res.arrayBuffer());
 
-  // Integrite : l'empreinte publiee dans le manifeste doit correspondre a l'archive.
-  if (etat.sha256) {
-    const h = crypto.createHash('sha256').update(buf).digest('hex');
-    if (h !== String(etat.sha256).toLowerCase()) throw new Error('Empreinte SHA-256 invalide - maj annulee.');
-  }
+  // Integrite : l'empreinte SHA-256 est OBLIGATOIRE. Avant, la verification etait
+  // conditionnee a `if (etat.sha256)` : un manifeste servi sans empreinte desactivait
+  // silencieusement le controle et laissait installer une archive arbitraire.
+  if (!etat.sha256) throw new Error('Empreinte SHA-256 absente du manifeste - maj annulee.');
+  const h = crypto.createHash('sha256').update(buf).digest('hex');
+  if (h !== String(etat.sha256).toLowerCase()) throw new Error('Empreinte SHA-256 invalide - maj annulee.');
 
   const zip = await JSZip.loadAsync(buf);
   if (!zip.file('server.js')) throw new Error('Archive invalide (server.js absent) - maj annulee.');
 
   rmSync(STAGING, { recursive: true, force: true });
   mkdirSync(STAGING, { recursive: true });
+  const racine = resolve(STAGING);
   for (const entry of Object.values(zip.files)) {
     const dest = resolve(STAGING, entry.name);
+    // Anti Zip Slip : une entree nommee « ../x » ferait ecrire HORS de app_update/, donc
+    // n'importe ou dans le projet. On refuse toute cible qui sort du dossier de staging.
+    if (dest !== racine && !dest.startsWith(racine + sep)) throw new Error(`Entree d'archive hors dossier : ${entry.name} - maj annulee.`);
     if (entry.dir) mkdirSync(dest, { recursive: true });
     else {
       mkdirSync(dirname(dest), { recursive: true });

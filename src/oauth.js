@@ -5,8 +5,8 @@
 import crypto from 'node:crypto';
 import express from 'express';
 import * as oauthDb from './oauth-db.js';
-import { verifyPassword } from './auth.js';
-import { getUserByEmail, getSetting } from './db.js';
+import { verifierIdentifiants, creerThrottle } from './auth.js';
+import { getSetting } from './db.js';
 
 const nomCabinet = () => (getSetting('nom_cabinet', '') || 'Portail Cabinet').trim();
 
@@ -130,13 +130,22 @@ export function installOAuth(app) {
     const email = String(p.email || '')
       .trim()
       .toLowerCase();
-    const u = getUserByEmail(email);
-    if (!u || !u.actif || !verifyPassword(String(p.password || ''), u.password_hash)) {
+    // Meme anti-brute-force que /api/auth/login (throttle IP + compte, bannissement
+    // escalade) : cette route publique verifie le meme mot de passe collaborateur.
+    const auth = verifierIdentifiants(req, email, String(p.password || ''));
+    if (auth.bloque) {
+      return res
+        .status(429)
+        .set('Content-Type', 'text/html; charset=utf-8')
+        .send(pageAutorisation(req, p, 'Trop de tentatives. Réessaie dans 15 minutes.'));
+    }
+    if (!auth.user) {
       return res
         .status(401)
         .set('Content-Type', 'text/html; charset=utf-8')
         .send(pageAutorisation(req, p, 'E-mail ou mot de passe incorrect.'));
     }
+    const u = auth.user;
     const code = oauthDb.rnd(24);
     oauthDb.saveCode({
       code,
@@ -202,13 +211,20 @@ export function installOAuth(app) {
   });
 
   // --- /register : Dynamic Client Registration (RFC 7591) ---
+  // Endpoint PUBLIC (exige par la spec MCP). Deux garde-fous contre l'abus : un throttle
+  // par IP (creation en rafale) et un plafond du nombre de clients DCR conserves.
+  const regThrottle = creerThrottle({ max: 10, fenetreMs: 60 * 60 * 1000 });
   app.post('/oauth/register', (req, res) => {
+    const ip = req.ip || req.socket?.remoteAddress || 'inconnu';
+    if (regThrottle.bloque(ip)) return res.status(429).json({ error: 'too_many_requests' });
+    regThrottle.echec(ip);
     const b = req.body || {};
     const redirect_uris = Array.isArray(b.redirect_uris) ? b.redirect_uris : [];
     const isPublic = b.token_endpoint_auth_method === 'none';
     const client_id = 'dcr-' + oauthDb.rnd(12);
     const client_secret = isPublic ? null : oauthDb.rnd(32);
     oauthDb.createClient({ client_id, client_secret, redirect_uris, name: b.client_name || 'Client MCP', statique: 0 });
+    oauthDb.purgerClientsDcr(50); // ne conserve que les 50 clients DCR les plus recents
     const out = {
       client_id,
       redirect_uris,

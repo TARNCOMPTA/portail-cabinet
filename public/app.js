@@ -1814,7 +1814,11 @@ $('#btn-logout').addEventListener('click', async () => {
 $('#form-moncompte').addEventListener('submit', async (e) => {
   e.preventDefault();
   try {
-    await api('/api/me/password', { method: 'POST', body: JSON.stringify({ nouveau: e.target.nouveau.value }) });
+    await api('/api/me/password', {
+      method: 'POST',
+      body: JSON.stringify({ actuel: e.target.actuel.value, nouveau: e.target.nouveau.value }),
+    });
+    e.target.reset();
     toast('Mot de passe changé. Reconnecte-toi.', 'ok');
     setTimeout(() => location.replace('/login.html'), 1200);
   } catch (err) {

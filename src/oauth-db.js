@@ -107,6 +107,21 @@ export function regenStaticClient(redirectUris) {
   db.prepare('DELETE FROM clients WHERE statique = 1').run();
   return getOrCreateStaticClient(redirectUris);
 }
+// Plafond des clients enregistres dynamiquement (DCR, prefixe « dcr- »). /oauth/register
+// etant public, sans borne la table grossissait indefiniment. On garde les N plus
+// recents (les clients statiques ne sont jamais touches).
+export function compterClientsDcr() {
+  return db.prepare("SELECT COUNT(*) AS n FROM clients WHERE statique = 0 AND client_id LIKE 'dcr-%'").get().n;
+}
+export function purgerClientsDcr(garder = 50) {
+  db.prepare(
+    `DELETE FROM clients WHERE statique = 0 AND client_id LIKE 'dcr-%'
+       AND client_id NOT IN (
+         SELECT client_id FROM clients WHERE statique = 0 AND client_id LIKE 'dcr-%'
+         ORDER BY created_at DESC, rowid DESC LIMIT ?
+       )`,
+  ).run(garder);
+}
 
 // ---- Codes d'autorisation (usage unique) ----------------------------------
 export function saveCode(o) {

@@ -1302,8 +1302,12 @@
               <form id="form-moncompte" class="sous-form" style="margin-top: 0; border-top: none; padding-top: 0">
                 <div class="form-grid">
                   <label
+                    >Mot de passe actuel
+                    <input name="actuel" type="password" required autocomplete="current-password" placeholder="ton mot de passe actuel" />
+                  </label>
+                  <label
                     >Nouveau mot de passe
-                    <input name="nouveau" type="password" minlength="8" required placeholder="8 caractères minimum" />
+                    <input name="nouveau" type="password" minlength="8" required autocomplete="new-password" placeholder="8 caractères minimum" />
                   </label>
                 </div>
                 <div class="form-actions">
