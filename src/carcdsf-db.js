@@ -20,4 +20,5 @@ export const {
   getDocument,
   addRun,
   listRuns,
+  stats,
 } = creerSourceDb('carcdsf.db', { profession: true });

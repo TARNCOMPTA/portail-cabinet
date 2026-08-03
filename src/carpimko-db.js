@@ -19,4 +19,5 @@ export const {
   getDocument,
   addRun,
   listRuns,
+  stats,
 } = creerSourceDb('carpimko.db');

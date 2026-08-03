@@ -49,6 +49,15 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
     );
   `);
 
+  // Index de lecture, applique aux 4 caisses (CARPIMKO/CARMF/CARCDSF/CARPV) :
+  // les 3 sous-requetes correlees « dernier run » de listClients() balayaient
+  // `runs` en entier pour CHAQUE client. documents(client_id) est deja couvert
+  // par l'index implicite de UNIQUE(client_id, fichier).
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_runs_client      ON runs(client_id, lance_le DESC, id DESC);
+    CREATE INDEX IF NOT EXISTS idx_documents_recent ON documents(recupere_le DESC, id DESC);
+  `);
+
   const colProf = profession ? 'c.profession,' : '';
 
   function listClients() {
@@ -70,9 +79,17 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
     }
     return rows;
   }
+  // Verrou « mot de passe » d'UN client. Avant : listClients() en entier (donc les
+  // 3 sous-requetes correlees pour tous les clients) puis un .find() en JS pour n'en
+  // garder qu'un. Ici on ne lit que le dernier run du client concerne.
+  // Meme regle que listClients() ci-dessus : verrouille si le dernier run a echoue
+  // sur le mot de passe ET que la fiche n'a pas ete modifiee depuis (correction du mdp).
   function clientVerrouille(id) {
-    const c = listClients().find((x) => x.id === Number(id));
-    return c ? { verrouille: !!c.verrouille, message: c.dernier_message } : { verrouille: false };
+    const c = db.prepare('SELECT id, updated_at FROM clients WHERE id = ?').get(Number(id));
+    if (!c) return { verrouille: false };
+    const r = db.prepare('SELECT statut, message, lance_le FROM runs WHERE client_id = ? ORDER BY lance_le DESC, id DESC LIMIT 1').get(c.id);
+    const verrouille = r?.statut === 'echec_mdp' && (!r.lance_le || c.updated_at <= r.lance_le);
+    return { verrouille: !!verrouille, message: r?.message };
   }
   function getClient(id) {
     return db.prepare('SELECT * FROM clients WHERE id = ?').get(id);
@@ -135,43 +152,52 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
     return db.prepare('SELECT * FROM clients WHERE login = ?').get(String(login).trim());
   }
 
+  // EN UNE TRANSACTION (voir src/db.js) : sans elle, chaque ligne etait sa propre
+  // transaction implicite, donc un COMMIT et une synchro disque par client importe.
   function importClients(rows) {
     const bilan = { crees: 0, maj: 0, ignores: 0, erreurs: [] };
-    rows.forEach((r, i) => {
-      const ligne = i + 1;
-      const nom = (r.nom ?? '').toString().trim();
-      const login = (r.login ?? '').toString().trim();
-      const password = (r.password ?? '').toString();
-      const notes = (r.notes ?? '').toString().trim() || null;
-      const prof = normPro(r.profession);
-      if (!nom && !login) {
-        bilan.ignores++;
-        return;
-      }
-      if (!nom || !login) {
-        bilan.erreurs.push({ ligne, raison: 'nom et identifiant obligatoires', valeur: nom || login });
-        return;
-      }
-      const existant = getClientByLogin(login);
-      try {
-        if (existant) {
-          updateClient(
-            existant.id,
-            profession ? { nom, profession: prof, login, password: password || undefined, notes } : { nom, login, password: password || undefined, notes },
-          );
-          bilan.maj++;
-        } else {
-          if (!password) {
-            bilan.erreurs.push({ ligne, raison: 'mot de passe manquant pour un nouveau client', valeur: nom });
-            return;
-          }
-          createClient(profession ? { nom, profession: prof, login, password, notes } : { nom, login, password, notes });
-          bilan.crees++;
+    db.exec('BEGIN');
+    try {
+      rows.forEach((r, i) => {
+        const ligne = i + 1;
+        const nom = (r.nom ?? '').toString().trim();
+        const login = (r.login ?? '').toString().trim();
+        const password = (r.password ?? '').toString();
+        const notes = (r.notes ?? '').toString().trim() || null;
+        const prof = normPro(r.profession);
+        if (!nom && !login) {
+          bilan.ignores++;
+          return;
         }
-      } catch (e) {
-        bilan.erreurs.push({ ligne, raison: e.message, valeur: nom });
-      }
-    });
+        if (!nom || !login) {
+          bilan.erreurs.push({ ligne, raison: 'nom et identifiant obligatoires', valeur: nom || login });
+          return;
+        }
+        const existant = getClientByLogin(login);
+        try {
+          if (existant) {
+            updateClient(
+              existant.id,
+              profession ? { nom, profession: prof, login, password: password || undefined, notes } : { nom, login, password: password || undefined, notes },
+            );
+            bilan.maj++;
+          } else {
+            if (!password) {
+              bilan.erreurs.push({ ligne, raison: 'mot de passe manquant pour un nouveau client', valeur: nom });
+              return;
+            }
+            createClient(profession ? { nom, profession: prof, login, password, notes } : { nom, login, password, notes });
+            bilan.crees++;
+          }
+        } catch (e) {
+          bilan.erreurs.push({ ligne, raison: e.message, valeur: nom });
+        }
+      });
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
     return bilan;
   }
 
@@ -210,6 +236,17 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
       .all(limit);
   }
 
+  // Compteurs du tableau de bord. Avant, l'interface telechargeait les listes
+  // COMPLETES (clients + documents + runs) toutes les 10 s pour n'en faire que des
+  // .length : trois COUNT(*) sur index renvoient la meme information en 50 octets.
+  function stats() {
+    return {
+      clients: db.prepare('SELECT COUNT(*) AS n FROM clients').get().n,
+      documents: db.prepare('SELECT COUNT(*) AS n FROM documents').get().n,
+      runs: db.prepare('SELECT COUNT(*) AS n FROM runs').get().n,
+    };
+  }
+
   return {
     db,
     listClients,
@@ -227,5 +264,6 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
     getDocument,
     addRun,
     listRuns,
+    stats,
   };
 }

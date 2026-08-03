@@ -47,6 +47,10 @@ db.exec(`
   );
 `);
 
+// Les lectures/suppressions par refresh_token (rafraichissement d'un jeton MCP)
+// balayaient toute la table : refresh_token n'est pas la cle primaire.
+db.exec('CREATE INDEX IF NOT EXISTS idx_tokens_refresh ON tokens(refresh_token);');
+
 const rnd = (n = 32) => crypto.randomBytes(n).toString('base64url');
 
 // ---- Clients --------------------------------------------------------------

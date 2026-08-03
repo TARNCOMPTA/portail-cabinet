@@ -42,6 +42,7 @@ import {
   setPaiementDocument,
   listCfeSansPaiement,
   resetPaiementCfe,
+  stats as statsImpots,
 } from './src/db.js';
 import { verifierCle } from './src/crypto.js';
 import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine, supprimerLot } from './src/quarantaine.js';
@@ -472,8 +473,13 @@ app.get('/api/cabinets/:id/habilitations', (req, res) => {
   try {
     fichiers = readdirSync(dir)
       .filter((f) => !f.startsWith('_diag') && !f.startsWith('.'))
-      .map((f) => ({ nom: f, taille: statSync(resolve(dir, f)).size, modifie: statSync(resolve(dir, f)).mtime.toISOString() }))
-      .sort((a, b) => b.modifie.localeCompare(a.modifie));
+      .map((f) => {
+        // Un seul statSync par fichier (il y en avait deux, pour la meme donnee).
+        const st = statSync(resolve(dir, f));
+        return { nom: f, taille: st.size, modifie: st.mtime.toISOString() };
+      })
+      // Dates ISO, format fixe : comparaison binaire, pas de collation Intl.
+      .sort((a, b) => (a.modifie < b.modifie ? 1 : a.modifie > b.modifie ? -1 : 0));
   } catch {
     /* dossier absent = aucun tableau */
   }
@@ -1171,6 +1177,37 @@ app.post('/api/update/apply', requireAdmin, async (req, res) => {
   }
 });
 
+// ---- Compteurs du tableau de bord -----------------------------------------
+// UNE requete pour les indicateurs des 6 sources. Avant, l'interface en lancait 20
+// toutes les 10 s (clients + documents + runs de chaque source, listes INTEGRALES)
+// pour n'en garder que des .length : sur un portefeuille charge, plusieurs Mo de
+// JSON par minute et par onglet, plus un tri temporaire SQLite a chaque appel.
+// `parSource` alimente les compteurs de la barre laterale sans charger les listes.
+app.get('/api/stats', (req, res) => {
+  const bases = { impots: { stats: statsImpots }, urssaf: urssafDb, carpimko, carmf, carcdsf, carpv };
+  const parSource = {};
+  const total = { clients: 0, documents: 0, runs: 0 };
+  for (const [nom, base] of Object.entries(bases)) {
+    let s = { clients: 0, documents: 0, runs: 0 };
+    try {
+      if (base?.stats) s = base.stats();
+    } catch {
+      /* base indisponible : on n'ecroule pas tout le tableau de bord pour un compteur */
+    }
+    parSource[nom] = s;
+    total.clients += s.clients;
+    total.documents += s.documents;
+    total.runs += s.runs;
+  }
+  let comptes = 0;
+  try {
+    comptes = listCabinets().length + urssafDb.listCabinets().length;
+  } catch {
+    /* idem */
+  }
+  res.json({ ...total, comptes, parSource });
+});
+
 // ---- Historique -----------------------------------------------------------
 app.get('/api/runs', (req, res) => res.json(listRuns(500)));
 app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets: cabinetsConfigure() }));
@@ -1189,9 +1226,15 @@ app.get('/api/progress', (req, res) => {
   const actives = dansFenetre.filter((p) => p.actif);
   // Journaux fusionnes : prefixes par organisme (sinon illisible a plusieurs) et
   // tries sur leur horodatage de debut de ligne. Plafond global, pas 400 x 6.
+  //
+  // Comparaison BINAIRE et non localeCompare : les lignes commencent toutes par un
+  // horodatage « HH:MM:SS » a format fixe, l'ordre est donc identique — mais
+  // localeCompare instancie la collation Intl a chaque comparaison, soit ~2400 chaines
+  // collationnees toutes les 2 secondes et par onglet ouvert (cette route est sondee
+  // en continu pendant une tournee). C'etait le poste de calcul le plus lourd du serveur.
   const logs = dansFenetre
     .flatMap((p) => p.logs.map((l) => ({ cle: l, texte: dansFenetre.length > 1 ? `${p.source.toUpperCase()} · ${l}` : l })))
-    .sort((a, b) => a.cle.localeCompare(b.cle))
+    .sort((a, b) => (a.cle < b.cle ? -1 : a.cle > b.cle ? 1 : 0))
     .map((x) => x.texte)
     .slice(-600);
   res.json({
@@ -1313,8 +1356,16 @@ const ctxPour = (source) => ({
   resetArret: () => arrets.delete(source),
 });
 const routeursSources = {
-  carpimko: creerRouteurSourceLogin('carpimko', { db: carpimko, scraper: scrapeClientCarpimko, tousDocuments: true, ctx: ctxPour('carpimko') }),
-  carmf: creerRouteurSourceLogin('carmf', { db: carmf, scraper: scrapeClientCarmf, ctx: ctxPour('carmf') }),
+  // navigateur: true -> le scraper pilote Chromium, donc UN navigateur partage par lot
+  // (voir src/navigateur.js). CARCDSF/CARPV passent par une API JSON : aucun navigateur.
+  carpimko: creerRouteurSourceLogin('carpimko', {
+    db: carpimko,
+    scraper: scrapeClientCarpimko,
+    tousDocuments: true,
+    navigateur: true,
+    ctx: ctxPour('carpimko'),
+  }),
+  carmf: creerRouteurSourceLogin('carmf', { db: carmf, scraper: scrapeClientCarmf, navigateur: true, ctx: ctxPour('carmf') }),
   carcdsf: creerRouteurSourceLogin('carcdsf', { db: carcdsf, scraper: scrapeClientCarcdsf, ctx: ctxPour('carcdsf') }),
   carpv: creerRouteurSourceLogin('carpv', { db: carpv, scraper: scrapeClientCarpv, ctx: ctxPour('carpv') }),
 };
@@ -1697,7 +1748,20 @@ if (!majDeclenchee) {
   // Retro-analyse des avis CFE deja telecharges : detecte le mode de paiement
   // (prelevement a l'echeance / mensualisation / aucun) dans le texte des PDF.
   // Tache de fond, une seule fois par document ('inconnu' si rien de detectable).
+  //
+  // ATTENTION AU COUT : jusqu'a 10 000 documents, et pdf.js analyse le PDF de facon
+  // essentiellement SYNCHRONE. La boucle d'origine ne rendait jamais la main : le
+  // serveur ecoutait deja (app.listen juste au-dessus) mais toutes les requetes de
+  // l'interface restaient en file derriere l'analyse. Incrementer PAIEMENT_CFE_VERSION
+  // relance en plus l'analyse de TOUS les avis au demarrage suivant.
+  //
+  // Deux garde-fous :
+  //  - `setImmediate` tous les LOT_CFE documents : la boucle d'evenements traite les
+  //    requetes en attente entre deux paquets ;
+  //  - demarrage differe de quelques secondes, pour laisser l'interface se charger.
   (async () => {
+    const LOT_CFE = 20;
+    const ATTENTE_AVANT_MS = 5000;
     try {
       const { extraireTextePdf, detecterPaiementCfe, PAIEMENT_CFE_VERSION } = await import('./src/validation-pdf.js');
       // Motifs de detection revises ? On oublie les modes memorises pour que
@@ -1708,9 +1772,12 @@ if (!majDeclenchee) {
       }
       const aFaire = listCfeSansPaiement();
       if (!aFaire.length) return;
-      console.log(`  [cfe] Analyse du mode de paiement de ${aFaire.length} avis CFE existants...`);
+      await new Promise((r) => setTimeout(r, ATTENTE_AVANT_MS));
+      console.log(`  [cfe] Analyse du mode de paiement de ${aFaire.length} avis CFE existants (tache de fond)...`);
       let detectes = 0;
+      let traites = 0;
       for (const d of aFaire) {
+        if (++traites % LOT_CFE === 0) await new Promise((r) => setImmediate(r));
         if (!existsSync(d.fichier)) {
           setPaiementDocument(d.id, 'inconnu');
           continue;

@@ -410,14 +410,16 @@
     chargerClients();
     chargerListeNoire('/api/urssaf', 'u');
   });
-  setInterval(() => {
-    api('/api/status')
-      .then((s) => {
-        const actif = Array.isArray(s.enCours) && s.enCours.some((k) => String(k).startsWith('urssaf'));
-        $('#u-scrape-all').disabled = actif;
-        $('#u-stop').hidden = !actif;
-      })
-      .catch(() => {});
-    chargerClients();
-  }, 6000);
+  // Etat des boutons : sans requete, sur l'etat diffuse par la sonde /api/status de
+  // app.js (avant : une sonde /api/status dediee toutes les 6 s, pour la meme reponse).
+  const majBoutons = () => {
+    const actif = sourcesEnCours.some((k) => String(k).startsWith('urssaf'));
+    $('#u-scrape-all').disabled = actif;
+    $('#u-stop').hidden = !actif;
+  };
+  addEventListener('etat-sources', majBoutons);
+  majBoutons();
+
+  // Liste des clients : seulement si la section est affichee, ou pendant une tournee.
+  sonde(chargerClients, 6000, { actifSi: () => ongletActif === 'urssaf' || quelqueChoseTourne });
 })();

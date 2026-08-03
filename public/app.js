@@ -502,15 +502,62 @@ function majEtatGlobal(enCours) {
   $('#btn-scrape-all').textContent = enCours ? 'Récupération en cours…' : 'Tout récupérer';
   $('#btn-stop-all').hidden = !enCours;
 }
+// ---- Sondes periodiques -----------------------------------------------------
+// Toutes les sondes de l'interface passaient par un setInterval inconditionnel : elles
+// tournaient onglet navigateur cache, sans recuperation en cours, sur des sections non
+// affichees — environ 350 requetes/minute par onglet ouvert, chacune traversant
+// l'authentification puis SQLite (synchrone, donc sur la boucle d'evenements).
+//
+// `sonde()` corrige deux choses :
+//  - onglet cache (document.hidden) : le minuteur est reellement arrete, avec un appel
+//    de rattrapage immediat au retour de l'utilisateur ;
+//  - `actifSi` : le minuteur continue de battre (cout nul) mais la requete n'est
+//    emise que si la condition est vraie — section affichee, recuperation en cours...
+function sonde(fn, ms, { actifSi } = {}) {
+  let id = null;
+  const demarrer = () => {
+    if (id === null) id = setInterval(() => (!actifSi || actifSi()) && fn(), ms);
+  };
+  const arreter = () => {
+    if (id !== null) {
+      clearInterval(id);
+      id = null;
+    }
+  };
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) return arreter();
+    if (!actifSi || actifSi()) fn(); // rattrapage : pas d'attente d'un cycle complet
+    demarrer();
+  });
+  if (!document.hidden) demarrer();
+  return { demarrer, arreter };
+}
+
+// Signal maitre : /api/status est la sonde la moins couteuse (un Set en memoire, aucune
+// requete SQL de liste). Elle tourne donc en permanence et sert de reveil aux autres —
+// y compris pour une tournee declenchee par le PLANIFICATEUR, sans action utilisateur.
+let quelqueChoseTourne = false;
+// Liste brute des cles « en cours » (`impots`, `carmf:12`, `all`...). Publiee en global
+// et DIFFUSEE a chaque changement : les sections URSSAF et caisses en avaient chacune
+// leur propre sonde /api/status toutes les 6 s (5 sondes redondantes, 60 requetes/minute)
+// alors qu'elles lisaient exactement la meme reponse que celle-ci.
+let sourcesEnCours = [];
 async function suivreEtat() {
   try {
     const s = await api('/api/status');
-    majEtatGlobal(Array.isArray(s.enCours) && s.enCours.includes('all'));
+    const liste = Array.isArray(s.enCours) ? s.enCours : [];
+    const change = liste.join(',') !== sourcesEnCours.join(',');
+    sourcesEnCours = liste;
+    quelqueChoseTourne = liste.length > 0;
+    majEtatGlobal(liste.includes('all'));
+    // Sur changement uniquement : les abonnes se remettent a jour aussitot, sans
+    // attendre leur propre cycle — donc plus reactif qu'avant, et sans requete.
+    if (change) dispatchEvent(new CustomEvent('etat-sources', { detail: liste }));
   } catch {
     /* ignore */
   }
 }
-setInterval(suivreEtat, 4000);
+sonde(suivreEtat, 4000);
 
 // ---- Documents ----
 const dialogDocs = $('#dialog-docs');
@@ -839,7 +886,11 @@ $('#captcha-rafraichir')?.addEventListener('click', async () => {
     /* ignore */
   }
 });
-setInterval(suivreCaptcha, 3000);
+// La captcha ne peut apparaitre que pendant une recuperation. Hors tournee, cette
+// sonde interrogeait le serveur 20 fois par minute pour rien.
+// `captchaVisible` maintient la sonde active tant que le panneau est affiche, meme si
+// la tournee se termine (l'utilisateur doit pouvoir voir le panneau se refermer).
+sonde(suivreCaptcha, 3000, { actifSi: () => quelqueChoseTourne || captchaVisible });
 
 // ---- Documents (onglet global) --------------------------------------------
 let tousDocs = [];
@@ -1455,28 +1506,28 @@ $('#planif-save')?.addEventListener('click', async () => {
 });
 
 // ---- Tableau de bord (indicateurs) ----------------------------------------
+// Indicateurs du tableau de bord : UN appel a /api/stats (des COUNT(*) cote serveur).
+// Avant : 20 requetes toutes les 10 s, dont les listes INTEGRALES de documents des
+// 6 sources (plafond URSSAF : 50 000 lignes), uniquement pour en faire des .length.
 async function chargerDashboard() {
   try {
-    const [clientsParSrc, docsParSrc, runsParSrc, cabinets, uCab] = await Promise.all([
-      Promise.all(SOURCES.map((s) => api(s.clients).catch(() => []))),
-      Promise.all(SOURCES.map((s) => api(s.docs).catch(() => []))),
-      Promise.all(SOURCES.map((s) => api(s.runs).catch(() => []))),
-      api('/api/cabinets').catch(() => []),
-      api('/api/urssaf/cabinets').catch(() => []),
-    ]);
-    const somme = (arr) => arr.reduce((n, l) => n + l.length, 0);
+    const s = await api('/api/stats');
     const set = (id, v) => {
       const el = document.getElementById(id);
       if (el) el.textContent = v;
     };
-    // Indicateurs agreges sur toutes les sources (liste SOURCES).
-    set('kpi-clients', somme(clientsParSrc));
-    set('kpi-documents', somme(docsParSrc));
-    set('kpi-runs', somme(runsParSrc));
-    set('kpi-comptes', cabinets.length + uCab.length);
-    const totalDocs = somme(docsParSrc);
+    set('kpi-clients', s.clients);
+    set('kpi-documents', s.documents);
+    set('kpi-runs', s.runs);
+    set('kpi-comptes', s.comptes);
     const nav = document.getElementById('nav-docs-count');
-    if (nav) nav.textContent = totalDocs || '';
+    if (nav) nav.textContent = s.documents || '';
+    // Compteurs par organisme dans la barre laterale : renseignes ici pour les
+    // onglets pas encore ouverts (chaque section les rafraichit ensuite elle-meme).
+    for (const [src, st] of Object.entries(s.parSource || {})) {
+      const c = document.getElementById(`nav-${src}-count`);
+      if (c && !c.textContent) c.textContent = st.clients || '';
+    }
     const d = document.getElementById('dash-date');
     if (d) d.textContent = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   } catch {
@@ -2147,7 +2198,9 @@ $('#q-rafraichir')?.addEventListener('click', () => chargerQuarantaine(true));
 
 async function rafraichir() {
   await chargerCabinets();
-  await Promise.all([chargerClients(), chargerRuns(), chargerDocuments(), chargerQuarantaine(), chargerListeNoire('/api', 'imp')]);
+  // chargerDashboard : les sondes periodiques se mettent en veille au repos, c'est donc
+  // ici que les compteurs prennent leur valeur DEFINITIVE de fin de tournee.
+  await Promise.all([chargerClients(), chargerRuns(), chargerDocuments(), chargerQuarantaine(), chargerListeNoire('/api', 'imp'), chargerDashboard()]);
 }
 chargerMoi();
 chargerConfig();
@@ -2159,12 +2212,20 @@ chargerBranding();
 suivreEtat();
 afficherVersion();
 suivreProgression();
-setInterval(chargerRuns, 5000);
+// L'historique ne bouge que pendant une tournee. A la fin, suivreProgression()
+// appelle rafraichir() (qui inclut chargerRuns) : rien n'est perdu au repos.
+sonde(chargerRuns, 5000, { actifSi: () => quelqueChoseTourne });
 // Les listes de documents peuvent etre volumineuses (plafond urssaf releve a 50000) :
-// rafraichissement espace, complete par un rechargement a l'ouverture de l'onglet.
-setInterval(chargerDocuments, 30000);
-setInterval(chargerDashboard, 10000);
-setInterval(suivreProgression, 2000);
+// on ne les recharge periodiquement que si l'onglet Documents est REELLEMENT affiche.
+// Ailleurs, activerOnglet('documents') et le rafraichir() de fin de tournee suffisent.
+sonde(chargerDocuments, 30000, { actifSi: () => ongletActif === 'documents' });
+// Compteurs : utiles quand le tableau de bord est affiche, et pendant une tournee
+// (le compteur « Documents » de la barre laterale progresse en direct).
+sonde(chargerDashboard, 10000, { actifSi: () => ongletActif === 'dashboard' || quelqueChoseTourne });
+// Avancement : le panneau ne s'affiche que sur le tableau de bord, mais la sonde doit
+// aussi tourner pendant une tournee depuis n'importe quel onglet — c'est elle qui
+// detecte la FIN et declenche le rafraichissement des tableaux.
+sonde(suivreProgression, 2000, { actifSi: () => ongletActif === 'dashboard' || quelqueChoseTourne });
 
 // ---- Anti gestionnaires de mots de passe -----------------------------------
 // Les formulaires de comptes (identifiant + mot de passe des sources) sont pris

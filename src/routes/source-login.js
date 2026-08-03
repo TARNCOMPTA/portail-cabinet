@@ -10,11 +10,14 @@ import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MA
 
 /**
  * @param {string} source  identifiant court (ex 'carmf') = prefixe d'URL et de verrou.
- * @param {{db:object, scraper:Function, tousDocuments?:boolean, ctx:object}} opts
+ * @param {{db:object, scraper:Function, tousDocuments?:boolean, navigateur?:boolean, ctx:object}} opts
  *   ctx = { enCours, progression, progLog, demarrerSuivi, terminerSuivi, doitArreter, resetArret }
+ *   navigateur = le scraper pilote Chromium (CARPIMKO, CARMF) : en lot, UN SEUL navigateur
+ *     est lance pour toute la tournee et prete a chaque client. Les caisses sur API JSON
+ *     (CARCDSF, CARPV) n'ouvrent aucun navigateur : laisser a false.
  * @returns {{router:import('express').Router, lancerTous:(opts?:object)=>object}}
  */
-export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = false, ctx }) {
+export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = false, navigateur = false, ctx }) {
   const r = express.Router();
   const { enCours, progression, progLog, demarrerSuivi, terminerSuivi } = ctx;
   const SRC = source.toUpperCase();
@@ -108,6 +111,20 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     // (la reprise repartira du premier client non recupere au prochain lancement).
     const disj = creerDisjoncteur();
     (async () => {
+      // UN navigateur pour toute la tournee, prete a chaque client via `opts.browser`.
+      // Avant, chaque client relancait un Chromium complet : sur 100 clients, 2 a 3
+      // minutes passees uniquement a demarrer et arreter des processus. L'isolation
+      // reste totale, elle est assuree par un contexte neuf par client (navigateur.js).
+      // Si le lancement echoue, on continue sans : chaque scraper ouvrira le sien.
+      let partage = null;
+      if (navigateur) {
+        try {
+          const { ouvrirNavigateurLot } = await import('../navigateur.js');
+          partage = await ouvrirNavigateurLot();
+        } catch (e) {
+          progLog(`(navigateur partagé indisponible : ${e.message} — un navigateur par client)`);
+        }
+      }
       try {
         for (const c of aTraiter) {
           if (ctx.doitArreter()) {
@@ -130,7 +147,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
           try {
             const creds = db.getClientCredentials(c.id);
             if (creds) {
-              const rr = await scraper(creds, { ...extra, onLog: progLog });
+              const rr = await scraper(creds, { ...extra, onLog: progLog, browser: partage || undefined });
               disj.noter(!!rr?.ok);
               progression.resultats.push({
                 nom: c.nom,
@@ -149,6 +166,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
           }
         }
       } finally {
+        if (partage) await partage.close().catch(() => {});
         enCours.delete(`${source}:all`);
         terminerSuivi();
         progLog(`Récupération ${SRC} terminée.`);

@@ -16,3 +16,7 @@ installation export-ignore
 # MAINTENANCE doivent arriver sur les instances (VPS/Docker) via la maj en ligne.
 # NB : exclure le DOSSIER scripts empecherait git archive d'evaluer toute exception.
 scripts/publier-maj.mjs export-ignore
+
+# Polices Phosphor COMPLETES : servent uniquement a regenerer les sous-ensembles
+# (npm run icons, poste de dev). Ni servies, ni embarquees dans la maj en ligne.
+vendor-src export-ignore

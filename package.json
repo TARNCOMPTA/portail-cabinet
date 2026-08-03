@@ -10,6 +10,7 @@
     "start": "node --disable-warning=ExperimentalWarning server.js",
     "postinstall": "playwright install chromium",
     "lint": "eslint .",
+    "icons": "node scripts/subset-phosphor.mjs",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node --test"

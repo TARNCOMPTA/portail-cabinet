@@ -11,12 +11,11 @@
 //      de la date du jour. Le balisage exact de cette page n'etant pas connu, la detection
 //      cumule plusieurs heuristiques et ecrit un diagnostic si elle ne trouve rien.
 
-import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, listDocuments } from './carmf-db.js';
-import { launchArgs } from './navigateur.js';
+import { ouvrirPour } from './navigateur.js';
 import { sanitize } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
 
@@ -168,19 +167,16 @@ export async function scrapeClient(client, opts = {}) {
     console.log(line);
     opts.onLog?.(line);
   };
-  const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
-  const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
-
   let clientDir;
   if (client.dossier && client.dossier.trim()) clientDir = client.dossier.trim();
   else if (opts.baseFolder && opts.baseFolder.trim()) clientDir = resolve(opts.baseFolder.trim(), sanitize(client.nom));
   else clientDir = resolve(DOWNLOADS_DIR, sanitize(`${client.id}_${client.nom}`));
   mkdirSync(clientDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless, args: launchArgs() });
-  const context = await browser.newContext({ acceptDownloads: true, locale: 'fr-FR' });
-  const page = await context.newPage();
-  page.setDefaultTimeout(navTimeout);
+  // Contexte isole pour ce client. En lot, `opts.browser` est preté par l'appelant et
+  // reste ouvert d'un client au suivant (voir src/navigateur.js) ; hors lot, un
+  // navigateur dedie est lance ici et referme par `fermer()`.
+  const { context, page, navTimeout, fermer } = await ouvrirPour(opts);
 
   const docs = [];
   let dejaPresents = 0;
@@ -363,7 +359,6 @@ export async function scrapeClient(client, opts = {}) {
     log(`ERREUR : ${err.message}`);
     return { ok: false, error: err.message, docs };
   } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await fermer();
   }
 }

@@ -53,6 +53,15 @@ db.exec(`
   );
 `);
 
+// Index de lecture. Sans eux, listClients() faisait 3 balayages COMPLETS de `runs`
+// PAR client (les 3 sous-requetes correlees « dernier run »), avec tri temporaire a
+// chaque fois — et `runs` grossit a chaque passage du planificateur, indefiniment.
+// documents(client_id) est deja couvert par l'index implicite de UNIQUE(client_id, eventid).
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_runs_client      ON runs(client_id, lance_le DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_documents_recent ON documents(recupere_le DESC, id DESC);
+`);
+
 // Migration : mode de paiement detecte dans les avis CFE
 // ('echeance' | 'mensualise' | 'aucun' | 'inconnu' | NULL = pas encore analyse).
 try {
@@ -157,33 +166,45 @@ export function deleteClient(id) {
 }
 
 // Import en masse : lignes { nom, siret }, rattachees au cabinet cabinetId.
+// EN UNE TRANSACTION : sans elle, chaque ligne etait sa propre transaction implicite,
+// donc un COMMIT (et une synchro WAL sur le disque) par client — un import de 500
+// clients faisait 500 commits la ou un seul suffit. Les lignes en erreur restent
+// signalees ligne par ligne dans `bilan` et n'annulent pas les autres : seul un echec
+// inattendu (base verrouillee, disque plein) declenche un ROLLBACK global.
 export function importClients(rows, cabinetId = null) {
   const bilan = { crees: 0, maj: 0, ignores: 0, erreurs: [] };
-  rows.forEach((r, i) => {
-    const ligne = i + 1;
-    const nom = (r.nom ?? '').toString().trim();
-    const siret = (r.siret ?? '').toString().replace(/\s+/g, '');
-    if (!nom && !siret) {
-      bilan.ignores++;
-      return;
-    }
-    if (!nom || !siret) {
-      bilan.erreurs.push({ ligne, raison: 'nom et SIRET requis', valeur: nom || siret });
-      return;
-    }
-    try {
-      const ex = getClientBySiret(siret);
-      if (ex) {
-        updateClient(ex.id, { nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id });
-        bilan.maj++;
-      } else {
-        createClient({ nom, siret, cabinet_id: cabinetId });
-        bilan.crees++;
+  db.exec('BEGIN');
+  try {
+    rows.forEach((r, i) => {
+      const ligne = i + 1;
+      const nom = (r.nom ?? '').toString().trim();
+      const siret = (r.siret ?? '').toString().replace(/\s+/g, '');
+      if (!nom && !siret) {
+        bilan.ignores++;
+        return;
       }
-    } catch (e) {
-      bilan.erreurs.push({ ligne, raison: e.message, valeur: nom });
-    }
-  });
+      if (!nom || !siret) {
+        bilan.erreurs.push({ ligne, raison: 'nom et SIRET requis', valeur: nom || siret });
+        return;
+      }
+      try {
+        const ex = getClientBySiret(siret);
+        if (ex) {
+          updateClient(ex.id, { nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id });
+          bilan.maj++;
+        } else {
+          createClient({ nom, siret, cabinet_id: cabinetId });
+          bilan.crees++;
+        }
+      } catch (e) {
+        bilan.erreurs.push({ ligne, raison: e.message, valeur: nom });
+      }
+    });
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
   return bilan;
 }
 
@@ -253,6 +274,18 @@ export function listRuns(limit = 50) {
   `,
     )
     .all(limit);
+}
+
+// Compteurs du tableau de bord. L'interface telechargeait les listes COMPLETES
+// (clients + documents + runs, sur les 6 sources) toutes les 10 s pour n'en faire
+// que des .length — soit jusqu'a plusieurs Mo de JSON par minute pour afficher
+// trois entiers. Trois COUNT(*) sur index font le meme travail en 50 octets.
+export function stats() {
+  return {
+    clients: db.prepare('SELECT COUNT(*) AS n FROM clients').get().n,
+    documents: db.prepare('SELECT COUNT(*) AS n FROM documents').get().n,
+    runs: db.prepare('SELECT COUNT(*) AS n FROM runs').get().n,
+  };
 }
 
 // ---- Utilisateurs (collaborateurs du cabinet) & sessions ------------------

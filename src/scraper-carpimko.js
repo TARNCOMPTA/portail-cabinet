@@ -8,12 +8,11 @@
 //   3. Filtrage des "appels de cotisations" (ou tous), telechargement HTTP authentifie.
 // PDF nommes d'apres la DATE du document -> pas de doublon d'un run a l'autre.
 
-import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, existsSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, listDocuments } from './carpimko-db.js';
-import { launchArgs } from './navigateur.js';
+import { ouvrirPour } from './navigateur.js';
 import { sanitize, dateIso } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
 
@@ -76,9 +75,6 @@ export async function scrapeClient(client, opts = {}) {
     console.log(line);
     opts.onLog?.(line);
   };
-  // Navigateur VISIBLE par defaut (sur serveur : ecran :99 -> noVNC pour une verif email/SMS).
-  const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
-  const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
   const tousDocuments = opts.tousDocuments ?? TOUS_DOCUMENTS_DEFAUT;
 
   let clientDir;
@@ -88,10 +84,10 @@ export async function scrapeClient(client, opts = {}) {
   mkdirSync(clientDir, { recursive: true });
   log(`Destination : ${clientDir}`);
 
-  const browser = await chromium.launch({ headless, args: launchArgs() });
-  const context = await browser.newContext({ acceptDownloads: true, locale: 'fr-FR' });
-  const page = await context.newPage();
-  page.setDefaultTimeout(navTimeout);
+  // Navigateur VISIBLE par defaut (sur serveur : ecran :99 -> noVNC pour une verif
+  // email/SMS). Contexte isole par client ; en lot, le navigateur est preté par
+  // l'appelant via `opts.browser` et n'est plus relance a chaque client.
+  const { context, page, navTimeout, headless, fermer } = await ouvrirPour(opts);
 
   const docsRecuperes = [];
   let dejaPresents = 0;
@@ -332,7 +328,6 @@ export async function scrapeClient(client, opts = {}) {
     log(`ERREUR : ${err.message} (capture : ${shot})`);
     return { ok: false, error: err.message, docs: docsRecuperes };
   } finally {
-    await context.close().catch(() => {});
-    await browser.close().catch(() => {});
+    await fermer();
   }
 }

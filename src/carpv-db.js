@@ -18,4 +18,5 @@ export const {
   getDocument,
   addRun,
   listRuns,
+  stats,
 } = creerSourceDb('carpv.db');

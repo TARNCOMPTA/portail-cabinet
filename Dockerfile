@@ -13,10 +13,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Dépendances Node (couche cachée tant que package*.json ne change pas).
+# PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD : le postinstall de package.json lance
+# « playwright install chromium ». Sans ce drapeau, les ~170 Mo de Chromium
+# atterrissaient DANS cette couche, qui est donc invalidée au moindre changement de
+# package.json — la promesse de cache de la ligne ci-dessus n'était pas tenue.
+# Le téléchargement a lieu à l'étape suivante, qui lui est dédiée.
 COPY package*.json ./
-RUN npm ci --omit=dev || npm install --omit=dev
+RUN PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm ci --omit=dev || PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1 npm install --omit=dev
 
-# Navigateur Chromium + librairies système nécessaires.
+# Navigateur Chromium + librairies système nécessaires (couche dédiée et stable).
 RUN npx playwright install --with-deps chromium
 
 # Code de l'application.

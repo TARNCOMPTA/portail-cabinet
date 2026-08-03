@@ -53,6 +53,13 @@ db.exec(`
     lance_le  TEXT DEFAULT (datetime('now'))
   );
 `);
+
+// Index de lecture (meme motif que src/db.js : les 3 sous-requetes correlees
+// « dernier run » de listClients balayaient `runs` en entier, par client).
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_runs_client      ON runs(client_id, lance_le DESC, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_documents_recent ON documents(recupere_le DESC, id DESC);
+`);
 // Migration : verrou de nom personnalise (un renommage manuel n'est plus ecrase
 // par la synchronisation du portefeuille — cas nom d'usage vs nom URSSAF).
 try {
@@ -118,34 +125,43 @@ export function deleteClient(id) {
   db.prepare('DELETE FROM clients WHERE id = ?').run(id);
 }
 
+// EN UNE TRANSACTION (voir src/db.js) : un COMMIT par client sinon. La synchro du
+// portefeuille URSSAF importe tout le tiers-declarant d'un coup, le gain est net.
 export function importClients(rows, cabinetId = null) {
   const bilan = { crees: 0, maj: 0, ignores: 0, erreurs: [] };
-  rows.forEach((r, i) => {
-    const ligne = i + 1;
-    const nom = (r.nom ?? '').toString().trim();
-    const siret = (r.siret ?? '').toString().replace(/\s+/g, '');
-    if (!nom && !siret) {
-      bilan.ignores++;
-      return;
-    }
-    if (!nom || !siret) {
-      bilan.erreurs.push({ ligne, raison: 'nom et SIRET requis', valeur: nom || siret });
-      return;
-    }
-    try {
-      const ex = getClientBySiret(siret);
-      if (ex) {
-        // Nom verrouille (personnalise au cabinet) : la synchro ne l'ecrase pas.
-        updateClient(ex.id, { nom: ex.nom_verrouille ? undefined : nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id });
-        bilan.maj++;
-      } else {
-        createClient({ nom, siret, cabinet_id: cabinetId });
-        bilan.crees++;
+  db.exec('BEGIN');
+  try {
+    rows.forEach((r, i) => {
+      const ligne = i + 1;
+      const nom = (r.nom ?? '').toString().trim();
+      const siret = (r.siret ?? '').toString().replace(/\s+/g, '');
+      if (!nom && !siret) {
+        bilan.ignores++;
+        return;
       }
-    } catch (e) {
-      bilan.erreurs.push({ ligne, raison: e.message, valeur: nom });
-    }
-  });
+      if (!nom || !siret) {
+        bilan.erreurs.push({ ligne, raison: 'nom et SIRET requis', valeur: nom || siret });
+        return;
+      }
+      try {
+        const ex = getClientBySiret(siret);
+        if (ex) {
+          // Nom verrouille (personnalise au cabinet) : la synchro ne l'ecrase pas.
+          updateClient(ex.id, { nom: ex.nom_verrouille ? undefined : nom, siret, cabinet_id: cabinetId ?? ex.cabinet_id });
+          bilan.maj++;
+        } else {
+          createClient({ nom, siret, cabinet_id: cabinetId });
+          bilan.crees++;
+        }
+      } catch (e) {
+        bilan.erreurs.push({ ligne, raison: e.message, valeur: nom });
+      }
+    });
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
   return bilan;
 }
 
@@ -182,6 +198,16 @@ export function listRuns(limit = 300) {
   return db
     .prepare(`SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`)
     .all(limit);
+}
+
+// Compteurs du tableau de bord (voir src/db.js : trois COUNT(*) au lieu des
+// listes completes que l'interface telechargeait toutes les 10 s).
+export function stats() {
+  return {
+    clients: db.prepare('SELECT COUNT(*) AS n FROM clients').get().n,
+    documents: db.prepare('SELECT COUNT(*) AS n FROM documents').get().n,
+    runs: db.prepare('SELECT COUNT(*) AS n FROM runs').get().n,
+  };
 }
 
 export default db;

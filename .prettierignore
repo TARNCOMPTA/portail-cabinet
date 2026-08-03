@@ -9,3 +9,4 @@ app_update/
 update/
 install.sh
 .env.exemple
+vendor-src/

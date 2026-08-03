@@ -287,14 +287,21 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
   });
 
   charger();
-  setInterval(() => {
-    api('/api/status')
-      .then((s) => {
-        const actif = Array.isArray(s.enCours) && s.enCours.some((k) => String(k).startsWith(source));
-        if (el('scrape-all')) el('scrape-all').disabled = actif;
-        if (el('stop')) el('stop').hidden = !actif;
-      })
-      .catch(() => {});
-    charger();
-  }, 6000);
+
+  // Etat des boutons : plus aucune requete. On lit l'etat deja recupere par la sonde
+  // /api/status de app.js, qui nous previent a chaque changement. Avant, chacune des
+  // QUATRE instances de cette fonction (CARPIMKO, CARMF, CARCDSF, CARPV) avait sa
+  // propre sonde /api/status toutes les 6 s pour la meme reponse.
+  const majBoutons = () => {
+    const actif = sourcesEnCours.some((k) => String(k).startsWith(source));
+    if (el('scrape-all')) el('scrape-all').disabled = actif;
+    if (el('stop')) el('stop').hidden = !actif;
+  };
+  addEventListener('etat-sources', majBoutons);
+  majBoutons();
+
+  // Liste des clients : rechargee seulement si la section est AFFICHEE, ou pendant une
+  // tournee (l'avancement se voit alors en direct). Au repos, rien ne change entre deux
+  // tournees, et le rafraichissement de fin de tournee remet tout a jour.
+  sonde(charger, 6000, { actifSi: () => ongletActif === source || quelqueChoseTourne });
 }

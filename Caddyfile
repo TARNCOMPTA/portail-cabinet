@@ -6,6 +6,13 @@
 }
 
 {$DOMAIN:portail.tarncompta.fr} {
+	# Compression : Caddy ne compresse RIEN par defaut. Sans cette directive, le
+	# chargement de l'interface transferait 390 Ko de HTML/CSS/JS au lieu de 73 Ko,
+	# et les reponses JSON de l'API (listes de documents) partaient brutes.
+	# zstd d'abord (meilleur ratio), gzip en repli pour les vieux navigateurs.
+	# Les .woff2 et les PDF sont deja compresses : Caddy les ignore automatiquement.
+	encode zstd gzip
+
 	# Vue du navigateur du serveur (noVNC) pour saisir la captcha — protégée par la session
 	# du portail : Caddy vérifie le cookie auprès de /api/me avant de laisser passer.
 	handle_path /vnc/* {
