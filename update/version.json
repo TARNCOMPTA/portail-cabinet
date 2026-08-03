@@ -1,6 +1,6 @@
 {
-  "version": "1.12.0",
-  "notes": "Performances : interface 10 fois plus legere au chargement, tableau de bord et listes nettement plus rapides, serveur bien moins sollicite.",
+  "version": "1.13.0",
+  "notes": "Securite : renforcement de la protection anti-intrusion, confirmation du mot de passe actuel pour le changer, et mise a jour des composants.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "a4840342654d93705ffa9b392cfde6a1da99c725c8452a1338df84176f4bf73d"
+  "sha256": "39e936b2334b82410165f530f7a413050e5d79f12046b89a743cc6857c8f6c52"
 }
