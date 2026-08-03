@@ -1,6 +1,6 @@
 {
-  "version": "1.11.1",
-  "notes": "Quarantaine : bouton « Vider » (réservé aux administrateurs), qui suit les filtres affichés et refuse d'agir si la sélection a changé depuis l'affichage. Les dossiers vidés sont nettoyés.",
+  "version": "1.12.0",
+  "notes": "Performances : interface 10 fois plus legere au chargement, tableau de bord et listes nettement plus rapides, serveur bien moins sollicite.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "7f74eb5472a6933362fab571ab5ae2681d0efcb349e1ba021192ea6815a21250"
+  "sha256": "a4840342654d93705ffa9b392cfde6a1da99c725c8452a1338df84176f4bf73d"
 }
