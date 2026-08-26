@@ -6,9 +6,20 @@ import crypto from 'node:crypto';
 import express from 'express';
 import * as oauthDb from './oauth-db.js';
 import { verifierIdentifiants, creerThrottle } from './auth.js';
-import { getSetting } from './db.js';
+import { getSetting, getUserById } from './db.js';
+
+/** Le collaborateur existe-t-il encore et est-il toujours actif ? */
+const utilisateurActif = (userId) => {
+  const u = userId != null ? getUserById(userId) : null;
+  return !!(u && u.actif);
+};
 
 const nomCabinet = () => (getSetting('nom_cabinet', '') || 'Portail Cabinet').trim();
+
+// Echappement HTML complet. La page de consentement est construite par concatenation
+// (pas de gabarit a echappement automatique) : TOUTE valeur interpolee passe par ici.
+const ENTITES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ENTITES[c]);
 
 const CODE_TTL = 5 * 60 * 1000; // code d'autorisation : 5 min
 const ACCESS_TTL = 60 * 60 * 1000; // jeton d'acces : 1 h
@@ -24,17 +35,25 @@ function s256(verifier) {
   return crypto.createHash('sha256').update(verifier).digest('base64url');
 }
 
-// redirect_uri autorisee : callback Claude hoste, boucle locale (Claude Code, port
-// variable) ou URI explicitement enregistree par le client (DCR).
-function redirectOk(client, uri) {
-  if (!uri) return false;
+// URI de retour digne de confiance EN SOI, sans dependre d'un enregistrement : le callback
+// hoste de Claude, ou la boucle locale de Claude Code (port variable). Ce sont les deux
+// seules destinations legitimes d'un code d'autorisation pour ce portail.
+function uriDeConfiance(uri) {
   if (uri === CALLBACK_HOSTE) return true;
   try {
-    const u = new URL(uri);
-    if ((u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.pathname === '/callback') return true;
+    const u = new URL(String(uri));
+    return (u.hostname === 'localhost' || u.hostname === '127.0.0.1') && u.pathname === '/callback';
   } catch {
     return false;
   }
+}
+
+// redirect_uri autorisee : URI de confiance, ou URI explicitement enregistree par le
+// client. Depuis le durcissement de /oauth/register, une URI enregistree est elle-meme
+// forcement de confiance : la seconde branche ne couvre plus que les clients anterieurs.
+function redirectOk(client, uri) {
+  if (!uri) return false;
+  if (uriDeConfiance(uri)) return true;
   return (client?.redirect_uris || []).includes(uri);
 }
 function ensureStatic(req) {
@@ -42,16 +61,21 @@ function ensureStatic(req) {
 }
 
 // ---- Page de consentement (login portail) ---------------------------------
+// Seuls ces parametres sont recopies en champs caches. Liste FERMEE : reprendre les cles
+// de la requete laissait un nom de parametre arbitraire s'ecrire tel quel dans le HTML
+// (`name="${k}"`), donc injecter du balisage actif sur le domaine du cabinet. Ce sont
+// exactement les champs relus par le POST /oauth/authorize -> aucune perte fonctionnelle.
+// email/password sont volontairement absents : ils ont deja leurs champs visibles, les
+// dupliquer donnerait des valeurs en tableau et ferait echouer les tentatives suivantes.
+const CHAMPS_OAUTH = ['client_id', 'response_type', 'redirect_uri', 'code_challenge', 'code_challenge_method', 'scope', 'state', 'resource'];
+
 function pageAutorisation(req, params, erreur = '') {
-  // On ne re-injecte JAMAIS email/password en champ cache (sinon doublon avec les
-  // champs visibles -> valeurs en tableau -> echec garanti des tentatives suivantes).
-  const champs = Object.entries(params)
-    .filter(([k]) => k !== 'email' && k !== 'password')
-    .map(([k, v]) => `<input type="hidden" name="${k}" value="${String(v ?? '').replace(/"/g, '&quot;')}">`)
+  const champs = CHAMPS_OAUTH.filter((k) => params?.[k] != null)
+    .map((k) => `<input type="hidden" name="${k}" value="${esc(params[k])}">`)
     .join('');
   return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Autoriser le connecteur — ${nomCabinet()}</title>
+<title>Autoriser le connecteur — ${esc(nomCabinet())}</title>
 <style>
   :root{--accent:#7c2d5e;--bg:#f7f3f0;--card:#fff;--bord:#ece5e0;--txt:#2c2329;--txt2:#6b5f64;}
   *{box-sizing:border-box} body{font-family:system-ui,Segoe UI,sans-serif;background:var(--bg);color:var(--txt);margin:0;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}
@@ -64,9 +88,9 @@ function pageAutorisation(req, params, erreur = '') {
   .app{font-weight:600;color:var(--accent)}
 </style></head><body>
 <form class="card" method="post" action="/oauth/authorize">
-  <h1>Connecter <span class="app">Claude</span> à ${nomCabinet()}</h1>
-  <p>Claude demande l'accès au portail ${nomCabinet()} (clients & récupérations). Connecte-toi avec ton compte collaborateur pour autoriser.</p>
-  ${erreur ? `<div class="err">${erreur}</div>` : ''}
+  <h1>Connecter <span class="app">Claude</span> à ${esc(nomCabinet())}</h1>
+  <p>Claude demande l'accès au portail ${esc(nomCabinet())} (clients & récupérations). Connecte-toi avec ton compte collaborateur pour autoriser.</p>
+  ${erreur ? `<div class="err">${esc(erreur)}</div>` : ''}
   ${champs}
   <label>E-mail<input type="email" name="email" required autofocus placeholder="collaborateur@cabinet.fr"></label>
   <label>Mot de passe<input type="password" name="password" required placeholder="Mot de passe du portail"></label>
@@ -203,6 +227,12 @@ export function installOAuth(app) {
     if (b.grant_type === 'refresh_token') {
       const row = oauthDb.getByRefresh(String(b.refresh_token || ''));
       if (!row || row.client_id !== client.client_id) return res.status(400).json({ error: 'invalid_grant' });
+      // Compte desactive ou supprime : on ne renouvelle pas, et on brule le refresh au
+      // passage — sinon un ancien collaborateur gardait un acces renouvelable sans fin.
+      if (!utilisateurActif(row.user_id)) {
+        oauthDb.deleteByRefresh(row.refresh_token);
+        return res.status(400).json({ error: 'invalid_grant', error_description: 'Compte désactivé.' });
+      }
       oauthDb.deleteByRefresh(row.refresh_token); // rotation du refresh (OAuth 2.1)
       return emettreJetons(res, client.client_id, row.user_id, row.scope || 'mcp');
     }
@@ -211,15 +241,35 @@ export function installOAuth(app) {
   });
 
   // --- /register : Dynamic Client Registration (RFC 7591) ---
-  // Endpoint PUBLIC (exige par la spec MCP). Deux garde-fous contre l'abus : un throttle
-  // par IP (creation en rafale) et un plafond du nombre de clients DCR conserves.
+  // Endpoint PUBLIC (prevu par la spec MCP). Garde-fous contre l'abus : un throttle par IP,
+  // un plafond du nombre de clients conserves, et surtout des URI de retour RESTREINTES.
+  // Sans cette derniere, n'importe qui sur internet enregistrait un client pointant vers son
+  // propre serveur, puis envoyait a un collaborateur un lien d'autorisation sur le vrai
+  // domaine du cabinet : le code d'autorisation partait chez l'attaquant (PKCE ne protege
+  // pas d'un client lui-meme malveillant).
   const regThrottle = creerThrottle({ max: 10, fenetreMs: 60 * 60 * 1000 });
+
+  // Clients enregistres AVANT ce durcissement : ceux qui pointent ailleurs que vers Claude
+  // ou la boucle locale n'auraient jamais du l'etre. On les retire au demarrage, avec leurs
+  // jetons. Sur une installation saine il n'y en a aucun.
+  for (const c of oauthDb.listerClientsDcr()) {
+    if (c.redirect_uris.length && c.redirect_uris.every(uriDeConfiance)) continue;
+    oauthDb.supprimerClient(c.client_id);
+    console.warn(`[oauth] client « ${c.name || c.client_id} » supprimé : URI de retour non autorisée (${c.redirect_uris.join(', ') || 'aucune'}).`);
+  }
+
   app.post('/oauth/register', (req, res) => {
     const ip = req.ip || req.socket?.remoteAddress || 'inconnu';
     if (regThrottle.bloque(ip)) return res.status(429).json({ error: 'too_many_requests' });
     regThrottle.echec(ip);
     const b = req.body || {};
-    const redirect_uris = Array.isArray(b.redirect_uris) ? b.redirect_uris : [];
+    const redirect_uris = (Array.isArray(b.redirect_uris) ? b.redirect_uris : []).map(String);
+    if (!redirect_uris.length || !redirect_uris.every(uriDeConfiance)) {
+      return res.status(400).json({
+        error: 'invalid_redirect_uri',
+        error_description: `Seules ${CALLBACK_HOSTE} et la boucle locale (http://localhost:<port>/callback) sont acceptées comme URL de retour.`,
+      });
+    }
     const isPublic = b.token_endpoint_auth_method === 'none';
     const client_id = 'dcr-' + oauthDb.rnd(12);
     const client_secret = isPublic ? null : oauthDb.rnd(32);
@@ -249,8 +299,15 @@ export function requireBearer(req, res, next) {
   if (!h.startsWith('Bearer ')) return defie();
   const row = oauthDb.getByAccess(h.slice(7).trim());
   if (!row || row.expires_at < Date.now()) return defie();
+  // Le jeton ne suffit pas : on revalide a CHAQUE appel le collaborateur et le client.
+  // Sans ca, desactiver un compte (depart d'un salarie) ne coupait pas son connecteur —
+  // ses jetons restaient acceptes, et son refresh token les renouvelait indefiniment.
+  if (!utilisateurActif(row.user_id) || !oauthDb.getClient(row.client_id)) return defie();
   req.oauth = { user_id: row.user_id, scope: row.scope, client_id: row.client_id };
   next();
 }
 
-export { baseUrl, CALLBACK_HOSTE };
+// pageAutorisation et uriDeConfiance sont exportees pour etre testables directement :
+// ce sont les deux points ou une erreur redonne une faille (injection HTML / code
+// d'autorisation envoye chez un tiers).
+export { baseUrl, CALLBACK_HOSTE, pageAutorisation, uriDeConfiance, esc };

@@ -113,6 +113,19 @@ export function regenStaticClient(redirectUris) {
 export function compterClientsDcr() {
   return db.prepare("SELECT COUNT(*) AS n FROM clients WHERE statique = 0 AND client_id LIKE 'dcr-%'").get().n;
 }
+/** Clients enregistrés dynamiquement, avec leurs URI de retour décodées. */
+export function listerClientsDcr() {
+  return db
+    .prepare("SELECT client_id, name, redirect_uris FROM clients WHERE statique = 0 AND client_id LIKE 'dcr-%'")
+    .all()
+    .map((c) => ({ ...c, redirect_uris: JSON.parse(c.redirect_uris || '[]') }));
+}
+/** Supprime un client ET tout ce qu'il a émis (sinon ses jetons resteraient valables). */
+export function supprimerClient(clientId) {
+  db.prepare('DELETE FROM tokens WHERE client_id = ?').run(clientId);
+  db.prepare('DELETE FROM codes WHERE client_id = ?').run(clientId);
+  return db.prepare('DELETE FROM clients WHERE client_id = ? AND statique = 0').run(clientId).changes;
+}
 export function purgerClientsDcr(garder = 50) {
   db.prepare(
     `DELETE FROM clients WHERE statique = 0 AND client_id LIKE 'dcr-%'
