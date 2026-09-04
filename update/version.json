@@ -1,6 +1,6 @@
 {
-  "version": "1.13.1",
-  "notes": "Sécurité OAuth : correction d'une injection HTML sur la page de consentement, restriction des URL de retour à l'enregistrement d'un connecteur, et révocation immédiate des jetons d'un collaborateur désactivé.",
+  "version": "1.13.2",
+  "notes": "Tous les documents CARPIMKO récupérés par défaut (attestations, échéanciers... pas seulement les appels de cotisations), y compris lors des tournées automatiques planifiées.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "8ba5b73607455a5f2f23efa7c4f2eabdc90795469b44a3b28a3405d1cf4b3cd0"
+  "sha256": "96112f792609b1e0e71a0ec64bb7094e9e81a2bed4eb6e87bb20e046d28341e3"
 }
