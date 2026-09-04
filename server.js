@@ -1652,7 +1652,10 @@ if (
 ) {
   const LANCEURS = {
     urssaf: () => lancerUrssafTous(),
-    carpimko: () => routeursSources.carpimko.lancerTous(),
+    // tousDocuments:true -> la tournee automatique recupere TOUS les documents CARPIMKO
+    // (pas seulement les appels de cotisations), meme si la case "Tous les documents"
+    // de l'onglet n'a pas ete cochee manuellement (elle ne persiste pas entre les visites).
+    carpimko: () => routeursSources.carpimko.lancerTous({ tousDocuments: true }),
     carmf: () => routeursSources.carmf.lancerTous(),
     carcdsf: () => routeursSources.carcdsf.lancerTous(),
     carpv: () => routeursSources.carpv.lancerTous(),

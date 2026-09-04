@@ -22,7 +22,7 @@ const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'carpimko');
 const LOGIN_URL = process.env.CARPIMKO_LOGIN_URL || 'https://www2.carpimko.com/Comptes/Connexion?ReturnUrl=%2F';
 const DOCUMENTS_URL = 'https://www2.carpimko.com/migration/MesDocuments?tab=docs';
 const REGEX_APPEL = /appel\s*de\s*cotisation/i;
-const TOUS_DOCUMENTS_DEFAUT = String(process.env.TOUS_DOCUMENTS ?? 'false').toLowerCase() === 'true';
+const TOUS_DOCUMENTS_DEFAUT = String(process.env.TOUS_DOCUMENTS ?? 'true').toLowerCase() === 'true';
 
 function addRunSafe(clientId, run) {
   try {
