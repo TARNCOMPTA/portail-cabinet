@@ -265,6 +265,17 @@ export function getDocument(id) {
 export function addRun(client_id, { statut, message, nb_docs }) {
   db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs) VALUES (?, ?, ?, ?)').run(client_id, statut, message ?? null, nb_docs ?? 0);
 }
+// Migration ponctuelle (v1.13.4) : la v1.13.3 notait « succes » des clients dont les avis
+// n'avaient en realite jamais ete lus (ouverture du dossier non verifiee). La reprise (12 h)
+// les aurait sautes : on les repasse en « echec » — historique conserve, avec une mention.
+// `depuis` : horodatage UTC (« YYYY-MM-DD HH:MM:SS ») du debut de la periode suspecte.
+export function invaliderRunsDefectueux(depuis) {
+  return db
+    .prepare(
+      "UPDATE runs SET statut = 'echec', message = 'Invalidé (récupération 1.13.3 défectueuse), à refaire : ' || COALESCE(message, '') WHERE statut = 'succes' AND lance_le >= ?",
+    )
+    .run(depuis).changes;
+}
 export function listRuns(limit = 50) {
   return db
     .prepare(

@@ -42,6 +42,7 @@ import {
   setPaiementDocument,
   listCfeSansPaiement,
   resetPaiementCfe,
+  invaliderRunsDefectueux,
   stats as statsImpots,
 } from './src/db.js';
 import { verifierCle } from './src/crypto.js';
@@ -1784,6 +1785,19 @@ try {
 
 if (!majDeclenchee) {
   app.listen(PORT, () => console.log(`\n  Impots pro scraper -> http://localhost:${PORT}\n`));
+
+  // Migration ponctuelle (v1.13.4) : recuperations impots de la 1.13.3 notees « succes » a tort
+  // (avis jamais lus) -> repassees en « echec » pour que la reprise de 12 h ne les saute pas.
+  // `depuis` = debut de la periode suspecte (publication de la 1.13.3, 12/10/2026, UTC).
+  try {
+    if (getSetting('fix_runs_1_13_4') !== '1') {
+      const n = invaliderRunsDefectueux('2026-10-12 10:30:00');
+      setSetting('fix_runs_1_13_4', '1');
+      if (n) console.log(`  [impots] ${n} récupération(s) de la 1.13.3 invalidée(s) (avis non lus) — elles seront refaites.`);
+    }
+  } catch (e) {
+    console.warn('  [impots] invalidation des récupérations défectueuses : ' + e.message);
+  }
 
   // Retro-analyse des avis CFE deja telecharges : detecte le mode de paiement
   // (prelevement a l'echeance / mensualisation / aucun) dans le texte des PDF.

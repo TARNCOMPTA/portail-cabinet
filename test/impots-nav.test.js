@@ -41,13 +41,29 @@ function demarrerSiteFactice() {
       const id = u.searchParams.get('idDossier');
       if (u.searchParams.get('token') !== etat.jeton) return html('<p>Oups, une erreur s’est produite</p>', 'Erreur | Mon espace professionnel');
       if (id === '111111111') {
-        res.writeHead(302, { location: '/adelie2mapi/xhtml/accueil/accueil.xhtml' });
+        res.writeHead(302, { location: '/adelie2mapi/xhtml/accueil/accueil.xhtml?s=111111111' });
+        return res.end();
+      }
+      // Dossier SANS le service demande : l'ouverture reste dans la zone « mire » (accueil du
+      // dossier, sans « Consulter ») au lieu d'atterrir sur ADELIE (constate le 12/10/2026).
+      // (cas reel : EURL TBA SECU — l'entree « avis CFE » reste sur l'accueil, « compte fiscal » ouvre ADELIE)
+      if (id === '444444444') {
+        res.writeHead(302, {
+          location:
+            u.searchParams.get('idth') === 'consulter.adelie.le_compte_fiscal' ? '/adelie2mapi/xhtml/accueil/accueil.xhtml?s=444444444' : '/mire/accueil.do',
+        });
+        return res.end();
+      }
+      // ADELIE reste sur le contexte du dossier PRECEDENT : le SIREN affiche n'est pas le bon.
+      if (id === '555555555') {
+        res.writeHead(302, { location: '/adelie2mapi/xhtml/accueil/accueil.xhtml?s=999999999' });
         return res.end();
       }
       if (id === '333333333') return html('<p>Vous n’avez aucune habilitation pour ce dossier.</p>', 'Messagerie | Mon espace professionnel', 500);
       return html('<p>Oups, une erreur s’est produite</p>', 'Erreur | Mon espace professionnel');
     }
-    if (p.startsWith('/adelie2mapi/')) return html('<h1>Accueil du compte fiscal des professionnels</h1>');
+    if (p.startsWith('/adelie2mapi/'))
+      return html(`<h1>Accueil du compte fiscal des professionnels</h1><p>SIREN ou EDI : ${u.searchParams.get('s') || ''}</p>`);
     if (p === '/')
       return html(
         `<h1>Accueil</h1><a href="/eservices?idurlm=gerer.services&token=T" target="EServices">Gérer les services</a> <a href="/consulter">Consulter</a>`,
@@ -168,6 +184,51 @@ test('selectionnerDossier : dossier sans habilitation (HTTP 500 « aucune habili
   assert.equal(r.ok, false);
   assert.equal(r.sansHabilitation, true);
   assert.ok(!r.introuvable);
+  await ctx.close();
+});
+
+test('selectionnerDossier : l’ouverture reste sur l’accueil « mire » -> sans habilitation (jamais « ok »)', async (t) => {
+  if (!browser) return t.skip('Chromium indisponible');
+  mock.etat.jeton = 'TOK-A';
+  const ctx = await browser.newContext();
+  const pg = await ctx.newPage();
+  const r = await navmod.selectionnerDossier(pg, '444444444', 'consulter.avis.cfe');
+  assert.equal(r.ok, false, 'sans atterrir sur ADELIE, on ne doit rien lire (page d’avis = dossier précédent)');
+  assert.equal(r.sansHabilitation, true);
+  await ctx.close();
+});
+
+test('ouvrirDossierAvis : passe par « compte fiscal » quand « avis CFE » reste sur l’accueil (cas TBA SECU)', async (t) => {
+  if (!browser) return t.skip('Chromium indisponible');
+  mock.etat.jeton = 'TOK-A';
+  const ctx = await browser.newContext();
+  const pg = await ctx.newPage();
+  const r = await navmod.ouvrirDossierAvis(pg, '444444444');
+  assert.equal(r.ok, true, 'le dossier doit s’ouvrir par l’entrée « compte fiscal »');
+  assert.match(pg.url(), /adelie2mapi/);
+  await ctx.close();
+});
+
+test('ouvrirDossierAvis : dossier réellement sans accès -> sans habilitation (les deux entrées essayées)', async (t) => {
+  if (!browser) return t.skip('Chromium indisponible');
+  mock.etat.jeton = 'TOK-A';
+  const ctx = await browser.newContext();
+  const pg = await ctx.newPage();
+  const r = await navmod.ouvrirDossierAvis(pg, '333333333');
+  assert.equal(r.ok, false);
+  assert.equal(r.sansHabilitation, true);
+  await ctx.close();
+});
+
+test('selectionnerDossier : SIREN affiché différent de celui demandé -> contexte incohérent, rien à lire', async (t) => {
+  if (!browser) return t.skip('Chromium indisponible');
+  mock.etat.jeton = 'TOK-A';
+  const ctx = await browser.newContext();
+  const pg = await ctx.newPage();
+  const r = await navmod.selectionnerDossier(pg, '555555555', 'consulter.avis.cfe');
+  assert.equal(r.ok, false);
+  assert.equal(r.contexteIncoherent, true);
+  assert.equal(r.affiche, '999999999');
   await ctx.close();
 });
 

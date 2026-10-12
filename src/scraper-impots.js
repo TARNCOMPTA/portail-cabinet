@@ -7,8 +7,10 @@
 //   1. cfspro.impots.gouv.fr -> connexion manuelle -> mire/accueil.do
 //   2. Lecture du JETON de session (?token=...) sur les liens de l'accueil : toute URL de la
 //      zone « mire » l'exige desormais (voir jetonMire / selectionnerDossier plus bas).
-//   3. mire/dossierSelect.do?idth=consulter.avis.cfe&idDossier=<SIREN>&token=T -> redirige
-//      dans l'onglet courant vers ADELIE2 avec le dossier selectionne.
+//   3. mire/dossierSelect.do?idth=consulter.adelie.le_compte_fiscal&idDossier=<SIREN>&token=T
+//      -> redirige dans l'onglet courant vers ADELIE2 avec le dossier selectionne (entree
+//      « compte fiscal » : c'est elle qui ouvre les avis de tous les dossiers ; « avis CFE »
+//      en repli seulement — voir ouvrirDossierAvis).
 //   4. ADELIE2 : avis_cfe.xhtml (colonne "Telecharger l'avis") + avisTaxeFonciere.xhtml
 //      (icone PDF colonne "Avis principal") -> clic = telechargement du PDF.
 
@@ -118,10 +120,18 @@ async function attendreFenetreCible(page, timeout = 3000) {
   return null;
 }
 
+// SIREN affiche dans l'en-tete de l'appli cible (« SIREN ou EDI : 087020095 » sur ADELIE,
+// « SIREN : ... » sur gaia2) — sert a verifier que le dossier ouvert est bien celui demande.
+const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SIREN[^0-9]{0,12}(\d{9})/i) || [])[1] || null).catch(() => null);
+
 /** Ouvre le dossier `siren` sous l'habilitation `idth` (HAB_*). Renvoie :
- *   { ok: true, cible }                  cible = page portant l'appli (ADELIE / gaia2)
- *   { ok: false, sansHabilitation: true } dossier connu mais sans cette habilitation (normal)
- *   { ok: false, introuvable: true }      SIREN hors portefeuille / page d'erreur
+ *   { ok: true, cible }                    cible = page portant l'appli (ADELIE / gaia2)
+ *   { ok: false, sansHabilitation: true }   dossier sans le service demande (cas normal) : l'ouverture
+ *                                           reste dans la zone « mire » (accueil du dossier, sans
+ *                                           « Consulter ») ou repond « aucune habilitation » (HTTP 500)
+ *   { ok: false, introuvable: true }        SIREN hors portefeuille / page d'erreur
+ *   { ok: false, contexteIncoherent: true } l'appli affiche un AUTRE SIREN que celui demande
+ *                                           (contexte du dossier precedent) : ne rien lire dessus
  *  Leve si la session a expire. */
 export async function selectionnerDossier(page, siren, idth) {
   const essayer = async (jeton) => {
@@ -151,9 +161,38 @@ export async function selectionnerDossier(page, siren, idth) {
     }
   }
   if (enErreur) return { ok: false, introuvable: true };
+  // Ouverture reussie = on ATTERRIT sur l'appli cible (ADELIE / gaia2). Rester dans la zone
+  // « mire » (accueil du dossier) signifie que ce dossier n'a pas le service demande : sans
+  // ce controle, la page d'avis lue ensuite appartenait au dossier PRECEDENT (constate le
+  // 12/10/2026 : des clients sans habilitation CFE « recevaient » les avis du client d'avant).
   let cible = page;
-  if (!/adelie2mapi|gaia2-zu-mapi/i.test(page.url())) cible = (await attendreFenetreCible(page)) || page;
+  if (!/adelie2mapi|gaia2-zu-mapi/i.test(page.url())) {
+    cible = await attendreFenetreCible(page, 1500);
+    if (!cible) return /\/mire\//i.test(page.url()) ? { ok: false, sansHabilitation: true } : { ok: false, introuvable: true };
+  }
+  // Garde-fou : le SIREN affiche doit etre celui demande (rendu parfois tardif : 1 relecture).
+  await cible.waitForLoadState('domcontentloaded').catch(() => {});
+  let affiche = await sirenAffiche(cible);
+  if (affiche && affiche !== siren) {
+    await cible.waitForTimeout(2500);
+    affiche = await sirenAffiche(cible);
+  }
+  if (affiche && affiche !== siren) return { ok: false, contexteIncoherent: true, affiche };
   return { ok: true, cible };
+}
+
+/** Ouvre le dossier dans ADELIE pour lire ses avis CFE / taxe fonciere. Entree « compte fiscal »
+ *  d'abord : c'est elle qui donne acces aux avis de TOUS les dossiers (constate le 12/10/2026 :
+ *  EURL TBA SECU, pourtant dans la liste « avis CFE », restait sur l'accueil du dossier par
+ *  l'entree « avis CFE » alors que le compte fiscal affichait bien ses 7 CFE + 4 TF).
+ *  L'entree « avis CFE » ne sert plus qu'en repli. Meme retour que selectionnerDossier. */
+export async function ouvrirDossierAvis(page, siren) {
+  let sel = await selectionnerDossier(page, siren, HAB_COMPTE_FISCAL);
+  if (!sel.ok && !sel.contexteIncoherent) {
+    const repli = await selectionnerDossier(page, siren, HAB_AVIS);
+    if (repli.ok || repli.contexteIncoherent) sel = repli;
+  }
+  return sel;
 }
 
 function addRunSafe(clientId, run) {
@@ -334,6 +373,10 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
     //    (« Mes échanges ») dans l'onglet courant. Dossier sans cette habilitation => HTTP 500
     //    + « aucune habilitation » (detecte tout de suite : cas normal, pas une panne).
     const sel = await selectionnerDossier(page, siren, HAB_MESSAGERIE);
+    if (sel.contexteIncoherent) {
+      log(`Messagerie : le site affiche le SIREN ${sel.affiche} au lieu de ${siren} — rien lu.`);
+      return { docs, existants, quarantaines, nonVerifiables, erreur: `Contexte messagerie incohérent (SIREN ${sel.affiche} affiché au lieu de ${siren})` };
+    }
     if (!sel.ok) {
       log(
         sel.sansHabilitation
@@ -682,12 +725,13 @@ export async function telechargerTvaDeclarations(page, client, clientDir, siren,
     //    de session) : redirige vers ADELIE dans l'onglet courant.
     const sel = await selectionnerDossier(page, siren, HAB_COMPTE_FISCAL);
     if (!sel.ok) {
-      log(
-        sel.sansHabilitation
-          ? 'TVA : pas d’habilitation « compte fiscal » pour ce dossier — ignoré.'
-          : 'TVA : dossier introuvable dans l’espace professionnel — ignoré.',
-      );
-      return { docs: [], existants: 0, info: sel.sansHabilitation ? 'pas d’habilitation compte fiscal' : 'dossier introuvable (compte fiscal)' };
+      const raison = sel.sansHabilitation
+        ? 'pas d’habilitation compte fiscal'
+        : sel.contexteIncoherent
+          ? 'contexte du dossier incohérent'
+          : 'dossier introuvable (compte fiscal)';
+      log(`TVA : ${raison} — ignoré.`);
+      return { docs: [], existants: 0, info: raison };
     }
     const cf = sel.cible;
     await cf.waitForLoadState('domcontentloaded').catch(() => {});
@@ -776,9 +820,8 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     let infoAvis = null; // avis non recuperables pour ce dossier (message affiche dans l'historique)
     let avisIntrouvable = false; // SIREN hors portefeuille (≠ simple absence d'habilitation)
     if (phases.cfe || phases.tf) {
-      // 1. Ouvrir le dossier sous l'habilitation « avis CFE » (lien direct + jeton de session)
-      //    -> ADELIE s'ouvre dans l'onglet courant avec le dossier selectionne.
-      const sel = await selectionnerDossier(page, siren, HAB_AVIS);
+      // 1. Ouvrir le dossier dans ADELIE (lien direct + jeton de session, onglet courant).
+      const sel = await ouvrirDossierAvis(page, siren);
       if (sel.ok) {
         // 2. Avis CFE
         if (phases.cfe) {
@@ -793,6 +836,8 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
           tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
         }
       } else {
+        if (sel.contexteIncoherent)
+          throw new Error(`Contexte ADELIE incohérent : le site affiche le SIREN ${sel.affiche} au lieu de ${siren} — rien n’a été lu pour ce client.`);
         avisIntrouvable = !!sel.introuvable;
         infoAvis = sel.sansHabilitation ? 'pas d’habilitation CFE/TF pour ce dossier' : 'dossier introuvable dans l’espace professionnel (hors portefeuille ?)';
         log(`Avis CFE/TF : ${infoAvis} — passage à la suite.`);
@@ -800,6 +845,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     }
     // 4. Messagerie
     if (phases.messagerie) msg = await recupererMessagerie(page, context, client, clientDir, navTimeout, log);
+    if (msg.erreur) throw new Error(msg.erreur);
     // 5. Declarations de TVA (compte fiscal, par SIREN)
     if (phases.tva) tva = await telechargerTvaDeclarations(page, client, clientDir, siren, navTimeout, log);
 
