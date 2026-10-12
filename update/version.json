@@ -1,6 +1,6 @@
 {
-  "version": "1.13.2",
-  "notes": "Tous les documents CARPIMKO récupérés par défaut (attestations, échéanciers... pas seulement les appels de cotisations), y compris lors des tournées automatiques planifiées.",
+  "version": "1.13.3",
+  "notes": "Impôts : adaptation à la refonte de l'espace professionnel (nouvelle interface DSFR) — récupération des avis CFE/taxe foncière, de la messagerie, de la TVA et synchronisation des dossiers de nouveau opérationnelles.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "96112f792609b1e0e71a0ec64bb7094e9e81a2bed4eb6e87bb20e046d28341e3"
+  "sha256": "af86e1da42675a08c8ca58cb61029caca8d6abe537f3525254ec58d0b3b6136c"
 }
