@@ -3,10 +3,12 @@
 // A cause du CAPTCHA, la connexion est MANUELLE : le robot ouvre un navigateur visible,
 // TU te connectes (identifiants + captcha) UNE fois par session, puis le robot enchaine.
 //
-// Parcours (verifie le 12/06/2026) :
+// Parcours (verifie le 12/10/2026, apres la refonte DSFR de l'espace pro) :
 //   1. cfspro.impots.gouv.fr -> connexion manuelle -> mire/accueil.do
-//   2. CONSULTER > Avis CFE -> afficherChoisirDossier (saisie SIREN, 9 cases) -> Valider
-//   3. rechercherDossiers -> selection du dossier + bouton CONSULTER
+//   2. Lecture du JETON de session (?token=...) sur les liens de l'accueil : toute URL de la
+//      zone « mire » l'exige desormais (voir jetonMire / selectionnerDossier plus bas).
+//   3. mire/dossierSelect.do?idth=consulter.avis.cfe&idDossier=<SIREN>&token=T -> redirige
+//      dans l'onglet courant vers ADELIE2 avec le dossier selectionne.
 //   4. ADELIE2 : avis_cfe.xhtml (colonne "Telecharger l'avis") + avisTaxeFonciere.xhtml
 //      (icone PDF colonne "Avis principal") -> clic = telechargement du PDF.
 
@@ -29,31 +31,129 @@ const ACCUEIL_URL = 'https://cfspro.impots.gouv.fr/';
 // Page d'accueil de l'espace pro pour les NOUVEAUX parcours (habilitations, TVA).
 // Surchargeable (tests locaux contre un site factice) : IMPOTS_ACCUEIL_URL.
 const accueilUrl = () => process.env.IMPOTS_ACCUEIL_URL || ACCUEIL_URL;
-const CFE_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=consulter.avis.cfe';
-// Compte fiscal (consultation ADELIE) : meme selecteur de dossier par SIREN que CFE (9 cases).
-const CF_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=consulter.adelie.le+compte+fiscal';
 const CFE_AVIS_URL = 'https://cfspro.impots.gouv.fr/adelie2mapi/xhtml/impots/cfe/avis_cfe.xhtml?emetteur=ADELIE_2';
 const TF_AVIS_URL = 'https://cfspro.impots.gouv.fr/adelie2mapi/xhtml/impots/tf/avisTaxeFonciere.xhtml?emetteur=ADELIE_2';
-const TOUS_DOSSIERS_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=tousMesDossier&idth=consulter.avis.cfe';
-// Pages suivantes de "tous mes dossiers" (10 dossiers/page) : afficherMesDossiers.do?p=N
-const PAGE_DOSSIERS_URL = (p) => `https://cfspro.impots.gouv.fr/mire/afficherMesDossiers.do?p=${p}&action=tousMesDossier&idth=consulter.avis.cfe`;
-// Messagerie securisee "Mes echanges" (appli gaia2), PAR DOSSIER (choix du SIREN).
-const MSG_CHOISIR_URL = 'https://cfspro.impots.gouv.fr/mire/afficherChoisirDossier.do?action=parTypeHablitation&idth=messagerie.gaia2.messagerie';
+// Messagerie securisee "Mes echanges" (appli gaia2), PAR DOSSIER.
 const GAIA_URL = 'https://cfspro.impots.gouv.fr/gaia2-zu-mapi/pages/pro/portailpro.xhtml';
 
-// Lit les dossiers (nom + SIREN) presents sur la page courante.
-function lireDossiersPage(page) {
+// Zone « mire » (choix du dossier). Depuis la refonte DSFR de l'espace pro (oct. 2026), les
+// anciennes URLs directes (afficherChoisirDossier.do + saisie du SIREN dans 9 cases, liste de
+// radios rechercherDossiers.do, afficherMesDossiers.do) n'existent plus — elles repondent en
+// erreur HTTP. TOUTE URL de cette zone exige un JETON de session (?token=...), unique et
+// stable pour la session, lisible sur les liens de la page d'accueil :
+//   - liste des dossiers   : afficherSelectionDossier.do?idth=<habilitation>[&p=N]&token=T
+//   - ouverture d'un dossier : dossierSelect.do?idth=<habilitation>&idDossier=<SIREN>&token=T
+//     -> redirige dans l'ONGLET COURANT vers l'appli cible (ADELIE pour les avis et le compte
+//     fiscal, gaia2 pour la messagerie). Un SIREN hors portefeuille => page « Erreur » ; un
+//     dossier sans l'habilitation demandee => HTTP 500 + « aucune habilitation » (cas normal).
+// Surchargeable (tests locaux contre un site factice) : IMPOTS_MIRE_URL.
+const mireBase = () => process.env.IMPOTS_MIRE_URL || 'https://cfspro.impots.gouv.fr/mire';
+const HAB_AVIS = 'consulter.avis.cfe';
+const HAB_COMPTE_FISCAL = 'consulter.adelie.le_compte_fiscal';
+const HAB_MESSAGERIE = 'messagerie.gaia2.messagerie';
+
+// Lit les dossiers (nom + SIREN) presents sur une page « Mes dossiers » : un lien par carte,
+// dossierSelect.do?...&idDossier=<SIREN>, dont le texte est le nom du dossier.
+export function lireDossiersPage(page) {
   return page.evaluate(() => {
     const out = [];
-    for (const r of document.querySelectorAll('input[name="idDossier"]')) {
-      const tr = r.closest('tr, li, div');
-      const t = (tr?.innerText || '').replace(/\s+/g, ' ').trim();
-      const siren = (t.match(/SIREN\s*:?\s*(\d[\d ]{8,})/i) || [])[1];
-      const nom = t.replace(/SIREN.*/i, '').trim();
-      if (nom && siren) out.push({ nom: nom.slice(0, 120), siren: siren.replace(/\s/g, '') });
+    for (const a of document.querySelectorAll('a[href*="dossierSelect.do"]')) {
+      const m = (a.getAttribute('href') || '').match(/[?&]idDossier=([^&#]+)/);
+      const nom = (a.textContent || '')
+        .replace(/\s+/g, ' ')
+        .replace(/SIREN.*/i, '')
+        .replace(/\s*-?\s*nouvelle fen[eê]tre\s*$/i, '')
+        .trim();
+      if (m && nom) out.push({ nom: nom.slice(0, 120), siren: decodeURIComponent(m[1]).replace(/\s/g, '') });
     }
     return out;
   });
+}
+
+// ---- Jeton de session « mire » + selection d'un dossier -----------------------
+const jetonsMire = new WeakMap(); // contexte navigateur -> jeton
+
+const lireJetonSurPage = (page) =>
+  page
+    .evaluate(() => {
+      for (const a of document.querySelectorAll('a[href*="token="]')) {
+        const m = (a.getAttribute('href') || '').match(/[?&]token=([^&#]+)/);
+        if (m) return decodeURIComponent(m[1]);
+      }
+      return null;
+    })
+    .catch(() => null);
+
+/** Jeton de session de la zone « mire », lu sur les liens de l'accueil (mis en cache par
+ *  contexte). `forcer` : le relit. Leve si la session a expire (retour sur la connexion). */
+export async function jetonMire(page, { forcer = false } = {}) {
+  const ctx = page.context();
+  if (!forcer && jetonsMire.has(ctx)) return jetonsMire.get(ctx);
+  await page.goto(`${mireBase()}/accueil.do`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  let jeton = await lireJetonSurPage(page);
+  if (!jeton) {
+    await page.waitForTimeout(1500); // rendu lent
+    jeton = await lireJetonSurPage(page);
+  }
+  if (!jeton) throw new Error('Session impôts expirée ou jeton de session introuvable (page d’accueil modifiée ?).');
+  jetonsMire.set(ctx, jeton);
+  return jeton;
+}
+
+// Fenetre portant l'appli cible (ADELIE / gaia2), si l'ouverture du dossier s'y est faite
+// dans une AUTRE fenetre que l'onglet courant (ancien comportement, garde en repli).
+async function attendreFenetreCible(page, timeout = 3000) {
+  const debut = Date.now();
+  while (Date.now() - debut < timeout) {
+    const p = page
+      .context()
+      .pages()
+      .find((pg) => pg !== page && /adelie2mapi|gaia2-zu-mapi/i.test(pg.url()));
+    if (p) {
+      await p.waitForLoadState('domcontentloaded').catch(() => {});
+      return p;
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+  return null;
+}
+
+/** Ouvre le dossier `siren` sous l'habilitation `idth` (HAB_*). Renvoie :
+ *   { ok: true, cible }                  cible = page portant l'appli (ADELIE / gaia2)
+ *   { ok: false, sansHabilitation: true } dossier connu mais sans cette habilitation (normal)
+ *   { ok: false, introuvable: true }      SIREN hors portefeuille / page d'erreur
+ *  Leve si la session a expire. */
+export async function selectionnerDossier(page, siren, idth) {
+  const essayer = async (jeton) => {
+    const url = `${mireBase()}/dossierSelect.do?idth=${encodeURIComponent(idth)}&idDossier=${encodeURIComponent(siren)}&token=${encodeURIComponent(jeton)}`;
+    // Une reponse HTTP en erreur SANS corps fait lever goto : meme traitement qu'une page d'erreur.
+    const leve = await page.goto(url, { waitUntil: 'domcontentloaded' }).then(
+      () => false,
+      () => true,
+    );
+    if (leve) return true;
+    // Une ouverture reussie QUITTE dossierSelect.do (redirection vers l'appli cible).
+    return /dossierSelect\.do/i.test(page.url()) || (/\/mire\//i.test(page.url()) && /erreur/i.test(await page.title().catch(() => '')));
+  };
+  const sansHabilitation = () => page.evaluate(() => /aucune habilitation/i.test(document.body?.innerText || '')).catch(() => false);
+
+  let jeton = await jetonMire(page);
+  let enErreur = await essayer(jeton);
+  if (enErreur && (await sansHabilitation())) return { ok: false, sansHabilitation: true };
+  if (enErreur) {
+    // Jeton perime (session renouvelee) ? On le relit (leve si la session a expire) et,
+    // s'il a change, on retente une fois.
+    const neuf = await jetonMire(page, { forcer: true });
+    if (neuf !== jeton) {
+      jeton = neuf;
+      enErreur = await essayer(jeton);
+      if (enErreur && (await sansHabilitation())) return { ok: false, sansHabilitation: true };
+    }
+  }
+  if (enErreur) return { ok: false, introuvable: true };
+  let cible = page;
+  if (!/adelie2mapi|gaia2-zu-mapi/i.test(page.url())) cible = (await attendreFenetreCible(page)) || page;
+  return { ok: true, cible };
 }
 
 function addRunSafe(clientId, run) {
@@ -155,7 +255,7 @@ async function attendreConnexionManuelle(page, cabinet, log) {
 
   // Attend la connexion effective (redirection vers l'espace pro), max 5 min.
   try {
-    await page.waitForURL(/cfspro\.impots\.gouv\.fr\/mire\/(accueil|afficherChoisirDossier|rechercherDossiers)/, { timeout: 300000 });
+    await page.waitForURL(/cfspro\.impots\.gouv\.fr\/mire\/(accueil|afficherSelectionDossier|afficherChoisirDossier|rechercherDossiers)/, { timeout: 300000 });
   } finally {
     captchaRelais.fermer();
   }
@@ -230,47 +330,21 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
   const quarantaines = [];
   let nonVerifiables = 0;
   try {
-    // 1. Choix du dossier sous l'habilitation "messagerie" (peut ouvrir un nouvel onglet)
-    await page.goto(MSG_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(1000);
-    await remplirCasesSiren(page, siren);
-    // Detection rapide « Vous n'avez aucune habilitation... » : la page d'erreur revient
-    // immediatement apres le clic ACCEDER -> inutile d'attendre le popup gaia (8 s x2).
-    const sansHabilitation = () =>
-      page
-        .waitForFunction(() => /aucune habilitation/i.test(document.body?.innerText || ''), null, { timeout: 2500 })
-        .then(() => true)
-        .catch(() => false);
-    let popup = null;
-    const popupAttendu = context.waitForEvent('page', { timeout: 8000 }).catch(() => null);
-    await page
-      .locator('input[name="button.submitValider"], input[type="image"]')
-      .first()
-      .click()
-      .catch(() => {});
-    if (await sansHabilitation()) {
-      log('Messagerie : pas d’habilitation pour ce dossier — passage au suivant.');
-      return { docs, existants, info: 'sans habilitation messagerie' };
+    // 1. Ouverture du dossier sous l'habilitation « messagerie » : redirige vers gaia2
+    //    (« Mes échanges ») dans l'onglet courant. Dossier sans cette habilitation => HTTP 500
+    //    + « aucune habilitation » (detecte tout de suite : cas normal, pas une panne).
+    const sel = await selectionnerDossier(page, siren, HAB_MESSAGERIE);
+    if (!sel.ok) {
+      log(
+        sel.sansHabilitation
+          ? 'Messagerie : pas d’habilitation pour ce dossier — passage au suivant.'
+          : 'Messagerie : dossier introuvable dans l’espace professionnel — passage au suivant.',
+      );
+      return { docs, existants, info: sel.sansHabilitation ? 'sans habilitation messagerie' : 'dossier introuvable (messagerie)' };
     }
-    popup = await popupAttendu;
-    if (/rechercherDossiers/i.test(page.url())) {
-      const radio = page.locator('input[name="idDossier"], #sel0').first();
-      if ((await radio.count()) && !(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
-      const popupAttendu2 = context.waitForEvent('page', { timeout: 8000 }).catch(() => popup);
-      await page
-        .locator('input[name="button.submitValider"], input[type="image"]')
-        .first()
-        .click()
-        .catch(() => {});
-      if (await sansHabilitation()) {
-        log('Messagerie : pas d’habilitation pour ce dossier — passage au suivant.');
-        return { docs, existants, info: 'sans habilitation messagerie' };
-      }
-      popup = await popupAttendu2;
-    }
-    const gaia = popup || page;
-    if (popup) await popup.waitForLoadState('domcontentloaded').catch(() => {});
-    else if (!/gaia2/i.test(page.url())) await page.goto(GAIA_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    const gaia = sel.cible;
+    const popup = gaia !== page ? gaia : null; // fenetre ouverte a part (repli ancien comportement)
+    if (!/gaia2/i.test(gaia.url())) await gaia.goto(GAIA_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
     // Attendre le rendu de la datatable : liens de demandes OU « Aucune demande trouvée »
     // (sortie des que l'un apparait — plus rapide ET plus fiable qu'un delai fixe).
     await gaia
@@ -508,44 +582,14 @@ async function dumpDiag(page, dir, prefixe) {
   }
 }
 
-// Retrouve la fenetre ADELIE (consultation compte fiscal) parmi toutes les fenetres du
-// contexte. La selection du dossier soumet vers une fenetre NOMMEE "EServices" (souvent
-// reutilisee d'un client a l'autre) : le simple waitForEvent('page') ne suffit pas.
-async function attendreFenetreAdelie(context, timeout = 12000) {
-  const debut = Date.now();
-  while (Date.now() - debut < timeout) {
-    const p = context.pages().find((pg) => /adelie2mapi/i.test(pg.url()));
-    if (p) {
-      await p.waitForLoadState('domcontentloaded').catch(() => {});
-      return p;
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return null;
-}
-
-// Ferme les fenetres residuelles (ADELIE/EServices/liste de dossiers) d'un client precedent,
-// pour que la fenetre nommee "EServices" soit recreee proprement au client suivant.
+// Ferme les fenetres residuelles (ADELIE/gaia2/E-Services) d'un client precedent, au cas ou
+// l'ouverture d'un dossier se serait faite dans une fenetre a part.
 async function fermerFenetresAnnexes(page) {
   for (const p of page.context().pages()) {
-    if (p !== page && /adelie2mapi|mesDossiers|externRedirect|rechercherDossiers/i.test(p.url())) {
+    if (p !== page && /adelie2mapi|gaia2-zu-mapi|externRedirect/i.test(p.url())) {
       await p.close().catch(() => {});
     }
   }
-}
-
-// Remplit les 9 cases SIREN (#siren0..8) d'un sélecteur de dossier impots (mire). Renvoie
-// le nombre de cases trouvées (9 si la page de choix du dossier est bien présente).
-async function remplirCasesSiren(page, siren) {
-  let n = 0;
-  for (let i = 0; i < 9; i++) {
-    const box = page.locator(`#siren${i}`);
-    if (await box.count().catch(() => 0)) {
-      await box.fill(siren[i] || '').catch(() => {});
-      n++;
-    }
-  }
-  return n;
 }
 
 // ITEM 1 — Tableau des habilitations du COMPTE (Gerer > Consulter mes services > Tout telecharger).
@@ -632,50 +676,24 @@ export async function telechargerTvaDeclarations(page, client, clientDir, siren,
   }
   try {
     log('TVA : accès au compte fiscal (sélection du dossier par SIREN).');
-    // Nettoie une eventuelle fenetre ADELIE/EServices d'un client precedent (fenetre nommee reutilisee).
+    // Nettoie une eventuelle fenetre ADELIE d'un client precedent.
     await fermerFenetresAnnexes(page);
-    // 1. Selecteur de dossier du compte fiscal (meme mecanique que CFE : 9 cases + bouton image).
-    await page.goto(CF_CHOISIR_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(1500);
-    const champs = await remplirCasesSiren(page, siren);
-    if (champs < 9) {
-      await dumpDiag(page, clientDir, 'tva_choisir');
-      throw new Error('page de choix du dossier compte fiscal introuvable (cases SIREN absentes)');
+    // 1. Ouverture du dossier sous l'habilitation « compte fiscal » (lien direct avec le jeton
+    //    de session) : redirige vers ADELIE dans l'onglet courant.
+    const sel = await selectionnerDossier(page, siren, HAB_COMPTE_FISCAL);
+    if (!sel.ok) {
+      log(
+        sel.sansHabilitation
+          ? 'TVA : pas d’habilitation « compte fiscal » pour ce dossier — ignoré.'
+          : 'TVA : dossier introuvable dans l’espace professionnel — ignoré.',
+      );
+      return { docs: [], existants: 0, info: sel.sansHabilitation ? 'pas d’habilitation compte fiscal' : 'dossier introuvable (compte fiscal)' };
     }
-    // 1b. « Consulter » (submit) -> liste des dossiers (rechercherDossiers.do, meme onglet).
-    await page
-      .locator('input[name="button.submitValider"], input[type="image"]')
-      .first()
-      .click()
-      .catch(() => {});
-    await page.waitForLoadState('domcontentloaded').catch(() => {});
-    await page.waitForTimeout(2500);
-    let cf = page;
-    // 2. Liste de dossiers -> selection du dossier + valider. Le formulaire soumet vers une
-    //    fenetre NOMMEE "EServices" (ADELIE) : on capture le popup, avec repli sur le balayage
-    //    de toutes les fenetres du contexte (fenetre reutilisee entre clients).
-    if (/rechercherDossiers/i.test(page.url())) {
-      const radio = page.locator('input[name="idDossier"], #sel0').first();
-      if (await radio.count().catch(() => 0)) {
-        if (!(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
-      }
-      const [popup2] = await Promise.all([
-        page
-          .context()
-          .waitForEvent('page', { timeout: 8000 })
-          .catch(() => null),
-        page
-          .locator('input[name="button.submitValider"], input[type="image"]')
-          .first()
-          .click()
-          .catch(() => {}),
-      ]);
-      cf = popup2 || (await attendreFenetreAdelie(page.context())) || page;
-      await cf.waitForLoadState('domcontentloaded').catch(() => {});
-      await cf.waitForTimeout(3000);
-    }
-    // 3. Consultation ADELIE atteinte. Le menu porte des liens stables : on lit l'URL de
-    //    l'entree « déclarations TVA » (#menu_form:tva_declarations -> declarations_tva.xhtml
+    const cf = sel.cible;
+    await cf.waitForLoadState('domcontentloaded').catch(() => {});
+    await cf.waitForTimeout(1500);
+    // 2. Consultation ADELIE atteinte. Le menu porte des liens stables : on lit l'URL de
+    //    l'entree « déclarations TVA » (#menuForm:tva_declarations -> declarations_tva.xhtml
     //    ?emetteur=ADELIE_2&num_ocfi=<dossier>) et on y va directement (le num_ocfi varie par
     //    client -> impossible a figer, on le recupere sur la page).
     log(`TVA : page compte fiscal = ${cf.url()}`);
@@ -755,50 +773,34 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     let tva = { docs: [], existants: 0 };
     // Le choix de dossier « avis CFE » ne sert qu'aux avis (la messagerie a son propre
     // parcours) : on le saute entierement en mode « messagerie seule ».
+    let infoAvis = null; // avis non recuperables pour ce dossier (message affiche dans l'historique)
+    let avisIntrouvable = false; // SIREN hors portefeuille (≠ simple absence d'habilitation)
     if (phases.cfe || phases.tf) {
-      // 1. Choisir le dossier par SIREN
-      await page.goto(CFE_CHOISIR_URL, { waitUntil: 'domcontentloaded' });
-      await page.waitForTimeout(1200);
-      await remplirCasesSiren(page, siren);
-      await page
-        .locator('input[name="button.submitValider"], input[type="image"]')
-        .first()
-        .click()
-        .catch(() => {});
-      await page.waitForLoadState('domcontentloaded').catch(() => {});
-      await page.waitForTimeout(2500);
-      // 2. Liste de dossiers -> selection + CONSULTER
-      if (/rechercherDossiers/i.test(page.url())) {
-        const radio = page.locator('input[name="idDossier"], #sel0').first();
-        if (await radio.count()) {
-          if (!(await radio.isChecked().catch(() => false))) await radio.check().catch(() => {});
+      // 1. Ouvrir le dossier sous l'habilitation « avis CFE » (lien direct + jeton de session)
+      //    -> ADELIE s'ouvre dans l'onglet courant avec le dossier selectionne.
+      const sel = await selectionnerDossier(page, siren, HAB_AVIS);
+      if (sel.ok) {
+        // 2. Avis CFE
+        if (phases.cfe) {
+          await page.goto(CFE_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+          await page.waitForTimeout(3000);
+          cfe = await telechargerAvis(page, client, clientDir, 'CFE', '[id$="tableauAvisImposition_data"]', navTimeout, log);
         }
-        await Promise.all([
-          page.waitForLoadState('domcontentloaded').catch(() => {}),
-          page
-            .locator('input[name="button.submitValider"], input[type="image"]')
-            .first()
-            .click()
-            .catch(() => {}),
-        ]);
-        await page.waitForTimeout(3000);
-      }
-      // 3. Avis CFE
-      if (phases.cfe) {
-        await page.goto(CFE_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-        await page.waitForTimeout(3000);
-        cfe = await telechargerAvis(page, client, clientDir, 'CFE', '[id$="tableauAvisImposition_data"]', navTimeout, log);
-      }
-      // 4. Taxe fonciere
-      if (phases.tf) {
-        await page.goto(TF_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
-        await page.waitForTimeout(3000);
-        tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
+        // 3. Taxe fonciere
+        if (phases.tf) {
+          await page.goto(TF_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+          await page.waitForTimeout(3000);
+          tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
+        }
+      } else {
+        avisIntrouvable = !!sel.introuvable;
+        infoAvis = sel.sansHabilitation ? 'pas d’habilitation CFE/TF pour ce dossier' : 'dossier introuvable dans l’espace professionnel (hors portefeuille ?)';
+        log(`Avis CFE/TF : ${infoAvis} — passage à la suite.`);
       }
     }
-    // 5. Messagerie
+    // 4. Messagerie
     if (phases.messagerie) msg = await recupererMessagerie(page, context, client, clientDir, navTimeout, log);
-    // 6. Declarations de TVA (compte fiscal, par SIREN)
+    // 5. Declarations de TVA (compte fiscal, par SIREN)
     if (phases.tva) tva = await telechargerTvaDeclarations(page, client, clientDir, siren, navTimeout, log);
 
     const nouveaux = cfe.docs.length + tf.docs.length + msg.docs.length + tva.docs.length;
@@ -806,20 +808,24 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     const quarantaines = [...(cfe.quarantaines || []), ...(tf.quarantaines || []), ...(msg.quarantaines || [])];
     const nonVerifiables = (cfe.nonVerifiables || 0) + (tf.nonVerifiables || 0) + (msg.nonVerifiables || 0);
     const parts = [];
-    if (phases.cfe) parts.push(`${cfe.docs.length} CFE`);
-    if (phases.tf) parts.push(`${tf.docs.length} taxe fonciere`);
+    if (infoAvis) parts.push(`avis : ${infoAvis}`);
+    else {
+      if (phases.cfe) parts.push(`${cfe.docs.length} CFE`);
+      if (phases.tf) parts.push(`${tf.docs.length} taxe fonciere`);
+    }
     if (phases.messagerie) parts.push(msg.info ? `messagerie : ${msg.info}` : `${msg.docs.length} message(s)`);
     if (phases.tva) parts.push(tva.info ? `TVA : ${tva.info}` : `${tva.docs.length} TVA`);
-    let message = `${parts.join(' + ')} recupere(s)` + (existants ? `, ${existants} deja present(s)` : '');
+    let message = `${parts.join(' + ')}${infoAvis ? '' : ' recupere(s)'}` + (existants ? `, ${existants} deja present(s)` : '');
     if (nonVerifiables > 0) message += ` (${nonVerifiables} non verifiable(s) : PDF sans texte)`;
     if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
-    addRunSafe(client.id, {
-      statut: quarantaines.length > 0 ? 'echec' : 'succes',
-      message,
-      nb_docs: nouveaux,
-    });
+    // « Echec » = a regarder : quarantaine, ou SIREN introuvable alors que rien d'autre n'a abouti.
+    // Une simple absence d'habilitation est un etat normal (comme « non assujetti » en TVA).
+    const echec = quarantaines.length > 0 || (avisIntrouvable && nouveaux + existants === 0);
+    addRunSafe(client.id, { statut: echec ? 'echec' : 'succes', message, nb_docs: nouveaux });
     log(`Termine : ${nouveaux} nouveau(x), ${existants} deja present(s).`);
-    return { ok: true, docs: [...cfe.docs, ...tf.docs, ...msg.docs, ...tva.docs] };
+    // ok:true meme si le dossier est introuvable : ce n'est pas une panne du site (le
+    // disjoncteur de lot ne doit pas s'enclencher pour des clients hors portefeuille).
+    return { ok: true, docs: [...cfe.docs, ...tf.docs, ...msg.docs, ...tva.docs], info: infoAvis ? message : undefined };
   } catch (err) {
     const shot = resolve(clientDir, `_debug_${Date.now()}.png`);
     await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
@@ -905,7 +911,7 @@ export async function scrapeAll(clients, opts = {}) {
       opts.onClient?.(client.nom);
       const r = await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, context, phases: phasesDe(opts) });
       resume.traites++;
-      const msg = r.ok ? `${r.docs.length} document(s)` : r.error || 'erreur';
+      const msg = r.ok ? r.info || `${r.docs.length} document(s)` : r.error || 'erreur';
       opts.onResult?.({ nom: client.nom, ok: !!r.ok, message: msg, nb_docs: r.docs.length });
       if (r.ok) {
         if (r.docs.length) {
@@ -944,7 +950,8 @@ export async function recupererHabilitations(cabinet, opts = {}) {
   }
 }
 
-/** Liste les dossiers du cabinet (nom + SIREN) via "Voir tous mes dossiers". Connexion manuelle. */
+/** Liste les dossiers du cabinet (nom + SIREN) : liste « Mes dossiers » sous l'habilitation
+ *  « avis CFE » (10 par page, pagination p=N, lien par dossier). Connexion manuelle. */
 export async function listerClients(cabinet, opts = {}) {
   const log = (m) => {
     const line = `[sync] ${m}`;
@@ -954,8 +961,10 @@ export async function listerClients(cabinet, opts = {}) {
   const { browser, page } = await ouvrirSession();
   try {
     await attendreConnexionManuelle(page, cabinet, log);
+    const jeton = await jetonMire(page);
+    const urlListe = (p) => `${mireBase()}/afficherSelectionDossier.do?idth=${HAB_AVIS}${p > 1 ? `&p=${p}` : ''}&token=${encodeURIComponent(jeton)}`;
     // Page 1
-    await page.goto(TOUS_DOSSIERS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.goto(urlListe(1), { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(2000);
     const rows = [];
     const vus = new Set();
@@ -973,24 +982,28 @@ export async function listerClients(cabinet, opts = {}) {
     ajouter(await lireDossiersPage(page));
     log(`Page 1 : ${rows.length} dossier(s).`);
 
-    // Nombre total de pages (le plus grand p=N parmi les liens de pagination)
-    const pageMax = await page
-      .evaluate(() => {
-        let max = 1;
-        for (const a of document.querySelectorAll('a[href*="afficherMesDossiers.do"]')) {
-          const m = (a.getAttribute('href') || '').match(/[?&]p=(\d+)/);
-          if (m) max = Math.max(max, parseInt(m[1], 10));
-        }
-        return max;
-      })
-      .catch(() => 1);
+    // Dernier numero de page affiche (liens de pagination « Page N » de la liste)
+    const lirePageMax = () =>
+      page
+        .evaluate(() => {
+          let max = 1;
+          for (const a of document.querySelectorAll('a[href*="afficherSelectionDossier.do"]')) {
+            const m = (a.getAttribute('href') || '').match(/[?&]p=(\d+)/);
+            if (m) max = Math.max(max, parseInt(m[1], 10));
+          }
+          return max;
+        })
+        .catch(() => 1);
+    let pageMax = await lirePageMax();
+    const annonces = await page.evaluate(() => (document.body?.innerText.match(/(\d+)\s+résultat/) || [])[1] || null).catch(() => null);
+    log(`Page 1 : ${rows.length} dossier(s) — ${pageMax} page(s)${annonces ? `, ${annonces} dossier(s) annoncé(s)` : ''}.`);
 
-    // Pages suivantes : on suit directement les URL p=2..N (avec marge si N grandit en avancant)
+    // Pages suivantes : on suit directement les URL p=2..N (N relu a chaque page, il peut grandir)
     const plafond = 500;
     let p = 2,
       sansNouveau = 0;
-    while (p <= plafond) {
-      await page.goto(PAGE_DOSSIERS_URL(p), { waitUntil: 'domcontentloaded' }).catch(() => {});
+    while (p <= Math.min(pageMax, plafond)) {
+      await page.goto(urlListe(p), { waitUntil: 'domcontentloaded' }).catch(() => {});
       await page.waitForTimeout(1200);
       const lot = await lireDossiersPage(page);
       if (!lot.length) break; // plus de dossiers : on a depasse la derniere page
@@ -999,22 +1012,11 @@ export async function listerClients(cabinet, opts = {}) {
       if (n === 0) {
         if (++sansNouveau >= 2) break;
       } else sansNouveau = 0;
-      // si on a atteint le max annonce et qu'aucune page suivante n'apparait, on s'arrete
-      if (p >= pageMax) {
-        const encore = await page
-          .evaluate((cur) => {
-            for (const a of document.querySelectorAll('a[href*="afficherMesDossiers.do"]')) {
-              const m = (a.getAttribute('href') || '').match(/[?&]p=(\d+)/);
-              if (m && parseInt(m[1], 10) > cur) return true;
-            }
-            return false;
-          }, p)
-          .catch(() => false);
-        if (!encore) break;
-      }
+      pageMax = Math.max(pageMax, await lirePageMax());
       p++;
     }
-    log(`${rows.length} dossier(s) liste(s) sur ${p >= pageMax ? p : pageMax} page(s).`);
+    log(`${rows.length} dossier(s) liste(s) sur ${pageMax} page(s).`);
+    if (annonces && rows.length < Number(annonces)) log(`⚠ ${rows.length} dossier(s) lus pour ${annonces} annoncé(s) — liste peut-être incomplète.`);
     return rows;
   } finally {
     await browser.close().catch(() => {});
