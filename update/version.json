@@ -1,6 +1,6 @@
 {
-  "version": "1.13.3",
-  "notes": "Impôts : adaptation à la refonte de l'espace professionnel (nouvelle interface DSFR) — récupération des avis CFE/taxe foncière, de la messagerie, de la TVA et synchronisation des dossiers de nouveau opérationnelles.",
+  "version": "1.13.4",
+  "notes": "Impôts : correctif important de la 1.13.3 — certains dossiers (ex. EURL TBA SECU) n'étaient pas ouverts correctement et leurs avis n'étaient pas lus, tout en étant notés « succès ». Ouverture fiabilisée (entrée compte fiscal, atterrissage et SIREN contrôlés) ; les récupérations défectueuses de la 1.13.3 sont repassées en échec pour être refaites.",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "af86e1da42675a08c8ca58cb61029caca8d6abe537f3525254ec58d0b3b6136c"
+  "sha256": "05ed7a76b8f06bc20c7734572f6aa3975007d460fd0cbdca77b2ad9166b2952a"
 }
