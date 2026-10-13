@@ -120,9 +120,10 @@ async function attendreFenetreCible(page, timeout = 3000) {
   return null;
 }
 
-// SIREN affiche dans l'en-tete de l'appli cible (« SIREN ou EDI : 087020095 » sur ADELIE,
+// SIREN affiche dans l'en-tete de l'appli cible (« SIREN ou IDSP : 087020095 » sur ADELIE,
 // « SIREN : ... » sur gaia2) — sert a verifier que le dossier ouvert est bien celui demande.
-const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SIREN[^0-9]{0,12}(\d{9})/i) || [])[1] || null).catch(() => null);
+// Libelle releve le 12/10/2026 (« ou IDSP » faisait 11 caracteres : marge elargie a 25).
+const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SIREN[^0-9]{0,25}(\d{9})/i) || [])[1] || null).catch(() => null);
 
 /** Ouvre le dossier `siren` sous l'habilitation `idth` (HAB_*). Renvoie :
  *   { ok: true, cible }                    cible = page portant l'appli (ADELIE / gaia2)
