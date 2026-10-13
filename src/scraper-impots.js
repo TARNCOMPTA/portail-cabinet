@@ -120,15 +120,17 @@ async function attendreFenetreCible(page, timeout = 3000) {
   return null;
 }
 
-// SIREN affiche dans l'en-tete de l'appli cible (« SIREN ou EDI : 087020095 » sur ADELIE,
+// SIREN affiche dans l'en-tete de l'appli cible (« SIREN ou IDSP : 087020095 » sur ADELIE,
 // « SIREN : ... » sur gaia2) — sert a verifier que le dossier ouvert est bien celui demande.
-const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SIREN[^0-9]{0,12}(\d{9})/i) || [])[1] || null).catch(() => null);
+// Libelle releve le 12/10/2026 (« ou IDSP » faisait 11 caracteres : marge elargie a 25).
+const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SIREN[^0-9]{0,25}(\d{9})/i) || [])[1] || null).catch(() => null);
 
 /** Ouvre le dossier `siren` sous l'habilitation `idth` (HAB_*). Renvoie :
  *   { ok: true, cible }                    cible = page portant l'appli (ADELIE / gaia2)
  *   { ok: false, sansHabilitation: true }   dossier sans le service demande (cas normal) : l'ouverture
  *                                           reste dans la zone « mire » (accueil du dossier, sans
- *                                           « Consulter ») ou repond « aucune habilitation » (HTTP 500)
+ *                                           « Consulter » ; alors resteSurMire: true, et le dossier EST
+ *                                           selectionne cote « mire ») ou repond « aucune habilitation » (HTTP 500)
  *   { ok: false, introuvable: true }        SIREN hors portefeuille / page d'erreur
  *   { ok: false, contexteIncoherent: true } l'appli affiche un AUTRE SIREN que celui demande
  *                                           (contexte du dossier precedent) : ne rien lire dessus
@@ -168,7 +170,7 @@ export async function selectionnerDossier(page, siren, idth) {
   let cible = page;
   if (!/adelie2mapi|gaia2-zu-mapi/i.test(page.url())) {
     cible = await attendreFenetreCible(page, 1500);
-    if (!cible) return /\/mire\//i.test(page.url()) ? { ok: false, sansHabilitation: true } : { ok: false, introuvable: true };
+    if (!cible) return /\/mire\//i.test(page.url()) ? { ok: false, sansHabilitation: true, resteSurMire: true } : { ok: false, introuvable: true };
   }
   // Garde-fou : le SIREN affiche doit etre celui demande (rendu parfois tardif : 1 relecture).
   await cible.waitForLoadState('domcontentloaded').catch(() => {});
@@ -191,8 +193,37 @@ export async function ouvrirDossierAvis(page, siren) {
   if (!sel.ok && !sel.contexteIncoherent) {
     const repli = await selectionnerDossier(page, siren, HAB_AVIS);
     if (repli.ok || repli.contexteIncoherent) sel = repli;
+    // Dernier recours : les deux dossierSelect.do ont laisse le dossier selectionne sur l'accueil
+    // « mire » (releve le 12/10/2026 : SARL SACILOTTO, 3 CFE, restait sur l'accueil par les deux
+    // entrees alors que la tuile « Avis CFE » de son accueil ouvrait bien ses avis).
+    else if (repli.resteSurMire) sel = await ouvrirAvisParRedirection(page, siren);
   }
   return sel;
+}
+
+/** Ouvre les avis CFE du dossier DEJA selectionne sur l'accueil « mire » par la tuile « Avis CFE »
+ *  (mire/redirection.do?idth=...&token=T). Meme retour que selectionnerDossier. Rien n'est lu si le
+ *  SIREN affiche n'est pas celui demande (on ne rend alors que « sans habilitation »). */
+async function ouvrirAvisParRedirection(page, siren) {
+  const jeton = await jetonMire(page);
+  const leve = await page.goto(`${mireBase()}/redirection.do?idth=${encodeURIComponent(HAB_AVIS)}&token=${encodeURIComponent(jeton)}`, { waitUntil: 'domcontentloaded' }).then(
+    () => false,
+    () => true,
+  );
+  if (leve) return { ok: false, sansHabilitation: true };
+  let cible = page;
+  if (!/adelie2mapi/i.test(page.url())) {
+    cible = await attendreFenetreCible(page, 1500);
+    if (!cible) return { ok: false, sansHabilitation: true };
+  }
+  await cible.waitForLoadState('domcontentloaded').catch(() => {});
+  let affiche = await sirenAffiche(cible);
+  if (affiche && affiche !== siren) {
+    await cible.waitForTimeout(2500);
+    affiche = await sirenAffiche(cible);
+  }
+  if (affiche && affiche !== siren) return { ok: false, sansHabilitation: true };
+  return { ok: true, cible };
 }
 
 function addRunSafe(clientId, run) {
