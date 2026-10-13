@@ -1,6 +1,6 @@
 {
-  "version": "1.13.4",
-  "notes": "Impôts : correctif important de la 1.13.3 — certains dossiers (ex. EURL TBA SECU) n'étaient pas ouverts correctement et leurs avis n'étaient pas lus, tout en étant notés « succès ». Ouverture fiabilisée (entrée compte fiscal, atterrissage et SIREN contrôlés) ; les récupérations défectueuses de la 1.13.3 sont repassées en échec pour être refaites.",
+  "version": "1.13.5",
+  "notes": "Impots : ouverture des avis CFE et TF fiabilisee, dossiers classes sans habilitation a tort desormais ouverts par la tuile Avis CFE, controle du SIREN affiche elargi",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "05ed7a76b8f06bc20c7734572f6aa3975007d460fd0cbdca77b2ad9166b2952a"
+  "sha256": "ad9a86c85ed052ab433b424e4e67948f90042c1e342b3595c239cb47d20a4cbd"
 }
