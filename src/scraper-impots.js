@@ -73,7 +73,12 @@ export function lireDossiersPage(page) {
 }
 
 // ---- Jeton de session « mire » + selection d'un dossier -----------------------
-const jetonsMire = new WeakMap(); // contexte navigateur -> jeton
+const jetonsMire = new WeakMap(); // contexte navigateur -> { jeton, lu (horodatage) }
+// Le jeton ne vit pas toute la session : releve le 13/10/2026, un lot de 628 dossiers s'est mis a
+// repondre « sans habilitation » (puis « introuvable ») pour TOUS les clients ~30 min apres la
+// connexion, alors que les memes dossiers s'ouvraient en session fraiche. Un jeton perime ne
+// renvoie pas d'erreur : le dossier reste sur l'accueil « mire ». On le relit donc regulierement.
+const JETON_DUREE_MAX_MS = 5 * 60 * 1000;
 
 const lireJetonSurPage = (page) =>
   page
@@ -90,7 +95,8 @@ const lireJetonSurPage = (page) =>
  *  contexte). `forcer` : le relit. Leve si la session a expire (retour sur la connexion). */
 export async function jetonMire(page, { forcer = false } = {}) {
   const ctx = page.context();
-  if (!forcer && jetonsMire.has(ctx)) return jetonsMire.get(ctx);
+  const connu = jetonsMire.get(ctx);
+  if (!forcer && connu && Date.now() - connu.lu < JETON_DUREE_MAX_MS) return connu.jeton;
   await page.goto(`${mireBase()}/accueil.do`, { waitUntil: 'domcontentloaded' }).catch(() => {});
   let jeton = await lireJetonSurPage(page);
   if (!jeton) {
@@ -98,7 +104,7 @@ export async function jetonMire(page, { forcer = false } = {}) {
     jeton = await lireJetonSurPage(page);
   }
   if (!jeton) throw new Error('Session impôts expirée ou jeton de session introuvable (page d’accueil modifiée ?).');
-  jetonsMire.set(ctx, jeton);
+  jetonsMire.set(ctx, { jeton, lu: Date.now() });
   return jeton;
 }
 
@@ -136,6 +142,17 @@ const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SI
  *                                           (contexte du dossier precedent) : ne rien lire dessus
  *  Leve si la session a expire. */
 export async function selectionnerDossier(page, siren, idth) {
+  const jetonAvant = await jetonMire(page);
+  const r = await selectionnerDossierAvecJeton(page, siren, idth);
+  if (!r.resteSurMire) return r;
+  // Rester sur l'accueil « mire » = soit pas d'habilitation (cas normal), soit jeton perime (aucune
+  // erreur dans ce cas). On releve le jeton : s'il a change, on retente une fois avec le nouveau.
+  const neuf = await jetonMire(page, { forcer: true });
+  if (neuf === jetonAvant) return r;
+  return selectionnerDossierAvecJeton(page, siren, idth);
+}
+
+async function selectionnerDossierAvecJeton(page, siren, idth) {
   const essayer = async (jeton) => {
     const url = `${mireBase()}/dossierSelect.do?idth=${encodeURIComponent(idth)}&idDossier=${encodeURIComponent(siren)}&token=${encodeURIComponent(jeton)}`;
     // Une reponse HTTP en erreur SANS corps fait lever goto : meme traitement qu'une page d'erreur.
@@ -956,6 +973,9 @@ export async function scrapeClient(client, opts = {}) {
   }
 }
 
+// Nombre de dossiers consecutifs sans acces aux avis a partir duquel on suspecte la session (voir scrapeAll).
+const SERIE_SANS_ACCES_MAX = 10;
+
 /** Tous les clients fournis : UNE connexion manuelle (visible), fenetre reduite, puis tout le lot. */
 export async function scrapeAll(clients, opts = {}) {
   const log = (m) => {
@@ -973,6 +993,7 @@ export async function scrapeAll(clients, opts = {}) {
       await telechargerHabilitations(page, opts.cabinet, { navTimeout, log }).catch(() => {});
     }
     log(`Traitement de ${clients.length} client(s)...`);
+    const serieSansAcces = []; // clients consecutifs dont les avis n'ont pas pu etre ouverts
     for (let i = 0; i < clients.length; i++) {
       if (opts.shouldStop && opts.shouldStop()) {
         log('Arret demande.');
@@ -986,7 +1007,27 @@ export async function scrapeAll(clients, opts = {}) {
       };
       clog(`(${i + 1}/${clients.length})`);
       opts.onClient?.(client.nom);
-      const r = await recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, context, phases: phasesDe(opts) });
+      const lancer = () => recupererClient(page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, context, phases: phasesDe(opts) });
+      let r = await lancer();
+      // Garde-fou de serie : « sans habilitation » / « introuvable » pour SERIE_SANS_ACCES_MAX clients
+      // d'affilee n'est pas un etat normal (13/10/2026 : ~470 dossiers ratés en « succès » a 0 document).
+      // 1) on relit le jeton et on retente ce client ; 2) si ca ne change rien, la serie est traitee comme
+      // une panne : ses clients repassent en « echec » (donc refaits a la prochaine reprise) et le
+      // disjoncteur du lot (echecs consecutifs) peut arreter la recuperation.
+      if (r.ok && r.info) {
+        serieSansAcces.push(client);
+        if (serieSansAcces.length === SERIE_SANS_ACCES_MAX) {
+          clog(`⚠ ${SERIE_SANS_ACCES_MAX} dossiers d'affilee sans acces aux avis : jeton de session relu, nouvelle tentative.`);
+          await jetonMire(page, { forcer: true }).catch(() => {});
+          r = await lancer();
+          if (r.ok && !r.info) serieSansAcces.length = 0;
+        }
+      } else if (r.ok) serieSansAcces.length = 0;
+      if (serieSansAcces.length >= SERIE_SANS_ACCES_MAX) {
+        const raison = `Série de ${SERIE_SANS_ACCES_MAX}+ dossiers sans accès aux avis (session suspecte) : à refaire`;
+        for (const c of serieSansAcces.length === SERIE_SANS_ACCES_MAX ? serieSansAcces : [client]) addRunSafe(c.id, { statut: 'echec', message: raison, nb_docs: 0 });
+        r = { ok: false, error: raison, docs: [] };
+      }
       resume.traites++;
       const msg = r.ok ? r.info || `${r.docs.length} document(s)` : r.error || 'erreur';
       opts.onResult?.({ nom: client.nom, ok: !!r.ok, message: msg, nb_docs: r.docs.length });
