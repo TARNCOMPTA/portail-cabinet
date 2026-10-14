@@ -73,12 +73,7 @@ export function lireDossiersPage(page) {
 }
 
 // ---- Jeton de session « mire » + selection d'un dossier -----------------------
-const jetonsMire = new WeakMap(); // contexte navigateur -> { jeton, lu (horodatage) }
-// Le jeton ne vit pas toute la session : releve le 13/10/2026, un lot de 628 dossiers s'est mis a
-// repondre « sans habilitation » (puis « introuvable ») pour TOUS les clients ~30 min apres la
-// connexion, alors que les memes dossiers s'ouvraient en session fraiche. Un jeton perime ne
-// renvoie pas d'erreur : le dossier reste sur l'accueil « mire ». On le relit donc regulierement.
-const JETON_DUREE_MAX_MS = 5 * 60 * 1000;
+const jetonsMire = new WeakMap(); // contexte navigateur -> jeton
 
 const lireJetonSurPage = (page) =>
   page
@@ -95,8 +90,7 @@ const lireJetonSurPage = (page) =>
  *  contexte). `forcer` : le relit. Leve si la session a expire (retour sur la connexion). */
 export async function jetonMire(page, { forcer = false } = {}) {
   const ctx = page.context();
-  const connu = jetonsMire.get(ctx);
-  if (!forcer && connu && Date.now() - connu.lu < JETON_DUREE_MAX_MS) return connu.jeton;
+  if (!forcer && jetonsMire.has(ctx)) return jetonsMire.get(ctx);
   await page.goto(`${mireBase()}/accueil.do`, { waitUntil: 'domcontentloaded' }).catch(() => {});
   let jeton = await lireJetonSurPage(page);
   if (!jeton) {
@@ -104,7 +98,7 @@ export async function jetonMire(page, { forcer = false } = {}) {
     jeton = await lireJetonSurPage(page);
   }
   if (!jeton) throw new Error('Session impôts expirée ou jeton de session introuvable (page d’accueil modifiée ?).');
-  jetonsMire.set(ctx, { jeton, lu: Date.now() });
+  jetonsMire.set(ctx, jeton);
   return jeton;
 }
 
@@ -131,6 +125,26 @@ async function attendreFenetreCible(page, timeout = 3000) {
 // Libelle releve le 12/10/2026 (« ou IDSP » faisait 11 caracteres : marge elargie a 25).
 const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SIREN[^0-9]{0,25}(\d{9})/i) || [])[1] || null).catch(() => null);
 
+// ADELIE peut repondre « Erreur technique inattendue (Exception servlet) » pour un dossier, puis rester
+// COINCE sur ce dossier pour tout le reste de la session : ADELIE affiche son SIREN et son erreur
+// quel que soit le dossier ouvert ensuite (releve le 14/10/2026 : SCI MGEA 844156125, puis tous les
+// clients suivants ; meme mecanisme probable le 13/10). Sans ce controle, ces clients etaient notes
+// « sans habilitation » et « succes » a 0 document (~470 dossiers sur 628 le 13/10, 183 sur 200 le 14/10).
+const adelieEnErreur = (p) =>
+  p.evaluate(() => /erreur technique/i.test(document.title || '') || /erreur technique inattendue/i.test(document.body?.innerText || '')).catch(() => false);
+
+// Tente de repartir sur une session ADELIE saine en supprimant les cookies PROPRES a ADELIE
+// (chemin /adelie2mapi) ; ceux de la zone « mire » (connexion) ne sont pas touches. Renvoie les noms
+// supprimes (jamais les valeurs). A VERIFIER sur un vrai lot : si ADELIE garde son identifiant de
+// session sur un chemin plus large, rien n'est supprime et le client reste en echec visible.
+async function reinitialiserAdelie(page) {
+  const ctx = page.context();
+  const cookies = await ctx.cookies('https://cfspro.impots.gouv.fr/adelie2mapi/').catch(() => []);
+  const adelie = cookies.filter((c) => /^\/adelie2mapi/i.test(c.path || ''));
+  for (const c of adelie) await ctx.clearCookies({ name: c.name, domain: c.domain, path: c.path }).catch(() => {});
+  return adelie.map((c) => c.name);
+}
+
 /** Ouvre le dossier `siren` sous l'habilitation `idth` (HAB_*). Renvoie :
  *   { ok: true, cible }                    cible = page portant l'appli (ADELIE / gaia2)
  *   { ok: false, sansHabilitation: true }   dossier sans le service demande (cas normal) : l'ouverture
@@ -140,19 +154,9 @@ const sirenAffiche = (p) => p.evaluate(() => (document.body?.innerText.match(/SI
  *   { ok: false, introuvable: true }        SIREN hors portefeuille / page d'erreur
  *   { ok: false, contexteIncoherent: true } l'appli affiche un AUTRE SIREN que celui demande
  *                                           (contexte du dossier precedent) : ne rien lire dessus
+ *   { ok: false, adelieErreur: true }       ADELIE repond « Erreur technique » (affiche = SIREN lu)
  *  Leve si la session a expire. */
 export async function selectionnerDossier(page, siren, idth) {
-  const jetonAvant = await jetonMire(page);
-  const r = await selectionnerDossierAvecJeton(page, siren, idth);
-  if (!r.resteSurMire) return r;
-  // Rester sur l'accueil « mire » = soit pas d'habilitation (cas normal), soit jeton perime (aucune
-  // erreur dans ce cas). On releve le jeton : s'il a change, on retente une fois avec le nouveau.
-  const neuf = await jetonMire(page, { forcer: true });
-  if (neuf === jetonAvant) return r;
-  return selectionnerDossierAvecJeton(page, siren, idth);
-}
-
-async function selectionnerDossierAvecJeton(page, siren, idth) {
   const essayer = async (jeton) => {
     const url = `${mireBase()}/dossierSelect.do?idth=${encodeURIComponent(idth)}&idDossier=${encodeURIComponent(siren)}&token=${encodeURIComponent(jeton)}`;
     // Une reponse HTTP en erreur SANS corps fait lever goto : meme traitement qu'une page d'erreur.
@@ -196,6 +200,7 @@ async function selectionnerDossierAvecJeton(page, siren, idth) {
     await cible.waitForTimeout(2500);
     affiche = await sirenAffiche(cible);
   }
+  if (/adelie2mapi/i.test(cible.url()) && (await adelieEnErreur(cible))) return { ok: false, adelieErreur: true, affiche };
   if (affiche && affiche !== siren) return { ok: false, contexteIncoherent: true, affiche };
   return { ok: true, cible };
 }
@@ -205,11 +210,23 @@ async function selectionnerDossierAvecJeton(page, siren, idth) {
  *  EURL TBA SECU, pourtant dans la liste « avis CFE », restait sur l'accueil du dossier par
  *  l'entree « avis CFE » alors que le compte fiscal affichait bien ses 7 CFE + 4 TF).
  *  L'entree « avis CFE » ne sert plus qu'en repli. Meme retour que selectionnerDossier. */
-export async function ouvrirDossierAvis(page, siren) {
+export async function ouvrirDossierAvis(page, siren, log) {
+  let sel = await ouvrirDossierAvisUneFois(page, siren);
+  // ADELIE en erreur ou coince sur un autre dossier : on repart sur une session ADELIE neuve et on reessaie une fois.
+  if (sel.adelieErreur || sel.contexteIncoherent) {
+    const supprimes = await reinitialiserAdelie(page);
+    log?.(`ADELIE ${sel.adelieErreur ? 'en erreur technique' : `coince sur le SIREN ${sel.affiche}`} : session ADELIE reinitialisee (${supprimes.length ? `cookies ${supprimes.join(', ')}` : 'aucun cookie ADELIE a supprimer'}), nouvel essai.`);
+    sel = await ouvrirDossierAvisUneFois(page, siren);
+    sel.reinitialise = supprimes.length;
+  }
+  return sel;
+}
+
+async function ouvrirDossierAvisUneFois(page, siren) {
   let sel = await selectionnerDossier(page, siren, HAB_COMPTE_FISCAL);
-  if (!sel.ok && !sel.contexteIncoherent) {
+  if (!sel.ok && !sel.contexteIncoherent && !sel.adelieErreur) {
     const repli = await selectionnerDossier(page, siren, HAB_AVIS);
-    if (repli.ok || repli.contexteIncoherent) sel = repli;
+    if (repli.ok || repli.contexteIncoherent || repli.adelieErreur) sel = repli;
     // Dernier recours : les deux dossierSelect.do ont laisse le dossier selectionne sur l'accueil
     // « mire » (releve le 12/10/2026 : SARL SACILOTTO, 3 CFE, restait sur l'accueil par les deux
     // entrees alors que la tuile « Avis CFE » de son accueil ouvrait bien ses avis).
@@ -220,7 +237,7 @@ export async function ouvrirDossierAvis(page, siren) {
 
 /** Ouvre les avis CFE du dossier DEJA selectionne sur l'accueil « mire » par la tuile « Avis CFE »
  *  (mire/redirection.do?idth=...&token=T). Meme retour que selectionnerDossier. Rien n'est lu si le
- *  SIREN affiche n'est pas celui demande (on ne rend alors que « sans habilitation »). */
+ *  SIREN affiche n'est pas celui demande ou si ADELIE est en erreur. */
 async function ouvrirAvisParRedirection(page, siren) {
   const jeton = await jetonMire(page);
   const leve = await page.goto(`${mireBase()}/redirection.do?idth=${encodeURIComponent(HAB_AVIS)}&token=${encodeURIComponent(jeton)}`, { waitUntil: 'domcontentloaded' }).then(
@@ -239,7 +256,10 @@ async function ouvrirAvisParRedirection(page, siren) {
     await cible.waitForTimeout(2500);
     affiche = await sirenAffiche(cible);
   }
-  if (affiche && affiche !== siren) return { ok: false, sansHabilitation: true };
+  if (await adelieEnErreur(cible)) return { ok: false, adelieErreur: true, affiche };
+  // SIREN different = ADELIE coince sur un autre dossier : ce n'est PAS « sans habilitation » (fausse
+  // etiquette a l'origine des ~470 faux « sans habilitation » du 13/10).
+  if (affiche && affiche !== siren) return { ok: false, contexteIncoherent: true, affiche };
   return { ok: true, cible };
 }
 
@@ -869,21 +889,25 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
     let avisIntrouvable = false; // SIREN hors portefeuille (≠ simple absence d'habilitation)
     if (phases.cfe || phases.tf) {
       // 1. Ouvrir le dossier dans ADELIE (lien direct + jeton de session, onglet courant).
-      const sel = await ouvrirDossierAvis(page, siren);
+      const sel = await ouvrirDossierAvis(page, siren, log);
       if (sel.ok) {
         // 2. Avis CFE
         if (phases.cfe) {
           await page.goto(CFE_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
           await page.waitForTimeout(3000);
+          if (await adelieEnErreur(page)) throw new Error('ADELIE répond « Erreur technique » sur la page des avis CFE — avis non lus.');
           cfe = await telechargerAvis(page, client, clientDir, 'CFE', '[id$="tableauAvisImposition_data"]', navTimeout, log);
         }
         // 3. Taxe fonciere
         if (phases.tf) {
           await page.goto(TF_AVIS_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
           await page.waitForTimeout(3000);
+          if (await adelieEnErreur(page)) throw new Error('ADELIE répond « Erreur technique » sur la page de la taxe foncière — avis non lus.');
           tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
         }
       } else {
+        if (sel.adelieErreur)
+          throw new Error(`ADELIE répond « Erreur technique » pour ce dossier (SIREN affiché ${sel.affiche || 'inconnu'}) — avis non lus.`);
         if (sel.contexteIncoherent)
           throw new Error(`Contexte ADELIE incohérent : le site affiche le SIREN ${sel.affiche} au lieu de ${siren} — rien n’a été lu pour ce client.`);
         avisIntrouvable = !!sel.introuvable;
@@ -1011,14 +1035,14 @@ export async function scrapeAll(clients, opts = {}) {
       let r = await lancer();
       // Garde-fou de serie : « sans habilitation » / « introuvable » pour SERIE_SANS_ACCES_MAX clients
       // d'affilee n'est pas un etat normal (13/10/2026 : ~470 dossiers ratés en « succès » a 0 document).
-      // 1) on relit le jeton et on retente ce client ; 2) si ca ne change rien, la serie est traitee comme
+      // 1) on reinitialise la session ADELIE et on retente ce client ; 2) si ca ne change rien, la serie est traitee comme
       // une panne : ses clients repassent en « echec » (donc refaits a la prochaine reprise) et le
       // disjoncteur du lot (echecs consecutifs) peut arreter la recuperation.
       if (r.ok && r.info) {
         serieSansAcces.push(client);
         if (serieSansAcces.length === SERIE_SANS_ACCES_MAX) {
-          clog(`⚠ ${SERIE_SANS_ACCES_MAX} dossiers d'affilee sans acces aux avis : jeton de session relu, nouvelle tentative.`);
-          await jetonMire(page, { forcer: true }).catch(() => {});
+          clog(`⚠ ${SERIE_SANS_ACCES_MAX} dossiers d'affilee sans acces aux avis : session ADELIE reinitialisee, nouvelle tentative.`);
+          await reinitialiserAdelie(page).catch(() => {});
           r = await lancer();
           if (r.ok && !r.info) serieSansAcces.length = 0;
         }
