@@ -1,6 +1,6 @@
 {
-  "version": "1.13.5",
-  "notes": "Impots : ouverture des avis CFE et TF fiabilisee, dossiers classes sans habilitation a tort desormais ouverts par la tuile Avis CFE, controle du SIREN affiche elargi",
+  "version": "1.13.6",
+  "notes": "Impots-ADELIE-erreur-technique-detectee-et-session-reinitialisee",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "ad9a86c85ed052ab433b424e4e67948f90042c1e342b3595c239cb47d20a4cbd"
+  "sha256": "8023b2184ecf2e2db28780bd5f6484f0a6e42a1fe45eb9e3c48696c97ce8030a"
 }
