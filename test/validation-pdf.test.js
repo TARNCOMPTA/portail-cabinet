@@ -31,15 +31,18 @@ function echapperPdf(t) {
     })
     .join('');
 }
-function pdfAvecTexte(texte) {
+function pdfAvecTexte(texte, annotation = '') {
   const contenu = texte ? `BT /F1 12 Tf 72 720 Td (${echapperPdf(texte)}) Tj ET` : '';
   const objets = [
     '<< /Type /Catalog /Pages 2 0 R >>',
     '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R${annotation ? ' /Annots [6 0 R]' : ''} >>`,
     '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
     `<< /Length ${contenu.length} >>\nstream\n${contenu}\nendstream`,
   ];
+  // Annotation « zone de texte » : c'est ainsi qu'un formulaire (ex. 2573-SD) rempli sous un
+  // lecteur PDF porte ses valeurs — absentes du texte de page.
+  if (annotation) objets.push(`<< /Type /Annot /Subtype /FreeText /Rect [72 600 480 620] /Contents (${echapperPdf(annotation)}) /DA (/Helv 12 Tf 0 g) /F 4 >>`);
   let pdf = '%PDF-1.4\n';
   const offsets = [];
   objets.forEach((o, i) => {
@@ -53,9 +56,9 @@ function pdfAvecTexte(texte) {
   return Buffer.from(pdf, 'latin1');
 }
 let seq = 0;
-function fixture(texte, nom = `f${++seq}.pdf`) {
+function fixture(texte, nom = `f${++seq}.pdf`, annotation = '') {
   const chemin = resolve(TMP, nom);
-  writeFileSync(chemin, pdfAvecTexte(texte));
+  writeFileSync(chemin, pdfAvecTexte(texte, annotation));
   return chemin;
 }
 
@@ -65,6 +68,12 @@ test('extraireTextePdf restitue le texte du PDF', async () => {
   const t = await extraireTextePdf(fixture('Avis de CFE — SIREN 123 456 789 — Cabinet Médical'));
   assert.match(t, /123 456 789/);
   assert.match(t, /Médical/);
+});
+
+test('extraireTextePdf restitue aussi le texte des annotations (formulaire rempli)', async () => {
+  const t = await extraireTextePdf(fixture('2573-SD DEMANDE DE REMBOURSEMENT DE CREDITS D IMPOT', undefined, 'MIC 81 SARL 420 483 711 000 24'));
+  assert.match(t, /DEMANDE DE REMBOURSEMENT/);
+  assert.match(t, /420 483 711 000 24/);
 });
 
 test('extraireTextePdf renvoie du vide pour un PDF sans texte (scan)', async () => {
@@ -183,6 +192,22 @@ test('verifierEtClasser : correspondance -> ok, fichier en place', async () => {
   const v = await verifierEtClasser({ fichier: f, source: 'impots', client: CLIENT, dossierQuarantaine: QUAR });
   assert.equal(v.verdict, 'ok');
   assert.ok(existsSync(f));
+});
+
+test('verifierEtClasser : SIREN présent seulement dans une annotation -> ok (cas réel SARL M.I.C., 2573-SD)', async () => {
+  const f = fixture('2573-SD DEMANDE DE REMBOURSEMENT DE CREDITS D IMPOT', 'annotation.pdf', 'MIC 81 SARL 420 483 711 000 24');
+  const client = { id: 88, nom: 'SARL M.I.C.', siret: '420483711' };
+  const v = await verifierEtClasser({ fichier: f, source: 'impots', client, dossierQuarantaine: QUAR });
+  assert.equal(v.verdict, 'ok');
+  assert.equal(v.raison, 'siren');
+  assert.ok(existsSync(f), 'le fichier doit rester chez le client');
+});
+
+test('verifierEtClasser : une annotation d’un AUTRE SIREN ne valide pas le fichier', async () => {
+  const f = fixture('2573-SD DEMANDE DE REMBOURSEMENT DE CREDITS D IMPOT', 'annotation-autre.pdf', 'AUTRE SARL 987 654 321 000 10');
+  const client = { id: 88, nom: 'SARL M.I.C.', siret: '420483711' };
+  const v = await verifierEtClasser({ fichier: f, source: 'impots', client, dossierQuarantaine: QUAR });
+  assert.equal(v.verdict, 'quarantaine');
 });
 
 test('verifierEtClasser : non-correspondance -> quarantaine, fichier déplacé', async () => {
