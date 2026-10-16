@@ -146,7 +146,29 @@ function echapperRegex(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-/** Extrait le texte des maxPages premières pages d'un PDF.
+/** Texte saisi dans les ANNOTATIONS d'une page (zones de texte, champs de formulaire, notes).
+ *  Un formulaire rempli a la main ou sous un lecteur PDF porte souvent ses valeurs dans des
+ *  annotations, que getTextContent() ne renvoie pas : cas reel du 15/10/2026, un formulaire
+ *  2573-SD joint a un message du SIE dont le SIREN (« 420 483 711 000 24 ») et la denomination
+ *  n'etaient QUE dans des annotations -> mis en quarantaine a tort (verdict « introuvable »).
+ *  Ne leve jamais : sans annotation lisible, on renvoie ''. */
+async function extraireTexteAnnotations(page) {
+  try {
+    const annotations = await page.getAnnotations();
+    const valeurs = [];
+    for (const a of annotations) {
+      for (const v of [a.contentsObj?.str, a.contents, a.fieldValue, a.richText?.str]) {
+        const txt = Array.isArray(v) ? v.join(' ') : v;
+        if (typeof txt === 'string' && txt.trim()) valeurs.push(txt.trim());
+      }
+    }
+    return [...new Set(valeurs)].join(' ');
+  } catch {
+    return '';
+  }
+}
+
+/** Extrait le texte des maxPages premières pages d'un PDF (texte de page + annotations).
  *  Retourne null si le fichier est illisible (corrompu, chiffré, non-PDF),
  *  '' (ou presque) si le PDF ne contient pas de texte (scan). */
 export async function extraireTextePdf(fichier, { maxPages = 8 } = {}) {
@@ -160,7 +182,8 @@ export async function extraireTextePdf(fichier, { maxPages = 8 } = {}) {
     for (let i = 1; i <= n; i++) {
       const page = await doc.getPage(i);
       const contenu = await page.getTextContent();
-      morceaux.push(contenu.items.map((it) => it.str || '').join(' '));
+      const texteAnnotations = await extraireTexteAnnotations(page);
+      morceaux.push([contenu.items.map((it) => it.str || '').join(' '), texteAnnotations].filter(Boolean).join(' '));
     }
     return morceaux.join('\n');
   } catch {
