@@ -1,6 +1,6 @@
 {
-  "version": "1.13.6",
-  "notes": "Impots-ADELIE-erreur-technique-detectee-et-session-reinitialisee",
+  "version": "1.13.7",
+  "notes": "Quarantaine-lecture-des-annotations-PDF-formulaires-remplis",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "8023b2184ecf2e2db28780bd5f6484f0a6e42a1fe45eb9e3c48696c97ce8030a"
+  "sha256": "34054aba5f852fe4779e90fb743963d39a7c94ff84ca2ff7e364475d04a64a7e"
 }
