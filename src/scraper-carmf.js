@@ -16,7 +16,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, listDocuments } from './carmf-db.js';
 import { ouvrirPour } from './navigateur.js';
-import { sanitize } from './scraper-commun.js';
+import { sanitize, dansPeriode } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -318,6 +318,7 @@ export async function scrapeClient(client, opts = {}) {
           try {
             const a = analyserLibelleAppel(cible.libelle);
             const millesime = a.annee || annee;
+            if (!dansPeriode(millesime)) continue;
             const libelle = /appels? de cotisations?/i.test(a.libelle) ? a.libelle : `Appel de cotisations${a.type ? ` (${a.type})` : ''} ${millesime}`;
             const dest = resolve(clientDir, `${millesime}_Appel_cotisation${a.type ? `_${a.type}` : ''}.pdf`);
             if (dejaEnBase.has(`${millesime}|${libelle}`) || (existsSync(dest) && statSync(dest).size > 100)) {

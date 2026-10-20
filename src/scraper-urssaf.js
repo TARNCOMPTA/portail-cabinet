@@ -17,7 +17,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './urssaf-db.js';
 import { launchArgs } from './navigateur.js';
-import { sanitize, dateIso } from './scraper-commun.js';
+import { sanitize, dateIso, dansPeriode } from './scraper-commun.js';
 import { verifierEtClasser, correspondanceNom } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -661,6 +661,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
       // Nom : « AAAA-MM-JJ Objet » (date en premier, comme l'URSSAF).
       const nomBase = [dateIso(date), objet || 'Document URSSAF'].filter(Boolean).join(' ');
       const libelleDoc = [date, objet].filter(Boolean).join(' — ').slice(0, 200) || 'Document URSSAF';
+      if (!dansPeriode(date)) continue; // anterieur aux 3 dernieres annees
       try {
         // Economie : deja recupere ? (cle = identifiant unique du document)
         const deja = getDocumentByEventid(client.id, docId);
