@@ -20,7 +20,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, getDocumentByEventid } from './db.js';
 import { launchArgs } from './navigateur.js';
-import { sanitize } from './scraper-commun.js';
+import { sanitize, dansPeriode, anneeMinimale } from './scraper-commun.js';
 import { verifierEtClasser, extraireTextePdf, detecterPaiementCfe } from './validation-pdf.js';
 import * as captchaRelais from './captcha-relais.js';
 
@@ -379,11 +379,16 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
   let existants = 0;
   const quarantaines = [];
   let nonVerifiables = 0;
+  let horsPeriode = 0;
   for (let i = 0; i < n; i++) {
     const lien = liens.nth(i);
     const ligneTxt = (await lien.evaluate((el) => el.closest('tr')?.innerText || '').catch(() => '')).replace(/\s+/g, ' ');
     const ref = (ligneTxt.match(/\d{10,15}/) || [])[0] || `${prefixe}${i + 1}`;
     const annee = (ligneTxt.match(/\b20\d{2}\b/) || [])[0] || '';
+    if (!dansPeriode(annee)) {
+      horsPeriode++;
+      continue;
+    }
     const eid = `${prefixe}_${ref}`;
     const dest = resolve(clientDir, `${prefixe}_${annee ? annee + '_' : ''}${ref}.pdf`);
     if (existsSync(dest) || getDocumentByEventid(client.id, eid)) {
@@ -420,6 +425,7 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
       log(`(${prefixe} ${i + 1} : ${e.message.split('\n')[0]})`);
     }
   }
+  if (horsPeriode) log(`${prefixe} : ${horsPeriode} avis anterieur(s) a ${anneeMinimale()} ignore(s).`);
   return { docs, existants, quarantaines, nonVerifiables };
 }
 

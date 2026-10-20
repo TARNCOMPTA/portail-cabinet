@@ -13,7 +13,7 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { addDocument, addRun, listDocuments } from './carpimko-db.js';
 import { ouvrirPour } from './navigateur.js';
-import { sanitize, dateIso } from './scraper-commun.js';
+import { sanitize, dateIso, dansPeriode, anneeMinimale } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -234,7 +234,9 @@ export async function scrapeClient(client, opts = {}) {
     }
     log(`${tous.length} document(s) liste(s) au total.`);
 
-    const cibles = tousDocuments ? tous : tous.filter((d) => REGEX_APPEL.test(d.nom) || REGEX_APPEL.test(d.fileName.replace(/_/g, ' ')));
+    const dansFenetre = tous.filter((d) => dansPeriode(d.date));
+    if (dansFenetre.length < tous.length) log(`${tous.length - dansFenetre.length} document(s) anterieur(s) a ${anneeMinimale()} ignore(s).`);
+    const cibles = tousDocuments ? dansFenetre : dansFenetre.filter((d) => REGEX_APPEL.test(d.nom) || REGEX_APPEL.test(d.fileName.replace(/_/g, ' ')));
     if (cibles.length === 0) {
       log(tousDocuments ? 'Aucun document trouve.' : 'Aucun appel de cotisations trouve.');
       await page.screenshot({ path: resolve(clientDir, `_page_documents_${Date.now()}.png`), fullPage: true }).catch(() => {});
