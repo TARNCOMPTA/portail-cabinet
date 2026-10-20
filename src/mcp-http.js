@@ -251,9 +251,24 @@ function buildServer() {
     },
   );
 
+  server.tool(
+    'saisir_code',
+    "Saisit le code attendu par le bandeau du portail : code de double authentification CARCDSF reçu par e-mail (6 caractères). Vérifier d'abord avec etat_recuperation (saisie_attendue).",
+    { code: z.string().min(4).max(12) },
+    async ({ code }) => {
+      try {
+        const r = await apiFetch('/api/captcha', { method: 'POST', body: JSON.stringify({ code }) });
+        return txt(r.connecte ? { ok: true, message: 'Code accepté — la connexion et la récupération continuent.' } : { ok: false, ...r, image: undefined });
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
   server.tool('etat_recuperation', 'État de la récupération en cours sur le portail (progression + dernières lignes du journal).', {}, async () => {
     try {
       const p = await apiFetch('/api/progress');
+      const saisie = await apiFetch('/api/captcha').catch(() => ({}));
       // Plusieurs organismes peuvent tourner en parallele : on remonte le total agrege
       // ET le detail par source (fait/total/client en cours).
       const detail = Object.values(p.sources || {}).map((s) => ({
@@ -271,6 +286,8 @@ function buildServer() {
         sources_actives: p.actives || [],
         par_source: detail,
         derniers_logs: (p.logs || []).slice(-8),
+        // Bandeau en attente : code de double authentification CARCDSF (texte) ou captcha impots (image).
+        saisie_attendue: saisie.actif ? { type: saisie.image ? 'captcha_impots' : 'code', titre: saisie.titre, message: saisie.message } : null,
       });
     } catch (e) {
       return erreur(e);

@@ -57,6 +57,7 @@ import * as carmf from './src/carmf-db.js';
 import { scrapeClient as scrapeClientCarmf } from './src/scraper-carmf.js';
 import * as carcdsf from './src/carcdsf-db.js';
 import { scrapeClient as scrapeClientCarcdsf } from './src/scraper-carcdsf.js';
+import { etatTiers, enregistrerTiers, testerTiers, creerTourneeTiers } from './src/carcdsf-tiers.js';
 import * as carpv from './src/carpv-db.js';
 import { scrapeClient as scrapeClientCarpv } from './src/scraper-carpv.js';
 import { creerRouteurSourceLogin } from './src/routes/source-login.js';
@@ -1036,6 +1037,15 @@ app.post('/api/myunisoft', requireAdmin, (req, res) => {
 });
 app.post('/api/myunisoft/test', requireAdmin, async (req, res) => res.json(await testerMyunisoft()));
 
+// ---- Compte tiers delegataire CARCDSF (mot de passe et jeton 2FA chiffres, jamais renvoyes) ----
+app.get('/api/carcdsf-tiers', requireAdmin, (req, res) => res.json(etatTiers()));
+app.post('/api/carcdsf-tiers', requireAdmin, (req, res) => res.json(enregistrerTiers(req.body || {})));
+// En tache de fond : la connexion peut attendre le code 2FA (bandeau), resultat via GET.
+app.post('/api/carcdsf-tiers/test', requireAdmin, (req, res) => {
+  testerTiers({ log: journalDe('carcdsf') });
+  res.json({ started: true });
+});
+
 // ---- Reglages -------------------------------------------------------------
 // Nom du cabinet (marque blanche) — lecture publique via /api/branding (avant auth).
 app.post('/api/branding', requireAdmin, (req, res) => {
@@ -1416,7 +1426,13 @@ const routeursSources = {
     ctx: ctxPour('carpimko'),
   }),
   carmf: creerRouteurSourceLogin('carmf', { db: carmf, scraper: scrapeClientCarmf, navigateur: true, ctx: ctxPour('carmf') }),
-  carcdsf: creerRouteurSourceLogin('carcdsf', { db: carcdsf, scraper: scrapeClientCarcdsf, ctx: ctxPour('carcdsf') }),
+  // Compte tiers delegataire configure -> une tournee unique sur le portefeuille (carcdsf-tiers.js).
+  carcdsf: creerRouteurSourceLogin('carcdsf', {
+    db: carcdsf,
+    scraper: scrapeClientCarcdsf,
+    ctx: ctxPour('carcdsf'),
+    lancerTousPerso: creerTourneeTiers({ db: carcdsf, scraper: scrapeClientCarcdsf, ctx: ctxPour('carcdsf') }),
+  }),
   carpv: creerRouteurSourceLogin('carpv', { db: carpv, scraper: scrapeClientCarpv, ctx: ctxPour('carpv') }),
 };
 for (const [srcNom, obj] of Object.entries(routeursSources)) app.use('/api/' + srcNom, obj.router);

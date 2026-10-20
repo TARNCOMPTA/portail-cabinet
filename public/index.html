@@ -133,9 +133,9 @@
         <!-- Captcha impôts relayée : image capturée par le robot, code saisi ici -->
         <section class="panel flush progress-panel" id="panel-captcha" hidden>
           <div class="panel-head">
-            <h2>🔐 Captcha impôts — à toi de jouer</h2>
+            <h2 id="captcha-titre">🔐 Captcha impôts — à toi de jouer</h2>
           </div>
-          <p class="aide" style="margin: 0 22px 10px">
+          <p class="aide" id="captcha-aide" style="margin: 0 22px 10px">
             Le robot attend le code : recopie l'image ci-dessous puis valide — la connexion et la récupération s'enchaînent toutes seules. (La fenêtre « Captcha
             » noVNC reste disponible en secours.)
           </p>
@@ -1472,6 +1472,39 @@
                 <button type="button" class="btn" id="mu-tester">Tester la connexion</button>
                 <button type="button" class="btn danger" id="mu-effacer">Effacer les secrets</button>
                 <span class="aide" id="mu-etat" style="margin: 0"></span>
+              </div>
+            </section>
+
+            <section class="panel" id="panel-carcdsf-tiers" hidden>
+              <h2>Compte tiers CARCDSF <span class="compteur">admin</span></h2>
+              <p class="aide">
+                Compte « tiers délégataire » du cabinet sur adherents.carcdsf.fr : une seule connexion pour tout le portefeuille d'adhérents. La récupération
+                CARCDSF n'utilise plus alors les identifiants de chaque client. À la première connexion, la caisse envoie un code par e-mail : il s'affiche dans
+                le bandeau en haut du portail, puis l'appareil est mémorisé. Le mot de passe et le jeton sont chiffrés et jamais réaffichés.
+              </p>
+              <div class="form-grid">
+                <label
+                  >Identifiant du compte tiers
+                  <input id="ct-login" type="text" autocomplete="off" spellcheck="false" />
+                </label>
+                <label
+                  >Mot de passe
+                  <input id="ct-password" type="password" autocomplete="new-password" spellcheck="false" />
+                </label>
+                <label
+                  >Espace
+                  <select id="ct-base">
+                    <option value="0">Chirurgiens-dentistes</option>
+                    <option value="1">Sages-femmes</option>
+                  </select>
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="ct-enregistrer">Enregistrer</button>
+                <button type="button" class="btn" id="ct-tester">Tester la connexion</button>
+                <button type="button" class="btn" id="ct-oublier">Oublier l'appareil</button>
+                <button type="button" class="btn danger" id="ct-effacer">Effacer le compte</button>
+                <span class="aide" id="ct-etat" style="margin: 0"></span>
               </div>
             </section>
 

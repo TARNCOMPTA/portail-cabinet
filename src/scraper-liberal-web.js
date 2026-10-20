@@ -35,7 +35,8 @@ export function creerScraperLiberalWeb(cfg) {
       opts.onLog?.(line);
     };
     const timeout = Number(process.env.NAV_TIMEOUT ?? 45000);
-    const b = typeof baseIndex === 'function' ? baseIndex(client) : baseIndex;
+    // En session tiers, la base est celle du compte delegataire (et non la profession du client).
+    const b = opts.session?.base ?? (typeof baseIndex === 'function' ? baseIndex(client) : baseIndex);
     const API = `${host}/InternetWebServices/${b}`;
     const APINC = `${host}/InternetWebServicesNonConnectes/${b}`;
 
@@ -45,12 +46,8 @@ export function creerScraperLiberalWeb(cfg) {
     else clientDir = resolve(DOWNLOADS_DIR, sanitize(`${client.id}_${client.nom}`));
     mkdirSync(clientDir, { recursive: true });
 
-    const docs = [];
-    let dejaPresents = 0;
-    let horsPeriode = 0; // documents anterieurs a la fenetre des 3 ans : ignores, pas un echec
-    const quarantaines = [];
-    let nonVerifiables = 0;
-    try {
+    // Connexion avec les identifiants du client (mode historique, un compte par client).
+    const connexionIndividuelle = async () => {
       if (!client.password) {
         const e = new Error('Mot de passe vide pour ce client — re-saisis-le.');
         e.kind = 'mdp';
@@ -99,7 +96,22 @@ export function creerScraperLiberalWeb(cfg) {
       }
       const dossier = Number(sig.matricule) * 100 + Number(sig.nature || 0);
       log('Connecté. Récupération des documents.');
-      const H = { picristoken, authorization, 'content-type': 'application/json' };
+      return { H: { picristoken, authorization, 'content-type': 'application/json' }, dossier };
+    };
+
+    const docs = [];
+    let dejaPresents = 0;
+    let horsPeriode = 0; // documents anterieurs a la fenetre des 3 ans : ignores, pas un echec
+    const quarantaines = [];
+    let nonVerifiables = 0;
+    try {
+      let H, dossier;
+      if (opts.session) {
+        // Session ouverte par le compte TIERS DELEGATAIRE (src/carcdsf-tiers.js) : l'adherent
+        // est deja selectionne cote caisse, aucune connexion individuelle.
+        ({ H, dossier } = opts.session);
+        log(`Dossier ${dossier} (compte tiers). Récupération des documents.`);
+      } else ({ H, dossier } = await connexionIndividuelle());
 
       // Dedup EN BASE (libelle + annee) : certaines caisses regenerent un courrier a
       // chaque visite (ex. CARPV « INT - Echeancier de prelevements » date du jour) —

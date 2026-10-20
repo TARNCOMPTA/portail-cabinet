@@ -827,14 +827,20 @@ $('#progress-masquer').addEventListener('click', () => {
 // L'image est capturée par le robot ; le code tapé ici est recopié dans la vraie
 // page de connexion. Le bandeau s'affiche sur TOUS les onglets (action requise).
 let captchaVisible = false;
+const aideCaptchaDefaut = $('#captcha-aide')?.textContent || '';
 async function suivreCaptcha() {
   try {
     const c = await api('/api/captcha');
     const p = $('#panel-captcha');
     if (!p) return;
     if (c.actif) {
+      // Image = captcha impots ; sans image = code recu par e-mail (CARCDSF).
       const img = $('#captcha-img');
-      if (img.src !== c.image) img.src = c.image;
+      img.hidden = !c.image;
+      $('#captcha-rafraichir').hidden = !c.image;
+      if (c.image && img.src !== c.image) img.src = c.image;
+      $('#captcha-titre').textContent = c.titre || '🔐 Captcha impôts — à toi de jouer';
+      $('#captcha-aide').textContent = c.message || aideCaptchaDefaut;
       if (!captchaVisible) {
         captchaVisible = true;
         p.hidden = false;
@@ -861,7 +867,7 @@ async function validerCaptcha() {
       $('#captcha-msg').textContent = '✔ Connecté — la récupération continue.';
       toast('Captcha validée — connexion réussie.', 'ok');
     } else if (r.refuse) {
-      $('#captcha-msg').textContent = 'Code refusé — nouvelle image chargée.';
+      $('#captcha-msg').textContent = r.error || 'Code refusé — nouvelle image chargée.';
       if (r.image) $('#captcha-img').src = r.image;
       $('#captcha-code').value = '';
       $('#captcha-code').focus();
@@ -1606,6 +1612,8 @@ async function chargerMoi() {
     chargerIntegration();
     $('#panel-myunisoft').hidden = false;
     chargerMyunisoft();
+    $('#panel-carcdsf-tiers').hidden = false;
+    chargerCarcdsfTiers();
   }
 }
 
@@ -1688,6 +1696,74 @@ $('#mu-effacer')?.addEventListener('click', async () => {
     await api('/api/myunisoft', { method: 'POST', body: JSON.stringify({ effacer: true }) });
     toast('Secrets MyUnisoft effacés.', 'ok');
     chargerMyunisoft();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+// ---- Compte tiers délégataire CARCDSF -----------------------------------------
+function texteEtatTiers(r) {
+  if (!r.configure) return 'Aucun compte tiers enregistré — la CARCDSF utilise les identifiants de chaque client.';
+  const t = r.dernier_test;
+  const test = !t ? '' : t.en_cours ? ' Test en cours (saisis le code dans le bandeau s’il est demandé)…' : ` Dernier test : ${t.ok ? '✔' : '✘'} ${t.message}`;
+  return `Compte enregistré — ${r.appareil_memorise ? 'appareil mémorisé (pas de code demandé).' : 'un code sera demandé à la prochaine connexion.'}${test}`;
+}
+async function chargerCarcdsfTiers() {
+  try {
+    const r = await api('/api/carcdsf-tiers');
+    $('#ct-login').value = r.login || '';
+    $('#ct-base').value = String(r.base || 0);
+    $('#ct-password').placeholder = r.mot_de_passe_defini ? 'Défini — laisser vide pour ne pas changer' : '';
+    $('#ct-etat').textContent = texteEtatTiers(r);
+    return r;
+  } catch {
+    return null;
+  }
+}
+$('#ct-enregistrer')?.addEventListener('click', async () => {
+  try {
+    const corps = { login: $('#ct-login').value.trim(), base: Number($('#ct-base').value) };
+    const mdp = $('#ct-password').value;
+    if (mdp) corps.password = mdp;
+    await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify(corps) });
+    $('#ct-password').value = '';
+    toast('Compte tiers CARCDSF enregistré.', 'ok');
+    chargerCarcdsfTiers();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+$('#ct-tester')?.addEventListener('click', async () => {
+  try {
+    await api('/api/carcdsf-tiers/test', { method: 'POST' });
+    toast('Test lancé — si la CARCDSF envoie un code par e-mail, saisis-le dans le bandeau en haut.', 'ok');
+    // Le test peut attendre le code (jusqu'à 10 min) : on suit son état.
+    const fin = Date.now() + 11 * 60 * 1000;
+    const suivre = async () => {
+      const r = await chargerCarcdsfTiers();
+      if (r?.dernier_test && !r.dernier_test.en_cours) return toast(r.dernier_test.message, r.dernier_test.ok ? 'ok' : 'err');
+      if (Date.now() < fin) setTimeout(suivre, 3000);
+    };
+    setTimeout(suivre, 1500);
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+$('#ct-oublier')?.addEventListener('click', async () => {
+  if (!confirm('Oublier l’appareil mémorisé ? La CARCDSF redemandera un code par e-mail à la prochaine connexion.')) return;
+  try {
+    await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify({ oublier_appareil: true }) });
+    chargerCarcdsfTiers();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+$('#ct-effacer')?.addEventListener('click', async () => {
+  if (!confirm('Effacer le compte tiers CARCDSF ? La récupération reviendra aux identifiants de chaque client.')) return;
+  try {
+    await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify({ effacer: true }) });
+    toast('Compte tiers CARCDSF effacé.', 'ok');
+    chargerCarcdsfTiers();
   } catch (err) {
     toast(err.message, 'err');
   }

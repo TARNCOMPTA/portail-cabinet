@@ -151,6 +151,17 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
   function getClientByLogin(login) {
     return db.prepare('SELECT * FROM clients WHERE login = ?').get(String(login).trim());
   }
+  // Remplace identifiant ET mot de passe (un mot de passe vide est accepte, contrairement a
+  // updateClient qui garde l'ancien) : sert a basculer un client individuel sur le compte
+  // tiers CARCDSF (src/carcdsf-tiers.js) sans perdre son historique de documents.
+  function remplacerIdentifiants(id, login, password) {
+    db.prepare(`UPDATE clients SET login = ?, password_enc = ?, updated_at = datetime('now') WHERE id = ?`).run(
+      String(login).trim(),
+      encrypt(password ?? ''),
+      Number(id),
+    );
+    return clientPublic(Number(id));
+  }
 
   // EN UNE TRANSACTION (voir src/db.js) : sans elle, chaque ligne etait sa propre
   // transaction implicite, donc un COMMIT et une synchro disque par client importe.
@@ -257,6 +268,7 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
     updateClient,
     deleteClient,
     getClientByLogin,
+    remplacerIdentifiants,
     importClients,
     addDocument,
     listDocuments,

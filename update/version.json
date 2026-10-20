@@ -1,6 +1,6 @@
 {
-  "version": "1.13.11",
-  "notes": "Diagnostic-connexion-CARCDSF-CARPV-detection-double-authentification",
+  "version": "1.13.12",
+  "notes": "CARCDSF-compte-tiers-delegataire-portefeuille-et-double-authentification",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "45e20d0421e0438425ce00eab05c0b1e6baae3ada49c667d816d822e1cbded77"
+  "sha256": "417a68cb07ef627eed4e730c10b531696fe87bc7b1cbaf0f771e7019112a1e79"
 }

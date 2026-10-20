@@ -10,14 +10,16 @@ import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MA
 
 /**
  * @param {string} source  identifiant court (ex 'carmf') = prefixe d'URL et de verrou.
- * @param {{db:object, scraper:Function, tousDocuments?:boolean, navigateur?:boolean, ctx:object}} opts
+ * @param {{db:object, scraper:Function, tousDocuments?:boolean, navigateur?:boolean, ctx:object, lancerTousPerso?:Function}} opts
  *   ctx = { enCours, progression, progLog, demarrerSuivi, terminerSuivi, doitArreter, resetArret }
  *   navigateur = le scraper pilote Chromium (CARPIMKO, CARMF) : en lot, UN SEUL navigateur
  *     est lance pour toute la tournee et prete a chaque client. Les caisses sur API JSON
  *     (CARCDSF, CARPV) n'ouvrent aucun navigateur : laisser a false.
+ *   lancerTousPerso(extra, defaut) = tournee de remplacement (compte tiers CARCDSF), qui
+ *     peut se rabattre sur la tournee par defaut `defaut(extra)`.
  * @returns {{router:import('express').Router, lancerTous:(opts?:object)=>object}}
  */
-export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = false, navigateur = false, ctx }) {
+export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = false, navigateur = false, ctx, lancerTousPerso }) {
   const r = express.Router();
   const { enCours, progression, progLog, demarrerSuivi, terminerSuivi } = ctx;
   const SRC = source.toUpperCase();
@@ -186,11 +188,13 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
       });
     lancerUn(id, res, tousDocuments ? { tousDocuments: !!req.body?.tousDocuments } : {});
   });
+  const lancer = lancerTousPerso ? (extra = {}) => lancerTousPerso(extra, lancerTous) : lancerTous;
+
   r.post('/scrape-all', (req, res) => {
-    const resu = lancerTous(tousDocuments ? { tousDocuments: !!req.body?.tousDocuments } : {});
+    const resu = lancer(tousDocuments ? { tousDocuments: !!req.body?.tousDocuments } : {});
     if (!resu.started) return res.status(409).json({ error: `Une récupération ${SRC} globale est déjà en cours.` });
     res.json(resu);
   });
 
-  return { router: r, lancerTous };
+  return { router: r, lancerTous: lancer };
 }
