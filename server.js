@@ -58,6 +58,7 @@ import { scrapeClient as scrapeClientCarmf } from './src/scraper-carmf.js';
 import * as carcdsf from './src/carcdsf-db.js';
 import { scrapeClient as scrapeClientCarcdsf } from './src/scraper-carcdsf.js';
 import { etatTiers, enregistrerTiers, testerTiers, creerTourneeTiers } from './src/carcdsf-tiers.js';
+import { etatBoite, enregistrerBoite, testerBoite } from './src/boite-codes.js';
 import * as carpv from './src/carpv-db.js';
 import { scrapeClient as scrapeClientCarpv } from './src/scraper-carpv.js';
 import { creerRouteurSourceLogin } from './src/routes/source-login.js';
@@ -1045,6 +1046,17 @@ app.post('/api/carcdsf-tiers/test', requireAdmin, (req, res) => {
   testerTiers({ log: journalDe('carcdsf') });
   res.json({ started: true });
 });
+
+// ---- Boite des codes 2FA (Microsoft 365 / Graph, lecture seule ; secret chiffre) ----
+app.get('/api/boite-codes', requireAdmin, (req, res) => res.json(etatBoite()));
+app.post('/api/boite-codes', requireAdmin, (req, res) => {
+  try {
+    res.json(enregistrerBoite(req.body || {}));
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/boite-codes/test', requireAdmin, async (req, res) => res.json(await testerBoite()));
 
 // ---- Reglages -------------------------------------------------------------
 // Nom du cabinet (marque blanche) — lecture publique via /api/branding (avant auth).

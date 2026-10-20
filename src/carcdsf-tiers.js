@@ -1,8 +1,9 @@
 // Compte TIERS DELEGATAIRE CARCDSF (cabinet) : UNE connexion pour tout le portefeuille
 // d'adherents, au lieu d'un identifiant par client. La caisse impose une double
-// authentification (code par e-mail) : le code est demande dans le bandeau du portail
-// (src/captcha-relais.js), puis l'appareil est memorise (jeton chiffre) pour ne plus
-// redemander de code tant que la caisse ne l'invalide pas.
+// authentification (code par e-mail) : le code est lu dans la boite des codes Microsoft 365
+// (src/boite-codes.js) ou saisi dans le bandeau du portail (src/captcha-relais.js), puis
+// l'appareil est memorise (jeton chiffre) pour ne plus redemander de code tant que la caisse
+// ne l'invalide pas.
 //
 // Circuit reconstitue depuis l'application adherents.carcdsf.fr (Flutter, main.dart.js) :
 //   1. POST NonConnectes/<b>/internaute/connexion/V1 {pseudo, pwd, da, description}
@@ -18,6 +19,7 @@
 import { getSetting, setSetting } from './db.js';
 import { encrypt, decrypt } from './crypto.js';
 import * as captchaRelais from './captcha-relais.js';
+import { boiteConfiguree, codesCarcdsfDepuis } from './boite-codes.js';
 
 const HOST = process.env.CARCDSF_BASE_URL || 'https://adherents.carcdsf.fr';
 const PICRISTOKEN = process.env.CARCDSF_PICRISTOKEN || 'jkhkjhkjhkjhk';
@@ -125,52 +127,92 @@ async function connexion(cfg, da) {
   return { r, json, authorization: r.headers.get('authorization') };
 }
 
-// Attend le code saisi dans le bandeau du portail ; chaque saisie est verifiee aupres de
-// la caisse (un code faux laisse le bandeau ouvert). Resout avec le jeton (= identifiant 2FA).
+// Obtient le code de double authentification : lu AUTOMATIQUEMENT dans la boite des codes
+// (Microsoft 365, src/boite-codes.js) si elle est configuree, et dans tous les cas saisissable
+// dans le bandeau du portail — le premier code accepte par la caisse l'emporte. Resout avec le
+// jeton (= identifiant 2FA) a memoriser.
 async function obtenirCode2FA(cfg, infos, log) {
   const nc = `${HOST}/InternetWebServicesNonConnectes/${cfg.base}`;
   const id = String(infos.identifiant || '');
   if (!id) throw new Error(`Double authentification demandée mais identifiant 2FA absent. (${cles(infos)})`);
+  const demandeLe = new Date(Date.now() - 60000).toISOString(); // marge pour l'horloge du serveur mail
   const envoi = await appel(`${nc}/internaute/code2FA/V1/${encodeURIComponent(id)}/mail`, { method: 'POST' });
   if (envoi.json.codeRetour !== 0 && envoi.json.codeRetour != null)
     throw new Error(`Envoi du code refusé par la CARCDSF : ${(envoi.json.libelle || '').trim() || diagnostic(envoi.json)}`);
   const dest = infos.email ? ` à ${infos.email}` : '';
-  log(`Double authentification : code envoyé par e-mail${dest}. Saisis-le dans le bandeau du portail.`);
+  const auto = boiteConfiguree();
+  log(
+    `Double authentification : code envoyé par e-mail${dest}. ${auto ? 'Lecture automatique de la boîte des codes…' : 'Saisis-le dans le bandeau du portail.'}`,
+  );
 
-  // Le relais est partage avec la captcha impots : attendre qu'il se libere.
-  const limite = Date.now() + ATTENTE_CODE_MS;
-  while (captchaRelais.etat().actif) {
-    if (Date.now() > limite) throw new Error('Bandeau de saisie occupé (captcha impôts en cours) — réessaie plus tard.');
-    await new Promise((ok) => setTimeout(ok, 2000));
-  }
+  const verifier = async (code) => {
+    const c = String(code || '')
+      .trim()
+      .toUpperCase();
+    if (c.length < 6) return false;
+    const v = await appel(`${nc}/internaute/verifiercode2FA/V1/${encodeURIComponent(id)}/${encodeURIComponent(c)}/email`, {
+      method: 'POST',
+      body: DESCRIPTION,
+    });
+    return v.json.vrai === true;
+  };
+  const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
 
   return await new Promise((resoudre, rejeter) => {
+    let fini = false;
+    let banniere = false;
+    const terminer = (err) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(minuterie);
+      if (banniere) captchaRelais.fermer();
+      if (err) rejeter(err);
+      else resoudre(id);
+    };
     const minuterie = setTimeout(
-      () => {
-        captchaRelais.fermer();
-        rejeter(new Error('Code de double authentification CARCDSF non saisi à temps — relance la récupération CARCDSF depuis le portail.'));
-      },
-      Math.max(1000, limite - Date.now()),
+      () => terminer(new Error('Code de double authentification CARCDSF non saisi à temps — relance la récupération CARCDSF depuis le portail.')),
+      ATTENTE_CODE_MS,
     );
-    captchaRelais.ouvrir({
-      titre: '🔐 Code CARCDSF — à toi de jouer',
-      message: `La CARCDSF a envoyé un code à 6 caractères par e-mail${dest}. Recopie-le ci-dessous : la connexion du compte tiers et la récupération s'enchaînent toutes seules.`,
-      soumettre: async (code) => {
-        const c = String(code || '')
-          .trim()
-          .toUpperCase();
-        if (c.length < 6) return { ok: false, refuse: true, error: 'Le code comporte 6 caractères.' };
-        const v = await appel(`${nc}/internaute/verifiercode2FA/V1/${encodeURIComponent(id)}/${encodeURIComponent(c)}/email`, {
-          method: 'POST',
-          body: DESCRIPTION,
-        });
-        if (v.json.vrai !== true) return { ok: false, refuse: true, error: 'Code refusé par la CARCDSF — vérifie le dernier e-mail reçu.' };
-        clearTimeout(minuterie);
-        captchaRelais.fermer();
-        resoudre(id);
-        return { ok: true, connecte: true };
-      },
-    });
+
+    // Bandeau (partage avec la captcha impots : on attend qu'il se libere).
+    (async () => {
+      while (!fini && captchaRelais.etat().actif) await pause(2000);
+      if (fini) return;
+      banniere = true;
+      captchaRelais.ouvrir({
+        titre: '🔐 Code CARCDSF — à toi de jouer',
+        message: `La CARCDSF a envoyé un code à 6 chiffres par e-mail${dest}.${auto ? ' Le portail le cherche aussi dans la boîte des codes.' : ''} Recopie-le ci-dessous : la connexion du compte tiers et la récupération s'enchaînent toutes seules.`,
+        soumettre: async (code) => {
+          if (fini) return { ok: true, connecte: true };
+          if (String(code || '').trim().length < 6) return { ok: false, refuse: true, error: 'Le code comporte 6 chiffres.' };
+          if (!(await verifier(code))) return { ok: false, refuse: true, error: 'Code refusé par la CARCDSF — vérifie le dernier e-mail reçu.' };
+          terminer();
+          return { ok: true, connecte: true };
+        },
+      });
+    })();
+
+    // Lecture automatique de la boite (lecture seule, mails recus apres la demande).
+    if (auto)
+      (async () => {
+        const essayes = new Set();
+        while (!fini) {
+          try {
+            for (const code of await codesCarcdsfDepuis(demandeLe)) {
+              if (fini || essayes.has(code)) continue;
+              essayes.add(code);
+              if (await verifier(code)) {
+                log('Code lu automatiquement dans la boîte des codes et accepté par la CARCDSF.');
+                return terminer();
+              }
+            }
+          } catch (e) {
+            log(`(boîte des codes : ${e.message} — le bandeau reste disponible)`);
+            await pause(25000);
+          }
+          await pause(5000);
+        }
+      })();
   });
 }
 
@@ -247,8 +289,19 @@ const jetons = (s) =>
     .trim()
     .split(' ')
     .filter((m) => m.length > 1 && !['DR', 'MME', 'MR', 'M', 'MLLE'].includes(m))
-    .sort()
-    .join(' ');
+    .sort();
+
+// Une lettre d'ecart par mot tolérée (mots de 5 lettres et plus) : la caisse ecrit
+// « VEYSSIERE » quand la fiche du portail porte « VEYSSIERES ».
+function uneLettreDEcart(a, b) {
+  if (a === b) return true;
+  if (Math.min(a.length, b.length) < 5 || Math.abs(a.length - b.length) > 1) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  const [x, y] = [a.slice(i + (a.length >= b.length ? 1 : 0)), b.slice(i + (b.length >= a.length ? 1 : 0))];
+  return x === y;
+}
+const memeNom = (a, b) => a.length > 0 && a.length === b.length && a.every((m, i) => uneLettreDEcart(m, b[i]));
 
 /**
  * Trouve (ou cree) le client du portail d'un adherent du portefeuille. Un client individuel
@@ -261,7 +314,7 @@ export function clientPourAdherent(db, adh, base, log = () => {}) {
   if (existant) return existant.id;
   const nomComplet = [adh.nom, adh.prenom].filter(Boolean).join(' ');
   const cle = jetons(nomComplet);
-  const homonyme = db.listClients().find((c) => !String(c.login).startsWith(PREFIXE_LOGIN) && cle && jetons(c.nom) === cle);
+  const homonyme = db.listClients().find((c) => !String(c.login).startsWith(PREFIXE_LOGIN) && memeNom(jetons(c.nom), cle));
   if (homonyme) {
     db.remplacerIdentifiants(homonyme.id, login, '');
     log(`[${homonyme.nom}] Compte individuel remplacé par le compte tiers (historique conservé).`);

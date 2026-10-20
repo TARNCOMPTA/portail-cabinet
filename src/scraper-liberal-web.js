@@ -197,7 +197,9 @@ export function creerScraperLiberalWeb(cfg) {
         for (const [categorie, liste] of Object.entries(groupes)) {
           for (const it of Array.isArray(liste) ? liste : []) {
             if (!it || it.identifiantCourrier == null) continue;
-            if (!dansPeriode(it.date)) {
+            // Meme annee que le prefixe du fichier (4 premiers caracteres de it.date) : sur le
+            // vrai site, dansPeriode(it.date) n'y voyait aucune annee et gardait 2020-2023.
+            if (!dansPeriode(String(it.date || '').slice(0, 4))) {
               horsPeriode++;
               continue;
             }
