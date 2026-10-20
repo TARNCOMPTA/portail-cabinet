@@ -1447,6 +1447,34 @@
               </div>
             </section>
 
+            <section class="panel" id="panel-myunisoft" hidden>
+              <h2>Connexion API MyUnisoft <span class="compteur">admin</span></h2>
+              <p class="aide">
+                Renseigne l'accès à l'API MyUnisoft. Le jeton (Bearer) est chiffré dans la base du portail et n'est jamais réaffiché. Utilise de préférence un
+                utilisateur dédié aux accès API, avec des droits limités.
+              </p>
+              <div class="form-grid">
+                <label style="grid-column: 1 / -1"
+                  >URL de l'API
+                  <input id="mu-base" type="url" placeholder="https://api.myunisoft.fr/api/v1" autocomplete="off" />
+                </label>
+                <label style="grid-column: 1 / -1"
+                  >Jeton d'accès (Bearer)
+                  <input id="mu-token" type="password" autocomplete="new-password" spellcheck="false" />
+                </label>
+                <label style="grid-column: 1 / -1"
+                  >Secret tiers (clé fournie par MyUnisoft — en-tête X-Third-Party-Secret)
+                  <input id="mu-tiers" type="password" autocomplete="new-password" spellcheck="false" />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="mu-enregistrer">Enregistrer</button>
+                <button type="button" class="btn" id="mu-tester">Tester la connexion</button>
+                <button type="button" class="btn danger" id="mu-effacer">Effacer les secrets</button>
+                <span class="aide" id="mu-etat" style="margin: 0"></span>
+              </div>
+            </section>
+
             <section class="panel" id="panel-maj" hidden>
               <h2>Mise à jour de l'application <span class="compteur">admin</span></h2>
               <p class="aide">

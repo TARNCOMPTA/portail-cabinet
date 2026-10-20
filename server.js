@@ -46,6 +46,7 @@ import {
   stats as statsImpots,
 } from './src/db.js';
 import { verifierCle } from './src/crypto.js';
+import { etatMyunisoft, enregistrerMyunisoft, testerMyunisoft } from './src/myunisoft.js';
 import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine, supprimerLot } from './src/quarantaine.js';
 import { analyserEntree, indexerPortefeuille } from './src/quarantaine-tri.js';
 import { scrapeClient, listerClients, scrapeAll, recupererHabilitations, dossierHabilitations } from './src/scraper-impots.js';
@@ -1023,6 +1024,17 @@ app.post('/api/integration', requireAdmin, (req, res) => {
 app.post('/api/integration/test', requireAdmin, async (req, res) => {
   res.json(await envoyerWebhook('test', { message: 'Webhook du portail opérationnel.' }));
 });
+
+// ---- Connexion API MyUnisoft (jeton chiffre, jamais renvoye) ----------------
+app.get('/api/myunisoft', requireAdmin, (req, res) => res.json(etatMyunisoft()));
+app.post('/api/myunisoft', requireAdmin, (req, res) => {
+  try {
+    res.json({ ok: true, ...enregistrerMyunisoft(req.body || {}) });
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
+});
+app.post('/api/myunisoft/test', requireAdmin, async (req, res) => res.json(await testerMyunisoft()));
 
 // ---- Reglages -------------------------------------------------------------
 // Nom du cabinet (marque blanche) — lecture publique via /api/branding (avant auth).
