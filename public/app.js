@@ -1614,6 +1614,8 @@ async function chargerMoi() {
     chargerMyunisoft();
     $('#panel-carcdsf-tiers').hidden = false;
     chargerCarcdsfTiers();
+    $('#panel-boite-codes').hidden = false;
+    chargerBoiteCodes();
   }
 }
 
@@ -1764,6 +1766,54 @@ $('#ct-effacer')?.addEventListener('click', async () => {
     await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify({ effacer: true }) });
     toast('Compte tiers CARCDSF effacé.', 'ok');
     chargerCarcdsfTiers();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+
+// ---- Boîte des codes 2FA (Microsoft 365) -------------------------------------
+async function chargerBoiteCodes() {
+  try {
+    const r = await api('/api/boite-codes');
+    $('#bc-boite').value = r.boite || '';
+    $('#bc-tenant').value = r.tenant || '';
+    $('#bc-client').value = r.client_id || '';
+    $('#bc-secret').placeholder = r.secret_defini ? 'Défini — laisser vide pour ne pas changer' : '';
+    $('#bc-etat').textContent = r.configuree
+      ? 'Configurée — les codes CARCDSF sont lus automatiquement.'
+      : 'Non configurée — les codes se saisissent dans le bandeau.';
+  } catch {
+    /* ignore */
+  }
+}
+$('#bc-enregistrer')?.addEventListener('click', async () => {
+  try {
+    const corps = { boite: $('#bc-boite').value.trim(), tenant: $('#bc-tenant').value.trim(), client_id: $('#bc-client').value.trim() };
+    const secret = $('#bc-secret').value.trim();
+    if (secret) corps.client_secret = secret;
+    await api('/api/boite-codes', { method: 'POST', body: JSON.stringify(corps) });
+    $('#bc-secret').value = '';
+    toast('Boîte des codes enregistrée.', 'ok');
+    chargerBoiteCodes();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+$('#bc-tester')?.addEventListener('click', async () => {
+  $('#bc-etat').textContent = 'Test en cours…';
+  try {
+    const r = await api('/api/boite-codes/test', { method: 'POST' });
+    $('#bc-etat').textContent = `${r.ok ? '✔' : '✘'} ${r.message}`;
+  } catch (err) {
+    $('#bc-etat').textContent = err.message;
+  }
+});
+$('#bc-effacer')?.addEventListener('click', async () => {
+  if (!confirm('Effacer la configuration de la boîte des codes ? Les codes devront être saisis dans le bandeau.')) return;
+  try {
+    await api('/api/boite-codes', { method: 'POST', body: JSON.stringify({ effacer: true }) });
+    toast('Boîte des codes effacée.', 'ok');
+    chargerBoiteCodes();
   } catch (err) {
     toast(err.message, 'err');
   }

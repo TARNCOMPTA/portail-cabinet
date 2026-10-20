@@ -6,12 +6,14 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 
-const CODE = 'AB12CD';
+const CODE = '481991';
+let codeEnvoye = false; // le faux Graph ne livre le mail qu'apres la demande de code
 const ID2FA = 'ID-2FA-42';
 const appels = [];
 let srv;
 let tiers;
 let relais;
+let boite;
 
 function demarrerSiteFactice() {
   return createServer(async (req, res) => {
@@ -32,7 +34,28 @@ function demarrerSiteFactice() {
         { authorization: 'Bearer T1' },
       );
     }
-    if (p === `/InternetWebServicesNonConnectes/0/internaute/code2FA/V1/${ID2FA}/mail`) return json({ codeRetour: 0, codeInterne: 0 });
+    if (p === `/InternetWebServicesNonConnectes/0/internaute/code2FA/V1/${ID2FA}/mail`) {
+      codeEnvoye = true;
+      return json({ codeRetour: 0, codeInterne: 0 });
+    }
+    // Faux Microsoft Graph : jeton applicatif + boite des codes.
+    if (p === '/00000000-1111-2222-3333-444444444444/oauth2/v2.0/token') return json({ access_token: 'G1', expires_in: 3600 });
+    if (p === '/graph/users/caisses%40tarncompta.fr/messages') {
+      if (req.headers.authorization !== 'Bearer G1') return json({ error: { message: 'jeton' } });
+      return json({
+        value: codeEnvoye
+          ? [
+              {
+                subject: 'Votre code de sécurité CARCDSF',
+                from: { emailAddress: { address: 'noreply@carcdsf.fr' } },
+                body: {
+                  content: `Bonjour,\r\n\r\nVeuillez trouver ci-après le code d'authentification à usage unique pour vous connecter sur le portail de la CARCDSF.\r\n\r\n${CODE}\r\n\r\nAttention, ce code est valable seulement 30 minutes.`,
+                },
+              },
+            ]
+          : [],
+      });
+    }
     if (p.startsWith(`/InternetWebServicesNonConnectes/0/internaute/verifiercode2FA/V1/${ID2FA}/`)) return json({ vrai: p.endsWith(`/${CODE}/email`) });
     if (req.headers.authorization !== 'Bearer T1') {
       res.writeHead(401);
@@ -56,12 +79,17 @@ before(async () => {
   await new Promise((ok) => srv.listen(0, '127.0.0.1', ok));
   process.env.CARCDSF_BASE_URL = `http://127.0.0.1:${srv.address().port}`;
   process.env.CARCDSF_ATTENTE_CODE_MS = '5000';
+  process.env.GRAPH_LOGIN_URL = process.env.CARCDSF_BASE_URL;
+  process.env.GRAPH_API_URL = `${process.env.CARCDSF_BASE_URL}/graph`;
   tiers = await import('../src/carcdsf-tiers.js');
   relais = await import('../src/captcha-relais.js');
+  boite = await import('../src/boite-codes.js');
   tiers.enregistrerTiers({ effacer: true });
+  boite.enregistrerBoite({ effacer: true });
 });
 after(() => {
   tiers?.enregistrerTiers({ effacer: true });
+  boite?.enregistrerBoite({ effacer: true });
   srv?.close();
 });
 
@@ -152,4 +180,48 @@ test('client tiers isolé : sélection de l’adhérent puis scraper appelé ave
   assert.deepEqual({ base: recu.opts.session.base, dossier: recu.opts.session.dossier }, { base: 0, dossier: 1234500 });
   assert.equal(recu.opts.session.H.authorization, 'Bearer T1');
   assert.ok(appels.includes('GET /InternetWebServices/0/internaute/adhGere/V1/0'), 'retour au compte délégataire en fin de session');
+});
+
+test('boîte des codes configurée : code lu automatiquement, sans saisie dans le bandeau', async () => {
+  tiers.enregistrerTiers({ oublier_appareil: true });
+  boite.enregistrerBoite({ tenant: '00000000-1111-2222-3333-444444444444', client_id: '00000000-1111-2222-3333-555555555555', client_secret: 'sec' });
+  codeEnvoye = false;
+  const journal = [];
+  const s = await tiers.ouvrirSessionTiers({ log: (m) => journal.push(m) });
+  assert.equal(s.ref, 4242);
+  assert.ok(
+    journal.some((m) => /lu automatiquement/.test(m)),
+    journal.join(' | '),
+  );
+  assert.equal(relais.etat().actif, false, 'bandeau refermé');
+  assert.equal(tiers.etatTiers().appareil_memorise, true);
+  assert.deepEqual((await boite.testerBoite()).ok, true);
+});
+
+test('extraction du code : format réel du mail CARCDSF, expéditeur et objet contrôlés', () => {
+  const mail = (de, objet, corps) => ({ from: { emailAddress: { address: de } }, subject: objet, body: { content: corps } });
+  const corps =
+    "Bonjour,\r\n\r\nVeuillez trouver ci-après le code d'authentification.\r\n\r\n009991\r\n\r\nAttention, ce code est valable seulement 30 minutes.";
+  assert.equal(boite.extraireCodeCarcdsf(mail('noreply@carcdsf.fr', 'Votre code de sécurité CARCDSF', corps)), '009991');
+  assert.equal(boite.extraireCodeCarcdsf(mail('pirate@exemple.fr', 'Votre code de sécurité CARCDSF', corps)), null, 'autre expéditeur ignoré');
+  assert.equal(boite.extraireCodeCarcdsf(mail('noreply@carcdsf.fr', 'Notification de connexion au portail Adhérent CARCDSF', corps)), null);
+});
+
+test('rapprochement des noms : une lettre d’écart tolérée (VEYSSIERE / VEYSSIERES), pas davantage', () => {
+  const clients = [
+    { id: 1, nom: 'VEYSSIERES CHRISTOPHE', login: 'drv' },
+    { id: 2, nom: 'MARTEL PAUL', login: 'mp' },
+  ];
+  const db = {
+    getClientByLogin: () => null,
+    listClients: () => clients,
+    remplacerIdentifiants: (id, login) =>
+      Object.assign(
+        clients.find((c) => c.id === id),
+        { login },
+      ),
+    createClient: (c) => ({ id: 99, ...c }),
+  };
+  assert.equal(tiers.clientPourAdherent(db, { matriculeNature: 8367200, matricule: 83672, nom: 'VEYSSIERE', prenom: 'Christophe' }, 0), 1);
+  assert.equal(tiers.clientPourAdherent(db, { matriculeNature: 100, matricule: 1, nom: 'MARTIN', prenom: 'Paul' }, 0), 99, 'MARTIN ≠ MARTEL');
 });

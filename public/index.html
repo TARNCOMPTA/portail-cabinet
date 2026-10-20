@@ -1508,6 +1508,39 @@
               </div>
             </section>
 
+            <section class="panel" id="panel-boite-codes" hidden>
+              <h2>Boîte des codes (Microsoft 365) <span class="compteur">admin</span></h2>
+              <p class="aide">
+                Boîte qui reçoit les codes de double authentification (ex. caisses@tarncompta.fr). Le portail la lit en lecture seule via une application
+                Microsoft Entra (permission Mail.Read limitée à cette boîte) et saisit le code CARCDSF tout seul — y compris pour les récupérations de nuit. Le
+                bandeau de saisie reste disponible en secours. Le secret est chiffré et jamais réaffiché.
+              </p>
+              <div class="form-grid">
+                <label
+                  >Adresse de la boîte
+                  <input id="bc-boite" type="email" placeholder="caisses@tarncompta.fr" autocomplete="off" />
+                </label>
+                <label
+                  >ID de l'annuaire (locataire)
+                  <input id="bc-tenant" type="text" placeholder="0000aaaa-11bb-22cc-33dd-444444eeeeee" autocomplete="off" spellcheck="false" />
+                </label>
+                <label
+                  >ID d'application (client)
+                  <input id="bc-client" type="text" placeholder="0000aaaa-11bb-22cc-33dd-444444eeeeee" autocomplete="off" spellcheck="false" />
+                </label>
+                <label
+                  >Secret client (valeur)
+                  <input id="bc-secret" type="password" autocomplete="new-password" spellcheck="false" />
+                </label>
+              </div>
+              <div class="form-actions">
+                <button type="button" class="btn primary" id="bc-enregistrer">Enregistrer</button>
+                <button type="button" class="btn" id="bc-tester">Tester l'accès</button>
+                <button type="button" class="btn danger" id="bc-effacer">Effacer</button>
+                <span class="aide" id="bc-etat" style="margin: 0"></span>
+              </div>
+            </section>
+
             <section class="panel" id="panel-maj" hidden>
               <h2>Mise à jour de l'application <span class="compteur">admin</span></h2>
               <p class="aide">

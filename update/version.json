@@ -1,6 +1,6 @@
 {
-  "version": "1.13.13",
-  "notes": "Bandeau-du-code-CARCDSF-visible-pendant-le-test-de-connexion",
+  "version": "1.13.14",
+  "notes": "Code-CARCDSF-lu-automatiquement-dans-la-boite-Microsoft-365",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "413f9e6c77fe7a9ef3dbc58952c2bda07ee8f75bf72752c2a88ca41af04a1883"
+  "sha256": "b412bdd2038814bea2c3fa92004511c3269eaa4c8cf52eebf00da4c43e87999d"
 }
