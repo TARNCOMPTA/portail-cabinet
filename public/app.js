@@ -1604,6 +1604,8 @@ async function chargerMoi() {
     $('#panel-branding').hidden = false;
     $('#panel-n8n').hidden = false;
     chargerIntegration();
+    $('#panel-myunisoft').hidden = false;
+    chargerMyunisoft();
   }
 }
 
@@ -1638,6 +1640,56 @@ $('#n8n-tester')?.addEventListener('click', async () => {
     $('#n8n-etat').textContent = r.ok ? `✔ Reçu par le webhook (HTTP ${r.statut}).` : `✘ ${r.error || 'HTTP ' + r.statut}`;
   } catch (err) {
     $('#n8n-etat').textContent = err.message;
+  }
+});
+
+// ---- Connexion API MyUnisoft -------------------------------------------------
+async function chargerMyunisoft() {
+  try {
+    const r = await api('/api/myunisoft');
+    $('#mu-base').value = r.base_url || '';
+    $('#mu-token').placeholder = r.token_defini ? 'Défini — laisser vide pour ne pas changer' : 'Colle ici le jeton Bearer';
+    $('#mu-tiers').placeholder = r.secret_tiers_defini ? 'Défini — laisser vide pour ne pas changer' : '';
+    $('#mu-etat').textContent = r.token_defini ? 'Jeton enregistré.' : 'Aucun jeton enregistré.';
+  } catch {
+    /* ignore */
+  }
+}
+$('#mu-enregistrer')?.addEventListener('click', async () => {
+  try {
+    const corps = { base_url: $('#mu-base').value.trim() };
+    const token = $('#mu-token').value.trim();
+    const tiers = $('#mu-tiers').value.trim();
+    if (token) corps.token = token;
+    if (tiers) corps.secret_tiers = tiers;
+    await api('/api/myunisoft', { method: 'POST', body: JSON.stringify(corps) });
+    $('#mu-token').value = '';
+    $('#mu-tiers').value = '';
+    toast('Connexion MyUnisoft enregistrée.', 'ok');
+    chargerMyunisoft();
+  } catch (err) {
+    toast(err.message, 'err');
+  }
+});
+$('#mu-tester')?.addEventListener('click', async () => {
+  $('#mu-etat').textContent = 'Test en cours…';
+  try {
+    const r = await api('/api/myunisoft/test', { method: 'POST' });
+    $('#mu-etat').textContent = r.ok
+      ? `✔ Connecté (HTTP ${r.statut})${r.societes != null ? ` — ${r.societes} société(s) accessible(s)` : ''}.`
+      : `✘ ${r.error || 'HTTP ' + r.statut}`;
+  } catch (err) {
+    $('#mu-etat').textContent = err.message;
+  }
+});
+$('#mu-effacer')?.addEventListener('click', async () => {
+  if (!confirm('Effacer le jeton et le secret tiers MyUnisoft enregistrés ?')) return;
+  try {
+    await api('/api/myunisoft', { method: 'POST', body: JSON.stringify({ effacer: true }) });
+    toast('Secrets MyUnisoft effacés.', 'ok');
+    chargerMyunisoft();
+  } catch (err) {
+    toast(err.message, 'err');
   }
 });
 
