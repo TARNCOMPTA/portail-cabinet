@@ -13,6 +13,7 @@ export const {
   updateClient,
   deleteClient,
   getClientByLogin,
+  remplacerIdentifiants,
   importClients,
   addDocument,
   listDocuments,
