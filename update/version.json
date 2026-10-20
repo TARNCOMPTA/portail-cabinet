@@ -1,6 +1,6 @@
 {
-  "version": "1.13.12",
-  "notes": "CARCDSF-compte-tiers-delegataire-portefeuille-et-double-authentification",
+  "version": "1.13.13",
+  "notes": "Bandeau-du-code-CARCDSF-visible-pendant-le-test-de-connexion",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "417a68cb07ef627eed4e730c10b531696fe87bc7b1cbaf0f771e7019112a1e79"
+  "sha256": "413f9e6c77fe7a9ef3dbc58952c2bda07ee8f75bf72752c2a88ca41af04a1883"
 }
