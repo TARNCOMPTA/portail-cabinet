@@ -1,6 +1,6 @@
 {
-  "version": "1.13.8",
-  "notes": "Configuration-connexion-API-MyUnisoft-jeton-Bearer-et-secret-tiers-chiffres",
+  "version": "1.13.9",
+  "notes": "Recuperation-limitee-aux-3-dernieres-annees-et-correctif-verrou-Xvfb-au-demarrage",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "f3ef927cf67ab1dec86af2dc60be0079ef015c249f94542866b6e0ba615084c0"
+  "sha256": "1c0b36ef188d0d0aebabc50ec30fbf095990fcff2ce85fb2b246b6b55917ae5a"
 }
