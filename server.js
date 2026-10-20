@@ -1265,7 +1265,9 @@ app.get('/api/stats', (req, res) => {
 
 // ---- Historique -----------------------------------------------------------
 app.get('/api/runs', (req, res) => res.json(listRuns(500)));
-app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets: cabinetsConfigure() }));
+// `saisie` : un code est attendu dans le bandeau (captcha impots, code CARCDSF) — l'interface
+// doit alors sonder /api/captcha meme si aucune recuperation n'est listee (test de connexion).
+app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets: cabinetsConfigure(), saisie: captchaRelais.etat().actif }));
 // Avancement. `?source=carmf` renvoie le suivi de cette seule source. Sans parametre :
 // vue AGREGEE de la fenetre en cours (champs historiques conserves — src/mcp-http.js et
 // l'interface les lisent) ENRICHIE de `sources` (detail par organisme) et `actives`.

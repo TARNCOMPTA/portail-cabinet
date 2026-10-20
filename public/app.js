@@ -548,7 +548,7 @@ async function suivreEtat() {
     const liste = Array.isArray(s.enCours) ? s.enCours : [];
     const change = liste.join(',') !== sourcesEnCours.join(',');
     sourcesEnCours = liste;
-    quelqueChoseTourne = liste.length > 0;
+    quelqueChoseTourne = liste.length > 0 || !!s.saisie;
     majEtatGlobal(liste.includes('all'));
     // Sur changement uniquement : les abonnes se remettent a jour aussitot, sans
     // attendre leur propre cycle — donc plus reactif qu'avant, et sans requete.
