@@ -1,6 +1,6 @@
 {
-  "version": "1.13.10",
-  "notes": "Connecteur-historique-des-recuperations-et-CARPV-CARCDSF-hors-fenetre-sans-echec",
+  "version": "1.13.11",
+  "notes": "Diagnostic-connexion-CARCDSF-CARPV-detection-double-authentification",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "441f2011fdb840917268e38e86d4649369d6df7ee02b588c341bf176ed793b79"
+  "sha256": "45e20d0421e0438425ce00eab05c0b1e6baae3ada49c667d816d822e1cbded77"
 }
