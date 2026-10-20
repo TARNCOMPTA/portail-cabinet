@@ -30,6 +30,9 @@ if ! node -e "const p=require('./package.json');const fs=require('fs');for(const
 fi
 
 # 1) Ecran virtuel (le navigateur visible du robot s'y affiche)
+# Verrou residuel d'un Xvfb tue par le redemarrage du conteneur (/tmp survit au restart) :
+# sans ce nettoyage Xvfb refuse de demarrer -> x11vnc echoue -> crash-loop.
+rm -f /tmp/.X99-lock /tmp/.X11-unix/X99
 Xvfb :99 -screen 0 1600x1000x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
 # Attendre que l'ecran soit pret
 for i in $(seq 1 20); do
