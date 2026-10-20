@@ -1,6 +1,6 @@
 {
-  "version": "1.13.7",
-  "notes": "Quarantaine-lecture-des-annotations-PDF-formulaires-remplis",
+  "version": "1.13.8",
+  "notes": "Configuration-connexion-API-MyUnisoft-jeton-Bearer-et-secret-tiers-chiffres",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "34054aba5f852fe4779e90fb743963d39a7c94ff84ca2ff7e364475d04a64a7e"
+  "sha256": "f3ef927cf67ab1dec86af2dc60be0079ef015c249f94542866b6e0ba615084c0"
 }
