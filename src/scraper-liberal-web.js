@@ -87,7 +87,16 @@ export function creerScraperLiberalWeb(cfg) {
         throw e;
       }
       const sig = jc.signaletiqueAccueil || {};
-      if (!sig.matricule) throw new Error('Numéro de dossier introuvable dans la réponse de connexion.');
+      if (!sig.matricule) {
+        // Mot de passe accepte mais pas de dossier : le plus souvent une double
+        // authentification (code envoye par mail/SMS) exigee par la caisse. Diagnostic
+        // sans donnees personnelles : seules les CLES de la reponse sont journalisees.
+        const cles = (o) => (o && typeof o === 'object' ? Object.keys(o).join(',') : String(o));
+        const diag = `codeInterne=${jc.codeInterne ?? '?'} ; réponse=[${cles(jc)}] ; signalétique=[${cles(jc.signaletiqueAccueil)}] ; 2FA=[${cles(jc.infos2FA)}]`;
+        if (jc.infos2FA)
+          throw new Error(`Double authentification demandée par ${nom} (code par e-mail/SMS) — récupération automatique impossible en l'état. (${diag})`);
+        throw new Error(`Numéro de dossier introuvable dans la réponse de connexion. (${diag})`);
+      }
       const dossier = Number(sig.matricule) * 100 + Number(sig.nature || 0);
       log('Connecté. Récupération des documents.');
       const H = { picristoken, authorization, 'content-type': 'application/json' };
