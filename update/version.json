@@ -1,6 +1,6 @@
 {
-  "version": "1.13.9",
-  "notes": "Recuperation-limitee-aux-3-dernieres-annees-et-correctif-verrou-Xvfb-au-demarrage",
+  "version": "1.13.10",
+  "notes": "Connecteur-historique-des-recuperations-et-CARPV-CARCDSF-hors-fenetre-sans-echec",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "1c0b36ef188d0d0aebabc50ec30fbf095990fcff2ce85fb2b246b6b55917ae5a"
+  "sha256": "441f2011fdb840917268e38e86d4649369d6df7ee02b588c341bf176ed793b79"
 }
