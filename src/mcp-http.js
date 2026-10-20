@@ -27,6 +27,7 @@ const SOURCES = {
     add: '/api/clients',
     scrape: (id) => `/api/clients/${id}/scrape`,
     docs: (id) => `/api/clients/${id}/documents`,
+    runs: '/api/runs',
     cle: 'siret',
   },
   urssaf: {
@@ -34,6 +35,7 @@ const SOURCES = {
     add: '/api/urssaf/clients',
     scrape: (id) => `/api/urssaf/clients/${id}/scrape`,
     docs: (id) => `/api/urssaf/clients/${id}/documents`,
+    runs: '/api/urssaf/runs',
     cle: 'siret',
   },
   carpimko: {
@@ -41,6 +43,7 @@ const SOURCES = {
     add: '/api/carpimko/clients',
     scrape: (id) => `/api/carpimko/clients/${id}/scrape`,
     docs: (id) => `/api/carpimko/clients/${id}/documents`,
+    runs: '/api/carpimko/runs',
     cle: 'login',
   },
   carmf: {
@@ -48,6 +51,7 @@ const SOURCES = {
     add: '/api/carmf/clients',
     scrape: (id) => `/api/carmf/clients/${id}/scrape`,
     docs: (id) => `/api/carmf/clients/${id}/documents`,
+    runs: '/api/carmf/runs',
     cle: 'login',
   },
   carcdsf: {
@@ -55,6 +59,7 @@ const SOURCES = {
     add: '/api/carcdsf/clients',
     scrape: (id) => `/api/carcdsf/clients/${id}/scrape`,
     docs: (id) => `/api/carcdsf/clients/${id}/documents`,
+    runs: '/api/carcdsf/runs',
     cle: 'login',
   },
   carpv: {
@@ -62,6 +67,7 @@ const SOURCES = {
     add: '/api/carpv/clients',
     scrape: (id) => `/api/carpv/clients/${id}/scrape`,
     docs: (id) => `/api/carpv/clients/${id}/documents`,
+    runs: '/api/carpv/runs',
     cle: 'login',
   },
 };
@@ -76,7 +82,7 @@ function buildServer() {
 
   server.tool(
     'lister_clients',
-    "Liste ou recherche les clients d'un organisme du Portail Cabinet (impots, urssaf, carpimko, carmf).",
+    "Liste ou recherche les clients d'un organisme du Portail Cabinet (impots, urssaf, carpimko, carmf, carcdsf, carpv), avec le statut et le message de leur dernière récupération.",
     { source: SRC, recherche: z.string().optional().describe('Filtre par nom / identifiant / notes') },
     async ({ source, recherche }) => {
       try {
@@ -86,7 +92,18 @@ function buildServer() {
           const q = recherche.toLowerCase();
           cs = cs.filter((c) => `${c.nom} ${c[cfg.cle] || ''} ${c.notes || ''}`.toLowerCase().includes(q));
         }
-        return txt(cs.map((c) => ({ id: c.id, nom: c.nom, [cfg.cle]: c[cfg.cle], documents: c.nb_docs ?? 0, verrouille: c.verrouille || false })));
+        return txt(
+          cs.map((c) => ({
+            id: c.id,
+            nom: c.nom,
+            [cfg.cle]: c[cfg.cle],
+            documents: c.nb_docs ?? 0,
+            verrouille: c.verrouille || false,
+            dernier_run: c.dernier_run || null,
+            dernier_statut: c.dernier_statut || null,
+            dernier_message: c.dernier_message || null,
+          })),
+        );
       } catch (e) {
         return erreur(e);
       }
@@ -200,6 +217,34 @@ function buildServer() {
           });
         }
         return { content };
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'historique_recuperations',
+    "Historique des récupérations d'un organisme (date, client, statut succes/echec/echec_mdp, message d'erreur, nb de documents), du plus récent au plus ancien. Filtrable par client_id. Sert à diagnostiquer un échec.",
+    {
+      source: SRC,
+      client_id: z.number().optional().describe('Limiter à un client'),
+      limite: z.number().int().min(1).max(200).optional().describe('Nombre de lignes (défaut 20)'),
+    },
+    async ({ source, client_id, limite }) => {
+      try {
+        let runs = await apiFetch(SOURCES[source].runs);
+        if (client_id != null) runs = runs.filter((r) => r.client_id === client_id);
+        return txt(
+          runs.slice(0, limite ?? 20).map((r) => ({
+            date: r.lance_le,
+            client_id: r.client_id,
+            client: r.client_nom || null,
+            statut: r.statut,
+            message: r.message || null,
+            nb_docs: r.nb_docs ?? 0,
+          })),
+        );
       } catch (e) {
         return erreur(e);
       }
