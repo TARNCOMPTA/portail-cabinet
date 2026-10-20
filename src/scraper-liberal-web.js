@@ -47,6 +47,7 @@ export function creerScraperLiberalWeb(cfg) {
 
     const docs = [];
     let dejaPresents = 0;
+    let horsPeriode = 0; // documents anterieurs a la fenetre des 3 ans : ignores, pas un echec
     const quarantaines = [];
     let nonVerifiables = 0;
     try {
@@ -146,7 +147,10 @@ export function creerScraperLiberalWeb(cfg) {
         for (const it of items) {
           if (!it || it.noCourrier == null) continue;
           const annee = (String(it.libelle || '').match(/\b(20\d{2})\b/) || [])[1] || null;
-          if (!dansPeriode(annee)) continue;
+          if (!dansPeriode(annee)) {
+            horsPeriode++;
+            continue;
+          }
           try {
             const c = await recupCourrier(`${API}/dossier/courrier/generer/V1/${dossier}/1/${it.noCourrier}`);
             if (c) await enregistrer(it.libelle || `Attestation ${it.noCourrier}`, c.nom, c.courrier, annee);
@@ -172,7 +176,10 @@ export function creerScraperLiberalWeb(cfg) {
         for (const [categorie, liste] of Object.entries(groupes)) {
           for (const it of Array.isArray(liste) ? liste : []) {
             if (!it || it.identifiantCourrier == null) continue;
-            if (!dansPeriode(it.date)) continue;
+            if (!dansPeriode(it.date)) {
+              horsPeriode++;
+              continue;
+            }
             nb++;
             try {
               const c = await recupCourrier(`${API}/dossier/courrier/telecharge/V1/${dossier}/1/${it.identifiantCourrier}`);
@@ -195,7 +202,7 @@ export function creerScraperLiberalWeb(cfg) {
       if (nonVerifiables > 0) message += ` (${nonVerifiables} non vérifiable(s) : PDF sans texte)`;
       if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
       addRunSafe(client.id, {
-        statut: quarantaines.length > 0 ? 'echec' : docs.length + dejaPresents > 0 ? 'succes' : 'echec',
+        statut: quarantaines.length > 0 ? 'echec' : docs.length + dejaPresents + horsPeriode > 0 ? 'succes' : 'echec',
         message,
         nb_docs: docs.length,
       });
