@@ -33,60 +33,99 @@ const DESCRIPTION = JSON.stringify({
   defaultTargetPlatform: 'linux',
   web: { browserName: 'portail-cabinet' },
 });
-export const PREFIXE_LOGIN = 'tiers:'; // login des clients geres par le compte tiers : tiers:<matriculeNature>
 const ATTENTE_CODE_MS = Number(process.env.CARCDSF_ATTENTE_CODE_MS || 10 * 60 * 1000);
 
-// ---- Configuration (reglages chiffres) -------------------------------------
-function lireSecret(cle) {
-  const v = getSetting(cle, '') || '';
+// ---- Configuration (reglages chiffres), un compte tiers PAR ESPACE -----------
+// La CARCDSF a deux espaces (base 0 = chirurgiens-dentistes, base 1 = sages-femmes) avec
+// chacun son compte tiers, son portefeuille et son appareil memorise.
+export const ESPACES = { 0: 'chirurgiens-dentistes', 1: 'sages-femmes' };
+const normBase = (b) => (Number(b) === 1 ? 1 : 0);
+const cle = (base, nom) => `carcdsf_tiers_${base}_${nom}`;
+
+function lireSecret(k) {
+  const v = getSetting(k, '') || '';
   return v ? decrypt(v) : '';
 }
 
-export function configTiers() {
-  return {
-    login: getSetting('carcdsf_tiers_login', '') || '',
-    password: lireSecret('carcdsf_tiers_password_enc'),
-    base: Number(getSetting('carcdsf_tiers_base', '0')) === 1 ? 1 : 0,
-    jeton: lireSecret('carcdsf_tiers_jeton_enc'),
-  };
+// Reprise de la configuration a compte unique (1.13.12 a 1.13.14) dans l'espace choisi alors.
+function migrerAncienneConfig() {
+  const login = getSetting('carcdsf_tiers_login', '') || '';
+  if (!login) return;
+  const b = normBase(getSetting('carcdsf_tiers_base', '0'));
+  if (!getSetting(cle(b, 'login'), '')) {
+    setSetting(cle(b, 'login'), login);
+    setSetting(cle(b, 'password_enc'), getSetting('carcdsf_tiers_password_enc', '') || '');
+    setSetting(cle(b, 'jeton_enc'), getSetting('carcdsf_tiers_jeton_enc', '') || '');
+  }
+  for (const k of ['carcdsf_tiers_login', 'carcdsf_tiers_password_enc', 'carcdsf_tiers_jeton_enc', 'carcdsf_tiers_base']) setSetting(k, '');
+}
+
+export function configTiers(base = 0) {
+  migrerAncienneConfig();
+  const b = normBase(base);
+  return { base: b, login: getSetting(cle(b, 'login'), '') || '', password: lireSecret(cle(b, 'password_enc')), jeton: lireSecret(cle(b, 'jeton_enc')) };
+}
+
+/** Espaces dont le compte tiers est renseigne (identifiant + mot de passe). */
+export function espacesConfigures() {
+  return [0, 1].filter((b) => {
+    const c = configTiers(b);
+    return !!(c.login && c.password);
+  });
 }
 
 export function tiersConfigure() {
-  const c = configTiers();
-  return !!(c.login && c.password);
+  return espacesConfigures().length > 0;
 }
 
-let dernierTest = null; // { ok, message, adherents, le }
+const derniersTests = {}; // base -> { ok, message, adherents, le } | { en_cours }
 
 export function etatTiers() {
-  const c = configTiers();
   return {
-    login: c.login,
-    base: c.base,
-    mot_de_passe_defini: !!c.password,
-    appareil_memorise: !!c.jeton,
-    configure: !!(c.login && c.password),
-    dernier_test: dernierTest,
+    configure: tiersConfigure(),
+    comptes: [0, 1].map((b) => {
+      const c = configTiers(b);
+      return {
+        base: b,
+        espace: ESPACES[b],
+        login: c.login,
+        mot_de_passe_defini: !!c.password,
+        appareil_memorise: !!c.jeton,
+        configure: !!(c.login && c.password),
+        dernier_test: derniersTests[b] || null,
+      };
+    }),
   };
 }
 
-/** Enregistre le compte. Mot de passe vide = inchange ; `oublier_appareil` force un nouveau code ; `effacer` supprime tout. */
-export function enregistrerTiers({ login, password, base, oublier_appareil, effacer } = {}) {
+/** Enregistre le compte d'un espace. Mot de passe vide = inchange ; `oublier_appareil` force un nouveau code ; `effacer` supprime ce compte. */
+export function enregistrerTiers({ base = 0, login, password, oublier_appareil, effacer } = {}) {
+  migrerAncienneConfig();
+  const b = normBase(base);
   if (effacer === true) {
-    for (const k of ['carcdsf_tiers_login', 'carcdsf_tiers_password_enc', 'carcdsf_tiers_jeton_enc']) setSetting(k, '');
-    dernierTest = null;
+    for (const n of ['login', 'password_enc', 'jeton_enc']) setSetting(cle(b, n), '');
+    delete derniersTests[b];
     return etatTiers();
   }
   if (typeof login === 'string') {
     const l = login.trim();
     // Changer de compte invalide l'appareil memorise (jeton rattache a l'ancien pseudo).
-    if (l !== (getSetting('carcdsf_tiers_login', '') || '')) setSetting('carcdsf_tiers_jeton_enc', '');
-    setSetting('carcdsf_tiers_login', l);
+    if (l !== (getSetting(cle(b, 'login'), '') || '')) setSetting(cle(b, 'jeton_enc'), '');
+    setSetting(cle(b, 'login'), l);
   }
-  if (typeof password === 'string' && password) setSetting('carcdsf_tiers_password_enc', encrypt(password));
-  if (base != null) setSetting('carcdsf_tiers_base', Number(base) === 1 ? '1' : '0');
-  if (oublier_appareil === true) setSetting('carcdsf_tiers_jeton_enc', '');
+  if (typeof password === 'string' && password) setSetting(cle(b, 'password_enc'), encrypt(password));
+  if (oublier_appareil === true) setSetting(cle(b, 'jeton_enc'), '');
   return etatTiers();
+}
+
+// Login des clients geres par un compte tiers : « tiers:<dossier> » (dentistes, format
+// historique) ou « tiers:1:<dossier> » (sages-femmes).
+export const PREFIXE_LOGIN = 'tiers:';
+export const loginTiers = (base, mn) => `${PREFIXE_LOGIN}${normBase(base) === 1 ? '1:' : ''}${mn}`;
+export function lireLoginTiers(login) {
+  const reste = String(login || '').slice(PREFIXE_LOGIN.length);
+  const [a, b] = reste.split(':');
+  return b === undefined ? { base: 0, matriculeNature: Number(a) } : { base: normBase(a), matriculeNature: Number(b) };
 }
 
 // ---- Appels HTTP -----------------------------------------------------------
@@ -220,18 +259,18 @@ async function obtenirCode2FA(cfg, infos, log) {
  * Ouvre une session du compte tiers. Peut attendre le code de double authentification.
  * @returns {Promise<{base:number, API:string, H:object, ref:number}>}
  */
-export async function ouvrirSessionTiers({ log = () => {} } = {}) {
-  const cfg = configTiers();
-  if (!cfg.login || !cfg.password) throw new Error('Compte tiers CARCDSF non configuré (Paramètres ▸ Compte tiers CARCDSF).');
-  log(`Connexion du compte tiers CARCDSF (${cfg.base === 1 ? 'sages-femmes' : 'chirurgiens-dentistes'})`);
+export async function ouvrirSessionTiers({ base = 0, log = () => {} } = {}) {
+  const cfg = configTiers(base);
+  if (!cfg.login || !cfg.password) throw new Error(`Compte tiers CARCDSF ${ESPACES[cfg.base]} non configuré (Paramètres ▸ Compte tiers CARCDSF).`);
+  log(`Connexion du compte tiers CARCDSF (${ESPACES[cfg.base]})`);
   let { json, authorization } = await connexion(cfg, cfg.jeton);
   if (json.infos2FA) {
     if (cfg.jeton) log('Appareil mémorisé refusé par la caisse : nouveau code nécessaire.');
-    setSetting('carcdsf_tiers_jeton_enc', '');
+    setSetting(cle(cfg.base, 'jeton_enc'), '');
     const jeton = await obtenirCode2FA(cfg, json.infos2FA, log);
     ({ json, authorization } = await connexion(cfg, jeton));
     if (json.infos2FA) throw new Error(`Code accepté mais la caisse redemande la double authentification. (${diagnostic(json)})`);
-    setSetting('carcdsf_tiers_jeton_enc', encrypt(jeton));
+    setSetting(cle(cfg.base, 'jeton_enc'), encrypt(jeton));
     log('Appareil mémorisé : plus de code demandé aux prochaines connexions.');
   }
   if (json.codeRetour !== 0 || !authorization) {
@@ -243,7 +282,7 @@ export async function ouvrirSessionTiers({ log = () => {} } = {}) {
   const sig = json.signaletiqueAccueil || {};
   if (!sig.modeDelegataire || !sig.refDelegataire)
     throw new Error(`Ce compte n'est pas un compte « tiers délégataire » CARCDSF (signalétique=[${cles(sig)}]).`);
-  log('Compte tiers connecté.');
+  log(`Compte tiers ${ESPACES[cfg.base]} connecté.`);
   return {
     base: cfg.base,
     API: `${HOST}/InternetWebServices/${cfg.base}`,
@@ -309,12 +348,12 @@ const memeNom = (a, b) => a.length > 0 && a.length === b.length && a.every((m, i
  * historique de documents conserve).
  */
 export function clientPourAdherent(db, adh, base, log = () => {}) {
-  const login = `${PREFIXE_LOGIN}${adh.matriculeNature}`;
+  const login = loginTiers(base, adh.matriculeNature);
   const existant = db.getClientByLogin(login);
   if (existant) return existant.id;
   const nomComplet = [adh.nom, adh.prenom].filter(Boolean).join(' ');
-  const cle = jetons(nomComplet);
-  const homonyme = db.listClients().find((c) => !String(c.login).startsWith(PREFIXE_LOGIN) && memeNom(jetons(c.nom), cle));
+  const motsNom = jetons(nomComplet);
+  const homonyme = db.listClients().find((c) => !String(c.login).startsWith(PREFIXE_LOGIN) && memeNom(jetons(c.nom), motsNom));
   if (homonyme) {
     db.remplacerIdentifiants(homonyme.id, login, '');
     log(`[${homonyme.nom}] Compte individuel remplacé par le compte tiers (historique conservé).`);
@@ -328,11 +367,11 @@ export function clientPourAdherent(db, adh, base, log = () => {}) {
 // ---- Tournees ------------------------------------------------------------------
 let sessionOccupee = false; // une seule session tiers a la fois (la selection d'adherent est cote caisse)
 
-async function avecSession(log, fn) {
+async function avecSession(base, log, fn) {
   if (sessionOccupee) throw new Error('Une récupération CARCDSF (compte tiers) est déjà en cours — attends sa fin.');
   sessionOccupee = true;
   try {
-    const session = await ouvrirSessionTiers({ log });
+    const session = await ouvrirSessionTiers({ base, log });
     try {
       return await fn(session);
     } finally {
@@ -352,9 +391,9 @@ function recupererAdherent(scraper, creds, adh, session, opts) {
 /** Recuperation d'UN client gere par le compte tiers (bouton « Récupérer » d'un client). */
 export async function scrapeUnClientTiers(scraper, creds, opts = {}) {
   const log = (m) => opts.onLog?.(`[${creds.nom}] ${m}`);
-  const mn = Number(String(creds.login).slice(PREFIXE_LOGIN.length));
+  const { base, matriculeNature: mn } = lireLoginTiers(creds.login);
   try {
-    return await avecSession(log, async (session) => {
+    return await avecSession(base, log, async (session) => {
       await selectionnerAdherent(session, mn);
       return recupererAdherent(scraper, creds, { matriculeNature: mn, matricule: Math.floor(mn / 100) }, session, opts);
     });
@@ -364,16 +403,17 @@ export async function scrapeUnClientTiers(scraper, creds, opts = {}) {
   }
 }
 
-/** Test de connexion (Paramètres) : ouvre la session, compte le portefeuille. Tourne en tâche de fond. */
-export async function testerTiers({ log = () => {} } = {}) {
-  dernierTest = { en_cours: true, le: new Date().toISOString() };
+/** Test de connexion d'un espace (Paramètres) : ouvre la session, compte le portefeuille. Tourne en tâche de fond. */
+export async function testerTiers({ base = 0, log = () => {} } = {}) {
+  const b = normBase(base);
+  derniersTests[b] = { en_cours: true, le: new Date().toISOString() };
   try {
-    const n = await avecSession(log, async (session) => (await listerPortefeuille(session)).length);
-    dernierTest = { ok: true, adherents: n, message: `Connecté — ${n} adhérent(s) dans le portefeuille.`, le: new Date().toISOString() };
+    const n = await avecSession(b, log, async (session) => (await listerPortefeuille(session)).length);
+    derniersTests[b] = { ok: true, adherents: n, message: `Connecté — ${n} adhérent(s) dans le portefeuille.`, le: new Date().toISOString() };
   } catch (e) {
-    dernierTest = { ok: false, message: e.message, le: new Date().toISOString() };
+    derniersTests[b] = { ok: false, message: e.message, le: new Date().toISOString() };
   }
-  return dernierTest;
+  return derniersTests[b];
 }
 
 /**
@@ -389,49 +429,64 @@ export function creerTourneeTiers({ db, scraper, ctx }) {
     ctx.resetArret();
     demarrerSuivi(0);
     (async () => {
+      const geres = new Set();
+      let portefeuillesLus = 0;
       try {
-        await avecSession(progLog, async (session) => {
-          const portefeuille = await listerPortefeuille(session);
-          progLog(`Portefeuille tiers : ${portefeuille.length} adhérent(s).`);
-          progression.total = portefeuille.length;
-          const geres = new Set();
-          for (const adh of portefeuille) {
-            if (ctx.doitArreter()) {
-              progLog('Arrêt demandé.');
-              break;
-            }
-            let nom = `${adh.nom} ${adh.prenom}`.trim();
-            let cle = null;
-            try {
-              const id = clientPourAdherent(db, adh, session.base, progLog);
-              geres.add(id);
-              const creds = db.getClientCredentials(id);
-              nom = creds.nom;
-              progression.courant = nom;
-              cle = `carcdsf:${id}`;
-              enCours.add(cle);
-              await selectionnerAdherent(session, adh.matriculeNature);
-              const rr = await recupererAdherent(scraper, creds, adh, session, { ...extra, onLog: progLog });
-              progression.resultats.push({
-                nom,
-                ok: !!rr?.ok,
-                message: rr?.ok ? `${rr.docs?.length ?? 0} nouveau(x)${rr.dejaPresents ? ` + ${rr.dejaPresents} déjà présent(s)` : ''}` : rr?.error || 'erreur',
-                nb_docs: rr?.docs?.length ?? 0,
-              });
-            } catch (e) {
-              progLog(`[${nom}] ERREUR : ${e.message}`);
-              progression.resultats.push({ nom, ok: false, message: e.message, nb_docs: 0 });
-            } finally {
-              if (cle) enCours.delete(cle);
-              progression.fait++;
-            }
+        for (const base of espacesConfigures()) {
+          if (ctx.doitArreter()) break;
+          try {
+            await avecSession(base, progLog, async (session) => {
+              const portefeuille = await listerPortefeuille(session);
+              portefeuillesLus++;
+              progLog(`Portefeuille tiers ${ESPACES[base]} : ${portefeuille.length} adhérent(s).`);
+              progression.total += portefeuille.length;
+              for (const adh of portefeuille) {
+                if (ctx.doitArreter()) {
+                  progLog('Arrêt demandé.');
+                  break;
+                }
+                let nom = `${adh.nom} ${adh.prenom}`.trim();
+                let verrou = null;
+                try {
+                  const id = clientPourAdherent(db, adh, session.base, progLog);
+                  geres.add(id);
+                  const creds = db.getClientCredentials(id);
+                  nom = creds.nom;
+                  progression.courant = nom;
+                  verrou = `carcdsf:${id}`;
+                  enCours.add(verrou);
+                  await selectionnerAdherent(session, adh.matriculeNature);
+                  const rr = await recupererAdherent(scraper, creds, adh, session, { ...extra, onLog: progLog });
+                  progression.resultats.push({
+                    nom,
+                    ok: !!rr?.ok,
+                    message: rr?.ok
+                      ? `${rr.docs?.length ?? 0} nouveau(x)${rr.dejaPresents ? ` + ${rr.dejaPresents} déjà présent(s)` : ''}`
+                      : rr?.error || 'erreur',
+                    nb_docs: rr?.docs?.length ?? 0,
+                  });
+                } catch (e) {
+                  progLog(`[${nom}] ERREUR : ${e.message}`);
+                  progression.resultats.push({ nom, ok: false, message: e.message, nb_docs: 0 });
+                } finally {
+                  if (verrou) enCours.delete(verrou);
+                  progression.fait++;
+                }
+              }
+            });
+          } catch (e) {
+            // Un espace en echec (connexion, code non saisi) n'empeche pas l'autre.
+            progLog(`ERREUR compte tiers CARCDSF ${ESPACES[base]} : ${e.message}`);
           }
+        }
+        // Signalement seulement si tous les portefeuilles ont ete lus (sinon faux positifs).
+        if (portefeuillesLus === espacesConfigures().length) {
           const horsPortefeuille = db.listClients().filter((c) => !geres.has(c.id));
           if (horsPortefeuille.length)
             progLog(
-              `${horsPortefeuille.length} client(s) CARCDSF absent(s) du portefeuille tiers, non récupéré(s) : ${horsPortefeuille.map((c) => c.nom).join(', ')} — ajoute-les au portefeuille sur adherents.carcdsf.fr.`,
+              `${horsPortefeuille.length} client(s) CARCDSF absent(s) des portefeuilles tiers, non récupéré(s) : ${horsPortefeuille.map((c) => c.nom).join(', ')} — ajoute-les au portefeuille sur adherents.carcdsf.fr.`,
             );
-        });
+        }
       } catch (e) {
         progLog(`ERREUR compte tiers CARCDSF : ${e.message}`);
       } finally {

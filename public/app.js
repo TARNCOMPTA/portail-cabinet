@@ -1703,32 +1703,35 @@ $('#mu-effacer')?.addEventListener('click', async () => {
   }
 });
 
-// ---- Compte tiers délégataire CARCDSF -----------------------------------------
-function texteEtatTiers(r) {
-  if (!r.configure) return 'Aucun compte tiers enregistré — la CARCDSF utilise les identifiants de chaque client.';
-  const t = r.dernier_test;
-  const test = !t ? '' : t.en_cours ? ' Test en cours (saisis le code dans le bandeau s’il est demandé)…' : ` Dernier test : ${t.ok ? '✔' : '✘'} ${t.message}`;
-  return `Compte enregistré — ${r.appareil_memorise ? 'appareil mémorisé (pas de code demandé).' : 'un code sera demandé à la prochaine connexion.'}${test}`;
+// ---- Comptes tiers délégataires CARCDSF (un par espace) -----------------------
+const espaceTiers = () => Number($('#ct-base')?.value || 0);
+function texteCompteTiers(c) {
+  const nom = c.base === 1 ? 'Sages-femmes' : 'Dentistes';
+  if (!c.configure) return `${nom} : non configuré.`;
+  const t = c.dernier_test;
+  const test = !t ? '' : t.en_cours ? ' Test en cours (code à saisir dans le bandeau s’il est demandé)…' : ` Dernier test : ${t.ok ? '✔' : '✘'} ${t.message}`;
+  return `${nom} : enregistré, ${c.appareil_memorise ? 'appareil mémorisé.' : 'un code sera demandé à la prochaine connexion.'}${test}`;
 }
 async function chargerCarcdsfTiers() {
   try {
     const r = await api('/api/carcdsf-tiers');
-    $('#ct-login').value = r.login || '';
-    $('#ct-base').value = String(r.base || 0);
-    $('#ct-password').placeholder = r.mot_de_passe_defini ? 'Défini — laisser vide pour ne pas changer' : '';
-    $('#ct-etat').textContent = texteEtatTiers(r);
-    return r;
+    const c = r.comptes.find((x) => x.base === espaceTiers()) || r.comptes[0];
+    $('#ct-login').value = c.login || '';
+    $('#ct-password').value = '';
+    $('#ct-password').placeholder = c.mot_de_passe_defini ? 'Défini — laisser vide pour ne pas changer' : '';
+    $('#ct-etat').textContent = r.comptes.map(texteCompteTiers).join(' · ');
+    return c;
   } catch {
     return null;
   }
 }
+$('#ct-base')?.addEventListener('change', chargerCarcdsfTiers);
 $('#ct-enregistrer')?.addEventListener('click', async () => {
   try {
-    const corps = { login: $('#ct-login').value.trim(), base: Number($('#ct-base').value) };
+    const corps = { base: espaceTiers(), login: $('#ct-login').value.trim() };
     const mdp = $('#ct-password').value;
     if (mdp) corps.password = mdp;
     await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify(corps) });
-    $('#ct-password').value = '';
     toast('Compte tiers CARCDSF enregistré.', 'ok');
     chargerCarcdsfTiers();
   } catch (err) {
@@ -1737,13 +1740,13 @@ $('#ct-enregistrer')?.addEventListener('click', async () => {
 });
 $('#ct-tester')?.addEventListener('click', async () => {
   try {
-    await api('/api/carcdsf-tiers/test', { method: 'POST' });
-    toast('Test lancé — si la CARCDSF envoie un code par e-mail, saisis-le dans le bandeau en haut.', 'ok');
+    await api('/api/carcdsf-tiers/test', { method: 'POST', body: JSON.stringify({ base: espaceTiers() }) });
+    toast('Test lancé — si la CARCDSF envoie un code par e-mail, il est lu dans la boîte des codes ou à saisir dans le bandeau en haut.', 'ok');
     // Le test peut attendre le code (jusqu'à 10 min) : on suit son état.
     const fin = Date.now() + 11 * 60 * 1000;
     const suivre = async () => {
-      const r = await chargerCarcdsfTiers();
-      if (r?.dernier_test && !r.dernier_test.en_cours) return toast(r.dernier_test.message, r.dernier_test.ok ? 'ok' : 'err');
+      const c = await chargerCarcdsfTiers();
+      if (c?.dernier_test && !c.dernier_test.en_cours) return toast(c.dernier_test.message, c.dernier_test.ok ? 'ok' : 'err');
       if (Date.now() < fin) setTimeout(suivre, 3000);
     };
     setTimeout(suivre, 1500);
@@ -1752,18 +1755,18 @@ $('#ct-tester')?.addEventListener('click', async () => {
   }
 });
 $('#ct-oublier')?.addEventListener('click', async () => {
-  if (!confirm('Oublier l’appareil mémorisé ? La CARCDSF redemandera un code par e-mail à la prochaine connexion.')) return;
+  if (!confirm('Oublier l’appareil mémorisé pour cet espace ? La CARCDSF redemandera un code par e-mail à la prochaine connexion.')) return;
   try {
-    await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify({ oublier_appareil: true }) });
+    await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify({ base: espaceTiers(), oublier_appareil: true }) });
     chargerCarcdsfTiers();
   } catch (err) {
     toast(err.message, 'err');
   }
 });
 $('#ct-effacer')?.addEventListener('click', async () => {
-  if (!confirm('Effacer le compte tiers CARCDSF ? La récupération reviendra aux identifiants de chaque client.')) return;
+  if (!confirm('Effacer le compte tiers CARCDSF de cet espace ?')) return;
   try {
-    await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify({ effacer: true }) });
+    await api('/api/carcdsf-tiers', { method: 'POST', body: JSON.stringify({ base: espaceTiers(), effacer: true }) });
     toast('Compte tiers CARCDSF effacé.', 'ok');
     chargerCarcdsfTiers();
   } catch (err) {

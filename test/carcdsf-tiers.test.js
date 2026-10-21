@@ -19,8 +19,10 @@ function demarrerSiteFactice() {
   return createServer(async (req, res) => {
     let corps = '';
     for await (const c of req) corps += c;
-    const p = new URL(req.url, 'http://localhost').pathname;
-    appels.push(`${req.method} ${p}`);
+    const brut = new URL(req.url, 'http://localhost').pathname;
+    appels.push(`${req.method} ${brut}`);
+    // L'espace sages-femmes (base 1) se comporte comme l'espace dentistes (base 0).
+    const p = brut.replace(/^\/(InternetWebServices(?:NonConnectes)?)\/1\//, '/$1/0/');
     const json = (o, h = {}) => {
       res.writeHead(200, { 'content-type': 'application/json', ...h });
       res.end(JSON.stringify(o));
@@ -84,11 +86,11 @@ before(async () => {
   tiers = await import('../src/carcdsf-tiers.js');
   relais = await import('../src/captcha-relais.js');
   boite = await import('../src/boite-codes.js');
-  tiers.enregistrerTiers({ effacer: true });
+  for (const base of [0, 1]) tiers.enregistrerTiers({ base, effacer: true });
   boite.enregistrerBoite({ effacer: true });
 });
 after(() => {
-  tiers?.enregistrerTiers({ effacer: true });
+  for (const base of [0, 1]) tiers?.enregistrerTiers({ base, effacer: true });
   boite?.enregistrerBoite({ effacer: true });
   srv?.close();
 });
@@ -121,7 +123,7 @@ test('1re connexion : code demandé dans le bandeau, code faux refusé, bon code
   assert.equal(s.ref, 4242);
   assert.equal(s.H.authorization, 'Bearer T1');
   assert.equal(relais.etat().actif, false, 'bandeau fermé après validation');
-  assert.equal(tiers.etatTiers().appareil_memorise, true);
+  assert.equal(tiers.etatTiers().comptes[0].appareil_memorise, true);
   assert.ok(appels.includes(`POST /InternetWebServicesNonConnectes/0/internaute/code2FA/V1/${ID2FA}/mail`));
 });
 
@@ -194,7 +196,7 @@ test('boîte des codes configurée : code lu automatiquement, sans saisie dans l
     journal.join(' | '),
   );
   assert.equal(relais.etat().actif, false, 'bandeau refermé');
-  assert.equal(tiers.etatTiers().appareil_memorise, true);
+  assert.equal(tiers.etatTiers().comptes[0].appareil_memorise, true);
   assert.deepEqual((await boite.testerBoite()).ok, true);
 });
 
@@ -224,4 +226,42 @@ test('rapprochement des noms : une lettre d’écart tolérée (VEYSSIERE / VEYS
   };
   assert.equal(tiers.clientPourAdherent(db, { matriculeNature: 8367200, matricule: 83672, nom: 'VEYSSIERE', prenom: 'Christophe' }, 0), 1);
   assert.equal(tiers.clientPourAdherent(db, { matriculeNature: 100, matricule: 1, nom: 'MARTIN', prenom: 'Paul' }, 0), 99, 'MARTIN ≠ MARTEL');
+});
+
+test('reprise de l’ancienne configuration à compte unique dans l’espace choisi alors', async () => {
+  const { setSetting, getSetting } = await import('../src/db.js');
+  const { encrypt } = await import('../src/crypto.js');
+  tiers.enregistrerTiers({ base: 1, effacer: true });
+  setSetting('carcdsf_tiers_login', 'ancien');
+  setSetting('carcdsf_tiers_password_enc', encrypt('pw'));
+  setSetting('carcdsf_tiers_base', '1');
+  const c = tiers.configTiers(1);
+  assert.deepEqual([c.login, c.password], ['ancien', 'pw']);
+  assert.equal(getSetting('carcdsf_tiers_login', ''), '', 'anciennes clés vidées');
+  tiers.enregistrerTiers({ base: 1, effacer: true });
+});
+
+test('espace sages-femmes : compte, appareil et clients distincts (login tiers:1:<dossier>)', async () => {
+  assert.equal(tiers.loginTiers(1, 1234500), 'tiers:1:1234500');
+  assert.deepEqual(tiers.lireLoginTiers('tiers:1:1234500'), { base: 1, matriculeNature: 1234500 });
+  assert.deepEqual(tiers.lireLoginTiers('tiers:1234500'), { base: 0, matriculeNature: 1234500 }, 'format historique = dentistes');
+  boite.enregistrerBoite({ effacer: true });
+  tiers.enregistrerTiers({ base: 1, login: 'cabinet-sf', password: 'secret' });
+  assert.deepEqual(tiers.espacesConfigures(), [0, 1]);
+  assert.equal(tiers.etatTiers().comptes[1].appareil_memorise, false, 'appareil propre à chaque espace');
+  const sessionP = tiers.ouvrirSessionTiers({ base: 1 });
+  const [bon] = await saisirQuandDemande([CODE]);
+  assert.equal(bon.connecte, true);
+  assert.equal((await sessionP).base, 1);
+  assert.equal(tiers.etatTiers().comptes[1].appareil_memorise, true);
+  let recu = null;
+  await tiers.scrapeUnClientTiers(
+    async (creds, opts) => {
+      recu = opts.session;
+      return { ok: true, docs: [] };
+    },
+    { id: 8, nom: 'MALPHETTES Valerie', login: 'tiers:1:1234500', password: '' },
+  );
+  assert.equal(recu.base, 1);
+  assert.ok(appels.includes('GET /InternetWebServices/1/internaute/adhGere/V1/1234500'));
 });
