@@ -1043,7 +1043,7 @@ app.get('/api/carcdsf-tiers', requireAdmin, (req, res) => res.json(etatTiers()))
 app.post('/api/carcdsf-tiers', requireAdmin, (req, res) => res.json(enregistrerTiers(req.body || {})));
 // En tache de fond : la connexion peut attendre le code 2FA (bandeau), resultat via GET.
 app.post('/api/carcdsf-tiers/test', requireAdmin, (req, res) => {
-  testerTiers({ log: journalDe('carcdsf') });
+  testerTiers({ base: req.body?.base, log: journalDe('carcdsf') });
   res.json({ started: true });
 });
 
