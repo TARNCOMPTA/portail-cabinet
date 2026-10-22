@@ -1000,6 +1000,15 @@ const SOURCES = [
     cleId: 'login',
     hrefDoc: (d) => `/api/carpv/documents/${d.id}/file`,
   },
+  {
+    key: 'ir',
+    label: 'Impôt sur le revenu',
+    clients: '/api/ir/clients',
+    docs: '/api/ir/documents',
+    runs: '/api/ir/runs',
+    cleId: 'login',
+    hrefDoc: (d) => `/api/ir/documents/${d.id}/file`,
+  },
 ];
 
 async function chargerDocuments() {
@@ -1450,9 +1459,9 @@ function activerSousOnglet(nom) {
 document.querySelectorAll('.subtab-btn').forEach((b) => b.addEventListener('click', () => activerSousOnglet(b.dataset.subtab)));
 
 // ---- Planification des récupérations (Paramètres ▸ Planification) ----
-const PLANIF_LBL = { urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV' };
+const PLANIF_LBL = { urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV', ir: 'Impôt sur le revenu' };
 const PLANIF_JOURS = ['', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
-const PLANIF_ORDRE = ['urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv'];
+const PLANIF_ORDRE = ['urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv', 'ir'];
 // Plusieurs horaires possibles par organisme : chaque ligne du tableau est un horaire
 // indépendant (➕ Ajouter un horaire, 🗑 pour retirer) ; « Enregistrer » envoie tout.
 function lignePlanif(p = { source: 'urssaf', actif: true, jour: 1, heure: 2 }) {
@@ -2107,7 +2116,7 @@ let quarantaineElements = [];
 // raisonner sur ce que l'écran montre, pas sur des filtres modifiés depuis.
 let quarantaineTotaux = { total: 0, filtres: 0, params: {} };
 let triTimer = null;
-const LIB_SOURCE = { impots: 'Impôts', urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV' };
+const LIB_SOURCE = { impots: 'Impôts', urssaf: 'URSSAF', carpimko: 'CARPIMKO', carmf: 'CARMF', carcdsf: 'CARCDSF', carpv: 'CARPV', ir: 'Impôt sur le revenu' };
 const LIB_VERDICT = {
   client: 'Appartient bien à ce client',
   autre: 'Appartient à un autre client',
