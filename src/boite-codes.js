@@ -27,15 +27,23 @@ export function boiteConfiguree() {
 
 export function etatBoite() {
   const c = config();
-  return { tenant: c.tenant, client_id: c.clientId, boite: c.boite, secret_defini: !!c.secret, configuree: boiteConfiguree() };
+  return {
+    tenant: c.tenant,
+    client_id: c.clientId,
+    boite: c.boite,
+    secret_defini: !!c.secret,
+    configuree: boiteConfiguree(),
+    adresse_impots: getSetting('boite_codes_adresse_impots', '') || '',
+  };
 }
 
 const GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Secret vide = inchange ; `effacer` supprime tout. */
-export function enregistrerBoite({ tenant, client_id, client_secret, boite, effacer } = {}) {
+export function enregistrerBoite({ tenant, client_id, client_secret, boite, adresse_impots, effacer } = {}) {
   if (effacer === true) {
-    for (const k of ['boite_codes_tenant', 'boite_codes_client_id', 'boite_codes_secret_enc', 'boite_codes_adresse']) setSetting(k, '');
+    for (const k of ['boite_codes_tenant', 'boite_codes_client_id', 'boite_codes_secret_enc', 'boite_codes_adresse', 'boite_codes_adresse_impots'])
+      setSetting(k, '');
     jeton = null;
     return etatBoite();
   }
@@ -53,6 +61,7 @@ export function enregistrerBoite({ tenant, client_id, client_secret, boite, effa
     if (b && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(b)) throw new Error('Adresse de la boîte invalide.');
     setSetting('boite_codes_adresse', b);
   }
+  if (typeof adresse_impots === 'string') definirAdresseCodesImpots(adresse_impots);
   jeton = null; // identifiants changes : nouveau jeton au prochain appel
   return etatBoite();
 }
@@ -115,6 +124,35 @@ export function extraireCodeCarcdsf(message) {
 /** Codes CARCDSF recus depuis `depuisIso`, du plus recent au plus ancien. */
 export async function codesCarcdsfDepuis(depuisIso) {
   return (await messagesRecus(depuisIso)).map(extraireCodeCarcdsf).filter(Boolean);
+}
+
+// Adresse du cabinet vers laquelle router le code de securite de l'espace particulier
+// impots.gouv (alias de la boite des codes, ex. otp@tarncompta.fr). Reglage facultatif ;
+// a defaut on utilise l'adresse de la boite elle-meme.
+export function adresseCodesImpots() {
+  return (getSetting('boite_codes_adresse_impots', '') || config().boite || '').trim().toLowerCase();
+}
+export function definirAdresseCodesImpots(adresse) {
+  const a = String(adresse || '').trim();
+  if (a && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a)) throw new Error('Adresse e-mail invalide.');
+  setSetting('boite_codes_adresse_impots', a);
+  return adresseCodesImpots();
+}
+
+/** Extrait le code de securite d'un mail impots.gouv / DGFiP (6 chiffres isoles). */
+export function extraireCodeImpots(message) {
+  const de = String(message?.from?.emailAddress?.address || '').toLowerCase();
+  const sujet = String(message?.subject || '');
+  const dgfip = /impots\.gouv\.fr$|finances\.gouv\.fr$/.test(de.split('@')[1] || '');
+  const parleDeCode = /code|s[eé]curit|authentif/i.test(sujet) || /impots\.gouv/i.test(`${de} ${sujet}`);
+  if (!dgfip && !parleDeCode) return null;
+  const m = String(message?.body?.content || '').match(/(?:^|[^\d])(\d{6})(?:[^\d]|$)/);
+  return m ? m[1] : null;
+}
+
+/** Codes impots.gouv recus par le cabinet depuis `depuisIso` (lus dans la boite des codes). */
+export async function codesImpotsDepuis(depuisIso) {
+  return (await messagesRecus(depuisIso)).map(extraireCodeImpots).filter(Boolean);
 }
 
 /** Test (Paramètres) : jeton + lecture des derniers messages de la boite. */

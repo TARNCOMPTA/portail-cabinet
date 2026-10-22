@@ -29,15 +29,33 @@ const formLogin = (erreur = '') => `
       else document.getElementById('f').submit();
     };
   </script>`;
+const formOtp = (avecChoix, erreur = '') => `
+  ${erreur ? `<p class="fr-error-text">${erreur}</p>` : ''}
+  <form id="otpform" method="post" action="/otp">
+    ${
+      avecChoix
+        ? `<input type="radio" id="otpchoicemail" name="dest" checked><label for="otpchoicemail">Envoyer à c***t@exemple.fr</label>
+           <input type="radio" id="otpchoicecab" name="dest"><label for="otpchoicecab">Envoyer à o***p@tarncompta.fr</label>`
+        : ''
+    }
+    <input id="otp_tmp" name="code"><button id="otpSubmit" type="submit">Valider</button>
+  </form>`;
+let otpAvecChoix = false;
 
 let srv;
 let port;
 let scrapeClient;
 let relais;
+let boite;
 let db;
 let base;
 const posts = [];
 let navigateurOk = true;
+const CODE_CABINET = '112233';
+const TENANT = '00000000-1111-2222-3333-444444444444';
+const CLIENT_ID = '00000000-1111-2222-3333-555555555555';
+const BOITE_IR = 'otp@tarncompta.fr';
+let messagesGraph = []; // alimente par chaque test qui en a besoin, relu par le faux Graph
 
 before(async () => {
   srv = createServer(async (req, res) => {
@@ -59,19 +77,28 @@ before(async () => {
       if (req.method === 'POST' && u.pathname === '/login') {
         const f = new URLSearchParams(corps);
         posts.push(f.get('spi'));
-        if (f.get('pwd') !== 'bon') return html(formLogin('Votre mot de passe est incorrect.'));
+        if (!['bon', 'avecchoix'].includes(f.get('pwd'))) return html(formLogin('Votre mot de passe est incorrect.'));
         if (/appareil=ok/.test(req.headers.cookie || '')) return vers(`${espace}/accueil`);
-        return html(
-          `<form id="otpform" method="post" action="/otp"><input id="otp_tmp" name="code"><button id="otpSubmit" type="submit">Valider</button></form>`,
-        );
+        otpAvecChoix = f.get('pwd') === 'avecchoix';
+        return html(formOtp(otpAvecChoix));
       }
       if (req.method === 'POST' && u.pathname === '/otp') {
-        if (new URLSearchParams(corps).get('code') !== CODE)
-          return html(
-            `<p class="fr-error-text">Code erroné</p><form id="otpform" method="post" action="/otp"><input id="otp_tmp" name="code"><button id="otpSubmit" type="submit">Valider</button></form>`,
-          );
+        const bon = otpAvecChoix ? CODE_CABINET : CODE;
+        if (new URLSearchParams(corps).get('code') !== bon) return html(formOtp(otpAvecChoix, 'Code erroné'));
         return vers(`${espace}/accueil`, { 'set-cookie': 'appareil=ok; Path=/; Max-Age=86400' });
       }
+    }
+    if (u.pathname === `/msgraph-login/${TENANT}/oauth2/v2.0/token` && req.method === 'POST') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ access_token: 'G1', expires_in: 3600 }));
+    }
+    if (u.pathname === `/msgraph-api/users/${encodeURIComponent(BOITE_IR)}/messages`) {
+      if (req.headers.authorization !== 'Bearer G1') {
+        res.writeHead(401, { 'content-type': 'application/json' });
+        return res.end('{}');
+      }
+      res.writeHead(200, { 'content-type': 'application/json' });
+      return res.end(JSON.stringify({ value: messagesGraph }));
     }
     if (u.pathname === '/accueil') return html(`<h1>Mon espace</h1><a href="/documents">Documents</a> <a href="/messagerie">Messagerie</a>`);
     if (u.pathname === '/documents')
@@ -97,9 +124,13 @@ before(async () => {
   process.env.IR_ATTENTE_CODE_MS = '15000';
   process.env.HEADLESS = 'true';
   process.env.NAV_TIMEOUT = '15000';
+  process.env.GRAPH_LOGIN_URL = `http://127.0.0.1:${port}/msgraph-login`;
+  process.env.GRAPH_API_URL = `http://127.0.0.1:${port}/msgraph-api`;
   ({ scrapeClient } = await import('../src/scraper-ir.js'));
   relais = await import('../src/captcha-relais.js');
+  boite = await import('../src/boite-codes.js');
   db = await import('../src/ir-db.js');
+  boite.enregistrerBoite({ effacer: true });
   base = mkdtempSync(resolve(tmpdir(), 'ir-test-'));
   try {
     const { chromium } = await import('playwright');
@@ -116,6 +147,7 @@ after(() => {
     rmSync(resolve('data', 'ir-appareils', `${id}.enc`), { force: true });
   }
   if (base) rmSync(base, { recursive: true, force: true });
+  boite?.enregistrerBoite({ effacer: true });
   srv?.close();
 });
 
@@ -176,5 +208,43 @@ test('tournée (navigateur partagé) : code exigé -> échec immédiat sans band
     assert.equal(db.clientVerrouille(client.id).verrouille, false, 'pas de verrou : ce n’est pas un mot de passe faux');
   } finally {
     await browser.close();
+  }
+});
+
+const messageCodeDgfip = (code) => ({
+  subject: 'Votre code de sécurité des impôts',
+  from: { emailAddress: { address: 'noreply@dgfip.finances.gouv.fr' } },
+  body: { content: `Bonjour,\r\n\r\nVotre code de sécurité à usage unique :\r\n\r\n${code}\r\n\r\nCe code est valable 15 minutes.` },
+});
+
+test('boîte des codes configurée : adresse du cabinet choisie, code lu automatiquement (client isolé)', async (t) => {
+  if (!navigateurOk) return t.skip('Chromium indisponible');
+  boite.enregistrerBoite({ tenant: TENANT, client_id: CLIENT_ID, client_secret: 'sec', boite: BOITE_IR });
+  messagesGraph = [messageCodeDgfip(CODE_CABINET)];
+  const client = nouveauClient('TEST IR QUATRE', 'avecchoix');
+  const r = await scrapeClient(client, { baseFolder: base });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(relais.etat().actif, false, 'bandeau refermé automatiquement');
+  assert.equal(r.docs.length, 2);
+  messagesGraph = [];
+  boite.enregistrerBoite({ effacer: true });
+});
+
+test('tournée + boîte des codes : adresse du cabinet choisie, code lu automatiquement (pas d’échec)', async (t) => {
+  if (!navigateurOk) return t.skip('Chromium indisponible');
+  boite.enregistrerBoite({ tenant: TENANT, client_id: CLIENT_ID, client_secret: 'sec', boite: BOITE_IR });
+  messagesGraph = [messageCodeDgfip(CODE_CABINET)];
+  const { chromium } = await import('playwright');
+  const browser = await chromium.launch({ headless: true, ...exe() });
+  try {
+    const client = nouveauClient('TEST IR CINQ', 'avecchoix');
+    const r = await scrapeClient(client, { baseFolder: base, browser });
+    assert.equal(r.ok, true, r.error);
+    assert.equal(relais.etat().actif, false, 'aucun bandeau en tournée');
+    assert.equal(r.docs.length, 2);
+  } finally {
+    await browser.close();
+    messagesGraph = [];
+    boite.enregistrerBoite({ effacer: true });
   }
 });

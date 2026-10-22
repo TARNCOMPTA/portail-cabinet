@@ -1790,6 +1790,7 @@ async function chargerBoiteCodes() {
     $('#bc-boite').value = r.boite || '';
     $('#bc-tenant').value = r.tenant || '';
     $('#bc-client').value = r.client_id || '';
+    $('#bc-boite-ir').value = r.adresse_impots || '';
     $('#bc-secret').placeholder = r.secret_defini ? 'Défini — laisser vide pour ne pas changer' : '';
     $('#bc-etat').textContent = r.configuree
       ? 'Configurée — les codes CARCDSF sont lus automatiquement.'
@@ -1800,7 +1801,12 @@ async function chargerBoiteCodes() {
 }
 $('#bc-enregistrer')?.addEventListener('click', async () => {
   try {
-    const corps = { boite: $('#bc-boite').value.trim(), tenant: $('#bc-tenant').value.trim(), client_id: $('#bc-client').value.trim() };
+    const corps = {
+      boite: $('#bc-boite').value.trim(),
+      tenant: $('#bc-tenant').value.trim(),
+      client_id: $('#bc-client').value.trim(),
+      adresse_impots: $('#bc-boite-ir').value.trim(),
+    };
     const secret = $('#bc-secret').value.trim();
     if (secret) corps.client_secret = secret;
     await api('/api/boite-codes', { method: 'POST', body: JSON.stringify(corps) });

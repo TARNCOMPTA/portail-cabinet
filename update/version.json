@@ -1,6 +1,6 @@
 {
-  "version": "1.13.16",
-  "notes": "Impot-sur-le-revenu-espace-particulier-premier-essai",
+  "version": "1.13.17",
+  "notes": "IR-code-de-securite-route-vers-le-cabinet-lu-automatiquement",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "7ca5825dfeaf2afee3841a1cdda9deff00424d82b8e977e7c6a0ef540e6be311"
+  "sha256": "9859b424c22c7c0fe2e36930c98eb161821f4dd1505484724496a72b59009cd4"
 }
