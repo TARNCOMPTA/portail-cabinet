@@ -1,5 +1,5 @@
 /* Sous-ensemble Phosphor — GÉNÉRÉ par scripts/subset-phosphor.mjs, ne pas éditer à la main.
- * 27 icône(s) sur les ~1500 de la police complète. Pour en ajouter une :
+ * 28 icône(s) sur les ~1500 de la police complète. Pour en ajouter une :
  * l'utiliser dans public/ (class="ph ph-...") puis relancer `npm run icons`.
  * font-display: swap (et non block) : une icône en retard n'empêche plus l'affichage. */
 @font-face {
@@ -55,6 +55,9 @@
 }
 .ph.ph-heartbeat:before {
   content: "\e2ac";
+}
+.ph.ph-house-line:before {
+  content: "\e2c4";
 }
 .ph.ph-list:before {
   content: "\e2f0";

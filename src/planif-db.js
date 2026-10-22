@@ -19,7 +19,7 @@ db.exec(`CREATE TABLE IF NOT EXISTS planifs (
   heure  INTEGER DEFAULT 2
 );`);
 
-export const SOURCES = ['urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv'];
+export const SOURCES = ['urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv', 'ir'];
 
 // Premiere execution : migre l'ancienne table (1 ligne par organisme) si presente,
 // sinon valeurs par defaut (CARPIMKO mardi 2h, CARMF mercredi 2h actives).

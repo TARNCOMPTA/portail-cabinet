@@ -70,10 +70,18 @@ const SOURCES = {
     runs: '/api/carpv/runs',
     cle: 'login',
   },
+  ir: {
+    clients: '/api/ir/clients',
+    add: '/api/ir/clients',
+    scrape: (id) => `/api/ir/clients/${id}/scrape`,
+    docs: (id) => `/api/ir/clients/${id}/documents`,
+    runs: '/api/ir/runs',
+    cle: 'login',
+  },
 };
-const AVEC_MDP = new Set(['carpimko', 'carmf', 'carcdsf', 'carpv']); // sources login+mot de passe par client
+const AVEC_MDP = new Set(['carpimko', 'carmf', 'carcdsf', 'carpv', 'ir']); // sources login+mot de passe par client
 const nomFichier = (p) => (p || '').split(/[\\/]/).pop() || '';
-const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv']);
+const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv', 'ir']);
 const txt = (o) => ({ content: [{ type: 'text', text: typeof o === 'string' ? o : JSON.stringify(o, null, 2) }] });
 const erreur = (e) => ({ isError: true, content: [{ type: 'text', text: `Erreur : ${e.message}` }] });
 
@@ -82,7 +90,7 @@ function buildServer() {
 
   server.tool(
     'lister_clients',
-    "Liste ou recherche les clients d'un organisme du Portail Cabinet (impots, urssaf, carpimko, carmf, carcdsf, carpv), avec le statut et le message de leur dernière récupération.",
+    "Liste ou recherche les clients d'un organisme du Portail Cabinet (impots, urssaf, carpimko, carmf, carcdsf, carpv, ir = impôt sur le revenu / espace particulier), avec le statut et le message de leur dernière récupération.",
     { source: SRC, recherche: z.string().optional().describe('Filtre par nom / identifiant / notes') },
     async ({ source, recherche }) => {
       try {
@@ -112,7 +120,7 @@ function buildServer() {
 
   server.tool(
     'ajouter_client',
-    "Enregistre un nouveau client. carpimko/carmf/carcdsf : 'identifiant' = identifiant de connexion + 'mot_de_passe' OBLIGATOIRE (carcdsf : préciser aussi 'profession' = cd ou sf). impots/urssaf : 'identifiant' = SIRET/SIREN (rattacher à un compte via 'cabinet_id' si connu).",
+    "Enregistre un nouveau client. carpimko/carmf/carcdsf/carpv : 'identifiant' = identifiant de connexion + 'mot_de_passe' OBLIGATOIRE ; ir : 'identifiant' = numéro fiscal (13 chiffres) + 'mot_de_passe' de l'espace particulier (carcdsf : préciser aussi 'profession' = cd ou sf). impots/urssaf : 'identifiant' = SIRET/SIREN (rattacher à un compte via 'cabinet_id' si connu).",
     {
       source: SRC,
       nom: z.string(),
@@ -259,6 +267,19 @@ function buildServer() {
       try {
         const r = await apiFetch('/api/captcha', { method: 'POST', body: JSON.stringify({ code }) });
         return txt(r.connecte ? { ok: true, message: 'Code accepté — la connexion et la récupération continuent.' } : { ok: false, ...r, image: undefined });
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'diagnostic_ir',
+    "Dernier passage du connecteur impôt sur le revenu (espace particulier) pour un client : pages vues (titres, liens, boutons), fichiers tentés et leur résultat, erreur éventuelle. Sert à cartographier l'espace particulier et à diagnostiquer un échec.",
+    { client_id: z.number() },
+    async ({ client_id }) => {
+      try {
+        return txt(await apiFetch(`/api/ir-diagnostic/${client_id}`));
       } catch (e) {
         return erreur(e);
       }

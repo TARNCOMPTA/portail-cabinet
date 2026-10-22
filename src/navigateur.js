@@ -9,6 +9,10 @@
 //   produire une fenêtre entièrement NOIRE — on l'omet donc en mode visible.
 import { chromium } from 'playwright';
 
+// Binaire Chromium impose (ex. environnement de test dont la version ne correspond pas a
+// celle attendue par Playwright). Non defini en production : Playwright choisit seul.
+export const optionsExecutable = () => (process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
+
 export function launchArgs({ visible = false } = {}) {
   if (process.platform !== 'linux') return [];
   const args = ['--no-sandbox', '--disable-dev-shm-usage', '--disable-extensions', '--mute-audio', '--no-first-run', '--js-flags=--max-old-space-size=256'];
@@ -32,7 +36,7 @@ export async function ouvrirPour(opts = {}) {
   const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
   const navTimeout = Number(process.env.NAV_TIMEOUT ?? 45000);
   const prete = !!opts.browser; // navigateur preté par l'appelant (mode lot)
-  const browser = opts.browser || (await chromium.launch({ headless, args: launchArgs() }));
+  const browser = opts.browser || (await chromium.launch({ headless, args: launchArgs(), ...optionsExecutable() }));
   const context = await browser.newContext({ acceptDownloads: true, locale: 'fr-FR', ...(opts.contextOptions || {}) });
   const page = await context.newPage();
   page.setDefaultTimeout(navTimeout);
@@ -48,5 +52,5 @@ export async function ouvrirPour(opts = {}) {
 // Navigateur partage par un lot. A appeler dans un try/finally cote appelant.
 export async function ouvrirNavigateurLot() {
   const headless = String(process.env.HEADLESS ?? 'false').toLowerCase() === 'true';
-  return chromium.launch({ headless, args: launchArgs() });
+  return chromium.launch({ headless, args: launchArgs(), ...optionsExecutable() });
 }

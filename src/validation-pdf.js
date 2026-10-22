@@ -355,7 +355,7 @@ function libelleAttendus(attendus) {
  * addDocument. Ne lève jamais.
  * @param {object} p
  * @param {string} p.fichier chemin du PDF fraîchement téléchargé
- * @param {'impots'|'urssaf'|'carpimko'|'carmf'|'carcdsf'|'carpv'} p.source
+ * @param {'impots'|'urssaf'|'carpimko'|'carmf'|'carcdsf'|'carpv'|'ir'} p.source
  * @param {{id:number, nom:string, siret?:string, login?:string}} p.client
  * @param {object} [p.attendus] identifiants à chercher (défaut : attendusPour(source, client))
  * @param {string} [p.dossierQuarantaine] racine de quarantaine (tests)

@@ -236,13 +236,13 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
     const normPro = (v) => (/sf|sage|femme/i.test(v || '') ? 'sf' : 'cd');
     let cols = null;
     const head = cut(lignes[0]).map((h) => h.toLowerCase());
-    const re = profession ? /nom|identif|login|dossier|mot|pass|note|profess|metier|métier/ : /nom|identif|login|dossier|mot|pass|note/;
+    const re = profession ? /nom|identif|login|dossier|mot|pass|note|profess|metier|métier/ : /nom|identif|login|dossier|fiscal|mot|pass|note/;
     if (head.some((h) => re.test(h))) {
       cols = profession ? { nom: -1, profession: -1, login: -1, password: -1, notes: -1 } : { nom: -1, login: -1, password: -1, notes: -1 };
       head.forEach((h, i) => {
         if (/nom/.test(h)) cols.nom = i;
         else if (profession && /profess|metier|métier/.test(h)) cols.profession = i;
-        else if (/identif|login|dossier/.test(h)) cols.login = i;
+        else if (/identif|login|dossier|fiscal/.test(h)) cols.login = i;
         else if (/mot|pass/.test(h)) cols.password = i;
         else if (/note/.test(h)) cols.notes = i;
       });

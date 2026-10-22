@@ -61,6 +61,8 @@ import { etatTiers, enregistrerTiers, testerTiers, creerTourneeTiers } from './s
 import { etatBoite, enregistrerBoite, testerBoite } from './src/boite-codes.js';
 import * as carpv from './src/carpv-db.js';
 import { scrapeClient as scrapeClientCarpv } from './src/scraper-carpv.js';
+import * as ir from './src/ir-db.js';
+import { scrapeClient as scrapeClientIr, lireDiagnostic as lireDiagnosticIr } from './src/scraper-ir.js';
 import { creerRouteurSourceLogin } from './src/routes/source-login.js';
 import * as urssafDb from './src/urssaf-db.js';
 import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
@@ -188,7 +190,7 @@ const enCours = new Set();
 // Les objets sont crees UNE FOIS ici et MUTES sur place : src/routes/source-login.js
 // capture la reference a la construction du routeur (au boot), un remplacement
 // d'objet la rendrait fantome (panneau figé a 0/0, sans erreur).
-const SOURCES = ['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv'];
+const SOURCES = ['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv', 'ir'];
 const suivis = new Map(
   SOURCES.map((s) => [s, { source: s, actif: false, total: 0, fait: 0, courant: null, demarre_le: null, fini_le: null, resultats: [], logs: [] }]),
 );
@@ -284,7 +286,7 @@ const journalUrssaf = journalDe('urssaf');
 // compte cabinet + captcha, pas de mot de passe par client).
 function comptesVerrouilles(source) {
   try {
-    const bases = { urssaf: urssafDb, carpimko, carmf, carcdsf, carpv };
+    const bases = { urssaf: urssafDb, carpimko, carmf, carcdsf, carpv, ir };
     const base = bases[source];
     if (!base?.listClients) return [];
     return base
@@ -301,7 +303,7 @@ function comptesVerrouilles(source) {
 // Sert au controle « tournee manquee ». `lance_le` est stocke en UTC par SQLite.
 function aEuUnRunDepuis(source, depuisMs) {
   try {
-    const bases = { impots: { listRuns }, urssaf: urssafDb, carpimko, carmf, carcdsf, carpv };
+    const bases = { impots: { listRuns }, urssaf: urssafDb, carpimko, carmf, carcdsf, carpv, ir };
     const base = bases[source];
     if (!base?.listRuns) return true; // source inconnue : ne pas alerter a tort
     return base.listRuns(50).some((r) => new Date(String(r.lance_le || '').replace(' ', 'T') + 'Z').getTime() >= depuisMs);
@@ -657,6 +659,7 @@ const DOCS_PAR_SOURCE = {
   urssaf: urssafDb.listAllDocuments,
   carcdsf: carcdsf.listAllDocuments,
   carpv: carpv.listAllDocuments,
+  ir: ir.listAllDocuments,
 };
 // Resolution d'UN document par id : toujours en direct dans la base (les listes
 // ci-dessus peuvent etre plafonnees — un document ancien en sortirait et
@@ -668,6 +671,7 @@ const DOC_PAR_SOURCE = {
   urssaf: urssafDb.getDocument,
   carcdsf: carcdsf.getDocument,
   carpv: carpv.getDocument,
+  ir: ir.getDocument,
 };
 // Enregistrement d'un document, par source (utilise par la reintegration depuis la
 // quarantaine). Impots et URSSAF indexent par `eventid`, les caisses par `date_doc`.
@@ -678,6 +682,7 @@ const AJOUT_PAR_SOURCE = {
   carmf: (clientId, m) => carmf.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
   carcdsf: (clientId, m) => carcdsf.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
   carpv: (clientId, m) => carpv.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
+  ir: (clientId, m) => ir.addDocument(clientId, { libelle: m.libelle, fichier: m.fichier, date_doc: m.dateDoc }),
 };
 
 // ---- Quarantaine (documents rejetes par la verification d'appartenance) -----
@@ -691,6 +696,7 @@ const CLIENTS_PAR_SOURCE = {
   carmf: () => carmf.listClients(),
   carcdsf: () => carcdsf.listClients(),
   carpv: () => carpv.listClients(),
+  ir: () => ir.listClients(),
 };
 const QUARANTAINE_TTL = 60_000;
 let cacheQuarantaine = { liste: null, le: 0 };
@@ -1251,7 +1257,7 @@ app.post('/api/update/apply', requireAdmin, async (req, res) => {
 // JSON par minute et par onglet, plus un tri temporaire SQLite a chaque appel.
 // `parSource` alimente les compteurs de la barre laterale sans charger les listes.
 app.get('/api/stats', (req, res) => {
-  const bases = { impots: { stats: statsImpots }, urssaf: urssafDb, carpimko, carmf, carcdsf, carpv };
+  const bases = { impots: { stats: statsImpots }, urssaf: urssafDb, carpimko, carmf, carcdsf, carpv, ir };
   const parSource = {};
   const total = { clients: 0, documents: 0, runs: 0 };
   for (const [nom, base] of Object.entries(bases)) {
@@ -1448,7 +1454,16 @@ const routeursSources = {
     lancerTousPerso: creerTourneeTiers({ db: carcdsf, scraper: scrapeClientCarcdsf, ctx: ctxPour('carcdsf') }),
   }),
   carpv: creerRouteurSourceLogin('carpv', { db: carpv, scraper: scrapeClientCarpv, ctx: ctxPour('carpv') }),
+  // Espace particulier impots.gouv (impot sur le revenu) : navigateur, un compte par client.
+  ir: creerRouteurSourceLogin('ir', { db: ir, scraper: scrapeClientIr, navigateur: true, ctx: ctxPour('ir') }),
 };
+// Diagnostic du dernier passage IR d'un client (pages vues, liens, fichiers tentes) : sert a
+// cartographier l'espace particulier. Admin seulement (donnees personnelles du client).
+app.get('/api/ir-diagnostic/:id', requireAdmin, (req, res) => {
+  const c = ir.getClient(Number(req.params.id));
+  if (!c) return res.status(404).json({ error: 'Client introuvable.' });
+  res.json(lireDiagnosticIr(c) || { vide: true });
+});
 for (const [srcNom, obj] of Object.entries(routeursSources)) app.use('/api/' + srcNom, obj.router);
 
 // ===========================================================================
@@ -1691,7 +1706,8 @@ if (
   process.env.SCHEDULE_CARMF ||
   process.env.SCHEDULE_URSSAF ||
   process.env.SCHEDULE_CARCDSF ||
-  process.env.SCHEDULE_CARPV
+  process.env.SCHEDULE_CARPV ||
+  process.env.SCHEDULE_IR
 ) {
   const LANCEURS = {
     urssaf: () => lancerUrssafTous(),
@@ -1702,6 +1718,7 @@ if (
     carmf: () => routeursSources.carmf.lancerTous(),
     carcdsf: () => routeursSources.carcdsf.lancerTous(),
     carpv: () => routeursSources.carpv.lancerTous(),
+    ir: () => routeursSources.ir.lancerTous(),
   };
   const JOURS_EN = [null, 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const dernier = {};
