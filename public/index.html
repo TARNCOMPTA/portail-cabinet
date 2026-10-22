@@ -1631,6 +1631,14 @@
                   >Secret client (valeur)
                   <input id="bc-secret" type="password" autocomplete="new-password" spellcheck="false" />
                 </label>
+                <label style="grid-column: 1 / -1"
+                  >Adresse des codes impôt sur le revenu (alias de la boîte, optionnel)
+                  <input id="bc-boite-ir" type="email" placeholder="otp@tarncompta.fr (sinon : l'adresse de la boîte ci-dessus)" autocomplete="off" />
+                </label>
+                <p class="aide" style="grid-column: 1 / -1; margin: 0">
+                  À ajouter comme adresse de réception du code dans l'espace particulier impots.gouv de chaque client (en plus de la sienne) : le portail
+                  choisit alors cette adresse quand impots.gouv propose un choix, et lit le code automatiquement.
+                </p>
               </div>
               <div class="form-actions">
                 <button type="button" class="btn primary" id="bc-enregistrer">Enregistrer</button>

@@ -4,15 +4,20 @@
 // Connexion (page cfspart-idp.impots.gouv.fr, relevee le 22/10/2026) :
 //   #spi_tmp (numero fiscal) -> #btnAction « Continuer » -> #pwd_tmp + case « Se souvenir de
 //   moi » (input[name=remember]) -> #btnAction. Depuis un appareil inconnu, impots.gouv peut
-//   exiger un CODE DE SECURITE a 6 chiffres envoye a l'adresse e-mail DU CLIENT (#otpform,
-//   champs .otpinput / #otp_tmp, choix courriel/SMS #otpchoicemail). L'appareil memorise
-//   (etat du navigateur, chiffre, un par client) evite ce code aux connexions suivantes.
+//   exiger un CODE DE SECURITE a 6 chiffres (#otpform, champs .otpinput / #otp_tmp), parfois
+//   avec un CHOIX DE DESTINATAIRE (radios) quand plusieurs adresses sont enregistrees sur le
+//   compte du client — la sienne, et celle du cabinet si elle y a ete ajoutee (ex. une boite
+//   dediee du type otp@tarncompta.fr). Le robot releve ces options (diagnostic) et PREFERE
+//   celle dont le domaine correspond a la boite des codes (src/boite-codes.js) : le code est
+//   alors lu automatiquement, sinon il est demande dans le bandeau du portail. L'appareil
+//   memorise (etat du navigateur, chiffre, un par client) evite ce code aux connexions suivantes.
 //
 // Garde-fous (500 clients) :
 //   - mot de passe refuse / espace verrouille -> echec_mdp : client verrouille, JAMAIS
 //     retente automatiquement (un verrouillage DGFiP se debloque par courrier postal) ;
-//   - code de securite exige pendant une TOURNEE -> echec immediat « code requis » (pas
-//     d'attente) ; seule une recuperation d'UN client attend le code dans le bandeau.
+//   - code de securite exige pendant une TOURNEE : lu automatiquement si l'adresse du
+//     cabinet est proposee ET la boite des codes configuree (attente bornee), sinon echec
+//     immediat « code requis » — jamais de code envoye au client sans surveillance.
 //
 // Documents : les pages de l'espace particulier ne sont pas encore cartographiees. Le
 // connecteur parcourt l'accueil et les pages « Documents », telecharge les liens de
@@ -27,6 +32,7 @@ import { sanitize, dansPeriode, anneeDe } from './scraper-commun.js';
 import { verifierEtClasser } from './validation-pdf.js';
 import { encrypt, decrypt } from './crypto.js';
 import * as captchaRelais from './captcha-relais.js';
+import { boiteConfiguree, adresseCodesImpots, codesImpotsDepuis } from './boite-codes.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'ir');
@@ -130,33 +136,134 @@ async function saisirCode(page, code) {
   return { ok: false, refuse: true, error: err || 'Code refusé par impots.gouv — vérifie le dernier e-mail reçu par le client.' };
 }
 
-// Attend le code saisi dans le bandeau (recuperation d'UN client seulement).
-async function attendreCode(page, client, log) {
+// Domaine de l'adresse du cabinet (ex. « tarncompta.fr » pour otp@tarncompta.fr), pour
+// reconnaitre l'option correspondante parmi les destinataires proposes par impots.gouv.
+function domaineCabinet() {
+  const a = adresseCodesImpots();
+  return a.includes('@') ? a.split('@')[1] : '';
+}
+
+// Releve les options de destinataire du code (radios de la zone #otpform) et coche celle
+// du cabinet si elle est proposee ET reconnue (sinon, repli sur l'adresse du client via
+// #otpchoicemail — comportement historique). Les options sont tracees pour le diagnostic :
+// l'espace particulier n'affiche peut-etre ce choix que sous une autre forme, a ajuster au
+// premier essai reel.
+async function choisirDestinataireCode(page) {
+  const domaine = domaineCabinet();
+  const options = await page
+    .evaluate(() =>
+      [...document.querySelectorAll('input[type=radio]')]
+        // Sur la page du code de securite, les seuls radios presents sont le choix du
+        // destinataire (courriel/SMS, et l'adresse si plusieurs sont enregistrees). Le
+        // libelle (DSFR : <label for="id">) est le plus souvent un <label for=id> associe
+        // par id, parfois imbriquant l'input, parfois juste apres lui dans le DOM — jamais
+        // le texte du conteneur entier (qui melangerait toutes les options).
+        .map((e) => ({
+          id: e.id,
+          texte: ((e.id && document.querySelector(`label[for="${e.id}"]`)?.innerText) || e.closest('label')?.innerText || e.nextElementSibling?.innerText || '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 120),
+        })),
+    )
+    .catch(() => []);
+  let choisiCabinet = false;
+  if (domaine) {
+    const option = options.find((o) => o.texte.toLowerCase().includes(domaine.toLowerCase()));
+    if (option?.id) {
+      // Selecteur d'attribut (pas `#id`) : l'id peut contenir des caracteres qu'un
+      // selecteur CSS interpreterait (impots.gouv en genere parfois avec des points).
+      await page
+        .locator(`[id="${option.id.replace(/"/g, '\\"')}"]`)
+        .check({ force: true })
+        .catch(() => {});
+      choisiCabinet = true;
+    }
+  }
+  if (!choisiCabinet) {
+    const parMail = page.locator('#otpchoicemail');
+    if (await parMail.count()) await parMail.check({ force: true }).catch(() => {});
+  }
+  const envoyer = page.locator('#otpSubmitOUI, #otpSubmit').first();
+  if (await envoyer.count()) await envoyer.click().catch(() => {});
+  await page.waitForTimeout(2000);
+  return { options, choisiCabinet };
+}
+
+// Lit le code dans la boite des codes (mails recus apres `demandeLe`), en reessayant
+// jusqu'a `limiteMs`. Chaque code lu est verifie aupres d'impots.gouv (un mail hors sujet
+// ne doit pas faire echouer la tentative).
+async function lireCodeDansBoite(page, demandeLe, limiteMs, log) {
+  const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
+  const essayes = new Set();
+  const limite = Date.now() + limiteMs;
+  while (Date.now() < limite) {
+    try {
+      for (const code of await codesImpotsDepuis(demandeLe)) {
+        if (essayes.has(code)) continue;
+        essayes.add(code);
+        const r = await saisirCode(page, code);
+        if (r.connecte) {
+          log('Code de sécurité lu automatiquement dans la boîte des codes et accepté.');
+          return true;
+        }
+      }
+    } catch (e) {
+      log(`(boîte des codes : ${e.message})`);
+      await pause(20000);
+    }
+    await pause(5000);
+  }
+  return false;
+}
+
+// Attend le code : lecture automatique dans la boite des codes si l'adresse du cabinet a
+// ete choisie et la boite configuree, ET/OU bandeau du portail (recuperation d'UN client
+// seulement — en tournee, le bandeau reste reserve a la captcha impots et a la CARCDSF).
+async function attendreCode(page, client, opts, choisiCabinet, log) {
+  const auto = choisiCabinet && boiteConfiguree();
+  const enTournee = !!opts.browser;
+  if (enTournee) {
+    if (!auto) throw new Error('Code de sécurité exigé par impots.gouv — adresse du cabinet non proposée ou boîte des codes non configurée.');
+    const ok = await lireCodeDansBoite(page, new Date(Date.now() - 60000).toISOString(), Math.min(ATTENTE_CODE_MS, 2 * 60 * 1000), log);
+    if (!ok) throw new Error('Code de sécurité envoyé au cabinet mais non reçu à temps — relance la récupération de ce client seul.');
+    return;
+  }
   const pause = (ms) => new Promise((ok) => setTimeout(ok, ms));
   const limite = Date.now() + ATTENTE_CODE_MS;
   while (captchaRelais.etat().actif) {
     if (Date.now() > limite) throw new Error('Bandeau de saisie occupé — relance la récupération de ce client plus tard.');
     await pause(2000);
   }
-  log('Code de sécurité demandé par impots.gouv : à saisir dans le bandeau du portail.');
+  log(`Code de sécurité demandé par impots.gouv.${auto ? ' Lecture automatique de la boîte des codes…' : ' À saisir dans le bandeau du portail.'}`);
   await new Promise((resoudre, rejeter) => {
-    const minuterie = setTimeout(() => {
+    let fini = false;
+    const terminer = (err) => {
+      if (fini) return;
+      fini = true;
+      clearTimeout(minuterie);
       captchaRelais.fermer();
-      rejeter(new Error('Code de sécurité impots.gouv non saisi à temps — relance la récupération de ce client.'));
-    }, ATTENTE_CODE_MS);
+      if (err) rejeter(err);
+      else resoudre();
+    };
+    const minuterie = setTimeout(
+      () => terminer(new Error('Code de sécurité impots.gouv non saisi à temps — relance la récupération de ce client.')),
+      ATTENTE_CODE_MS,
+    );
     captchaRelais.ouvrir({
       titre: `🔐 Code impots.gouv — ${client.nom}`,
-      message: `impots.gouv a envoyé un code de sécurité à 6 chiffres à l'adresse e-mail personnelle de ${client.nom}. Demande-le au client et recopie-le ci-dessous : l'appareil sera ensuite mémorisé.`,
+      message: `impots.gouv a envoyé un code de sécurité à 6 chiffres${auto ? ' au cabinet : le portail le cherche automatiquement.' : ` à l'adresse e-mail personnelle de ${client.nom}. Demande-le au client et recopie-le ci-dessous.`} L'appareil sera ensuite mémorisé.`,
       soumettre: async (code) => {
+        if (fini) return { ok: true, connecte: true };
         const r = await saisirCode(page, code);
-        if (r.connecte) {
-          clearTimeout(minuterie);
-          captchaRelais.fermer();
-          resoudre();
-        }
+        if (r.connecte) terminer();
         return r;
       },
     });
+    if (auto)
+      lireCodeDansBoite(page, new Date(Date.now() - 60000).toISOString(), limite - Date.now(), log)
+        .then((ok) => ok && terminer())
+        .catch(() => {});
   });
 }
 
@@ -181,19 +288,10 @@ async function seConnecter(page, client, opts, log) {
   await page
     .waitForFunction((hote) => !location.host.startsWith(hote) || document.querySelector('#otpform, .otpinput, #otp_tmp'), HOTE_IDP, { timeout: 30000 })
     .catch(() => {});
+  let infoOtp = null;
   if (surIdp(page) && (await formulaireCode(page).count())) {
-    const parMail = page.locator('#otpchoicemail');
-    if (await parMail.count()) {
-      await parMail.check({ force: true }).catch(() => {});
-      const envoyer = page.locator('#otpSubmitOUI, #otpSubmit').first();
-      if (await envoyer.count()) await envoyer.click().catch(() => {});
-      await page.waitForTimeout(2000);
-    }
-    if (opts.browser) {
-      // Tournee : pas d'attente (500 clients). Le client reste deverrouille.
-      throw new Error('Code de sécurité exigé par impots.gouv (envoyé au client) — lance la récupération de ce client seul pour le saisir.');
-    }
-    await attendreCode(page, client, log);
+    infoOtp = await choisirDestinataireCode(page);
+    await attendreCode(page, client, opts, infoOtp.choisiCabinet, log);
   }
   if (surIdp(page)) {
     const err = await messageErreur(page);
@@ -201,6 +299,7 @@ async function seConnecter(page, client, opts, log) {
     if (err && MOTIF_REFUS.test(err)) e.kind = 'mdp'; // verrou : jamais retente automatiquement
     throw e;
   }
+  return infoOtp;
 }
 
 // ---- Documents --------------------------------------------------------------------------
@@ -237,7 +336,7 @@ export async function scrapeClient(client, opts = {}) {
   const { context, page, fermer } = await ouvrirPour({ ...opts, contextOptions: { storageState: lireAppareil(client.id) } });
   try {
     log('Connexion à l’espace particulier impots.gouv');
-    await seConnecter(page, client, opts, log);
+    diagnostic.otp = (await seConnecter(page, client, opts, log)) || null;
     await memoriserAppareil(context, client.id);
     log('Connecté.');
     await page.waitForLoadState('domcontentloaded').catch(() => {});
