@@ -7,7 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { getCleInterne } from './auth.js';
-import { appelMyunisoft } from './myunisoft.js';
+import { appelMyunisoft, appelMyunisoftBinaire } from './myunisoft.js';
 
 const PORT = Number(process.env.PORT || 3003);
 const LOCAL = `http://127.0.0.1:${PORT}`;
@@ -90,6 +90,19 @@ async function myu(chemin, societeId) {
   if (!r.ok) throw new Error(`MyUnisoft : ${r.error}`);
   return r.data;
 }
+async function myuFichier(chemin, societeId, opts = {}) {
+  const r = await appelMyunisoftBinaire(chemin, { ...opts, headers: { 'society-id': String(societeId) } });
+  if (!r.ok) throw new Error(`MyUnisoft : ${r.error}`);
+  return r;
+}
+const MAX_PJ = 8 * 1024 * 1024; // au-dela, pas de fichier joint (resume seulement)
+const DATE = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'AAAA-MM-JJ');
+const nombreFec = (v) =>
+  Number(
+    String(v || '0')
+      .replace(/\s/g, '')
+      .replace(',', '.'),
+  ) || 0;
 const erreur = (e) => ({ isError: true, content: [{ type: 'text', text: `Erreur : ${e.message}` }] });
 
 function buildServer() {
@@ -417,6 +430,105 @@ function buildServer() {
         const debit = arrondi(lignes.filter((l) => l.solde > 0).reduce((t, l) => t + l.solde, 0));
         const credit = arrondi(lignes.filter((l) => l.solde < 0).reduce((t, l) => t - l.solde, 0));
         return txt({ nb_comptes: lignes.length, total_debiteur: debit, total_crediteur: credit, ecart: arrondi(debit - credit), comptes: lignes });
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'myunisoft_grand_livre',
+    "Grand livre d'un dossier MyUnisoft sur une période (max 12 mois), renvoyé en PDF joint. Options : lettrage, non soldés. Lecture seule.",
+    {
+      dossier_id: z.number().describe('society_id (voir myunisoft_lister_dossiers)'),
+      debut: DATE.describe('Date de début'),
+      fin: DATE.describe('Date de fin'),
+      non_lettres_seulement: z.boolean().optional().describe('Uniquement les écritures non lettrées'),
+      non_soldes_seulement: z.boolean().optional().describe('Uniquement les comptes non soldés'),
+    },
+    async ({ dossier_id, debut, fin, non_lettres_seulement, non_soldes_seulement }) => {
+      try {
+        const qs = new URLSearchParams({
+          start_date: debut,
+          end_date: fin,
+          not_lettered_only: String(!!non_lettres_seulement),
+          not_solde_only: String(!!non_soldes_seulement),
+        });
+        const r = await myuFichier(`/grand_livre?${qs}`, dossier_id, { timeoutMs: 120000 });
+        const filename = `grand-livre-${dossier_id}-${debut}_${fin}.pdf`;
+        const content = [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              ok: true,
+              filename,
+              type: r.type,
+              taille: r.buf.length,
+              ...(r.buf.length > MAX_PJ ? { note: 'Trop volumineux pour être joint : réduire la période.' } : {}),
+            }),
+          },
+        ];
+        if (r.buf.length <= MAX_PJ)
+          content.unshift({
+            type: 'resource',
+            resource: { uri: `myunisoft://dossier/${dossier_id}/${filename}`, mimeType: r.type.split(';')[0], blob: r.buf.toString('base64') },
+          });
+        return { content };
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'myunisoft_fec',
+    "Export FEC d'un dossier MyUnisoft, soit pour un exercice (exercice_id), soit pour une période (debut + fin). Renvoie un résumé (nombre de lignes, totaux débit/crédit, équilibre, aperçu) et le fichier FEC joint. Lecture seule.",
+    {
+      dossier_id: z.number().describe('society_id (voir myunisoft_lister_dossiers)'),
+      exercice_id: z.number().optional().describe('exercice_id (voir myunisoft_exercices) — ou bien debut + fin'),
+      debut: DATE.optional(),
+      fin: DATE.optional(),
+    },
+    async ({ dossier_id, exercice_id, debut, fin }) => {
+      try {
+        const qs = new URLSearchParams();
+        if (exercice_id != null) {
+          qs.set('export_type', '0');
+          qs.set('exercice_id', String(exercice_id));
+        } else if (debut && fin) {
+          qs.set('export_type', '1');
+          qs.set('from', debut);
+          qs.set('to', fin);
+        } else throw new Error('Préciser exercice_id, ou debut + fin.');
+        const r = await myuFichier(`/export/fec?${qs}`, dossier_id, { method: 'POST', body: {}, timeoutMs: 180000 });
+        const texte = r.buf.toString('utf8').replace(/^\uFEFF/, '');
+        const lignes = texte.split(/\r?\n/).filter(Boolean);
+        const iD = lignes[0]?.split('|').indexOf('Debit') ?? -1;
+        const iC = lignes[0]?.split('|').indexOf('Credit') ?? -1;
+        let debit = 0;
+        let credit = 0;
+        if (iD >= 0 && iC >= 0)
+          for (const l of lignes.slice(1)) {
+            const c = l.split('|');
+            debit += nombreFec(c[iD]);
+            credit += nombreFec(c[iC]);
+          }
+        const arrondi = (n) => Math.round(n * 100) / 100;
+        const filename = `FEC-${dossier_id}-${exercice_id != null ? `ex${exercice_id}` : `${debut}_${fin}`}.txt`;
+        const resume = {
+          ok: true,
+          filename,
+          taille: r.buf.length,
+          nb_ecritures_lignes: Math.max(lignes.length - 1, 0),
+          total_debit: arrondi(debit),
+          total_credit: arrondi(credit),
+          ecart: arrondi(debit - credit),
+          apercu: lignes.slice(0, 6),
+        };
+        const content = [{ type: 'text', text: JSON.stringify(resume, null, 2) }];
+        if (r.buf.length <= MAX_PJ)
+          content.unshift({ type: 'resource', resource: { uri: `myunisoft://dossier/${dossier_id}/${filename}`, mimeType: 'text/plain', text: texte } });
+        return { content };
       } catch (e) {
         return erreur(e);
       }
