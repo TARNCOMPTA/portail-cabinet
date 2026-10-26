@@ -1,6 +1,6 @@
 {
-  "version": "1.13.17",
-  "notes": "IR-code-de-securite-route-vers-le-cabinet-lu-automatiquement",
+  "version": "1.13.18",
+  "notes": "MCP-outils-MyUnisoft-lecture-seule-dossiers-exercices-balance-grand-livre-FEC",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "9859b424c22c7c0fe2e36930c98eb161821f4dd1505484724496a72b59009cd4"
+  "sha256": "f43dfb2a31b906db9358a2322156914b6621a5ac1b43c052ad992a8b8ef9825a"
 }
