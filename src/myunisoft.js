@@ -39,7 +39,7 @@ export function enregistrerMyunisoft({ base_url, token, secret_tiers, effacer } 
 }
 
 /** Appel authentifie de l'API MyUnisoft (usage interne et test de connexion). */
-export async function appelMyunisoft(chemin, { timeoutMs = 10000 } = {}) {
+export async function appelMyunisoft(chemin, { timeoutMs = 10000, headers = {} } = {}) {
   const token = secret('myunisoft_token_enc');
   if (!token) return { ok: false, error: "Aucun jeton MyUnisoft n'est configuré." };
   const tiers = secret('myunisoft_secret_tiers_enc');
@@ -47,7 +47,7 @@ export async function appelMyunisoft(chemin, { timeoutMs = 10000 } = {}) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetch(baseMyunisoft() + chemin, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(tiers ? { 'X-Third-Party-Secret': tiers } : {}) },
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(tiers ? { 'X-Third-Party-Secret': tiers } : {}), ...headers },
       signal: ctrl.signal,
     });
     const texte = await r.text();
@@ -60,7 +60,47 @@ export async function appelMyunisoft(chemin, { timeoutMs = 10000 } = {}) {
     const message = data?.error?.message || data?.message || '';
     return { ok: r.ok, statut: r.status, data, error: r.ok ? undefined : message || `HTTP ${r.status}` };
   } catch (e) {
-    return { ok: false, error: e.name === 'AbortError' ? 'Délai dépassé (10 s).' : e.message };
+    return { ok: false, error: e.name === 'AbortError' ? `Délai dépassé (${timeoutMs / 1000} s).` : e.message };
+  } finally {
+    clearTimeout(t);
+  }
+}
+
+/** Appel authentifie renvoyant le corps brut (PDF, FEC texte...). `body` => requete JSON. */
+export async function appelMyunisoftBinaire(chemin, { method = 'GET', body, headers = {}, timeoutMs = 60000, maxOctets = 25 * 1024 * 1024 } = {}) {
+  const token = secret('myunisoft_token_enc');
+  if (!token) return { ok: false, error: "Aucun jeton MyUnisoft n'est configuré." };
+  const tiers = secret('myunisoft_secret_tiers_enc');
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const r = await fetch(baseMyunisoft() + chemin, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        ...(tiers ? { 'X-Third-Party-Secret': tiers } : {}),
+        ...headers,
+      },
+      ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+      signal: ctrl.signal,
+    });
+    const buf = Buffer.from(await r.arrayBuffer());
+    const type = r.headers.get('content-type') || 'application/octet-stream';
+    if (!r.ok) {
+      let message = '';
+      try {
+        const j = JSON.parse(buf.toString('utf8'));
+        message = j?.error?.message || j?.message || '';
+      } catch {
+        /* corps non JSON */
+      }
+      return { ok: false, statut: r.status, error: message || `HTTP ${r.status}` };
+    }
+    if (buf.length > maxOctets) return { ok: false, statut: r.status, error: `Fichier trop volumineux (${Math.round(buf.length / 1048576)} Mo).` };
+    return { ok: true, statut: r.status, buf, type };
+  } catch (e) {
+    return { ok: false, error: e.name === 'AbortError' ? `Délai dépassé (${timeoutMs / 1000} s).` : e.message };
   } finally {
     clearTimeout(t);
   }
