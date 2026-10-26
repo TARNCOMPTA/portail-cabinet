@@ -396,6 +396,33 @@ function buildServer() {
     },
   );
 
+  server.tool(
+    'myunisoft_balance',
+    "Balance d'un dossier MyUnisoft pour un exercice : solde par compte (débit − crédit : positif = débiteur, négatif = créditeur), hors journaux OD extracomptables, avec contrôle d'équilibre. Lecture seule.",
+    {
+      dossier_id: z.number().describe('society_id (voir myunisoft_lister_dossiers)'),
+      exercice_id: z.number().describe('exercice_id (voir myunisoft_exercices)'),
+      classes: z
+        .array(z.string().regex(/^\d{1,8}$/))
+        .optional()
+        .describe("Racines de comptes à inclure, ex. ['6','7'] ou ['401','411']. Défaut : classes 1 à 7"),
+    },
+    async ({ dossier_id, exercice_id, classes }) => {
+      try {
+        const racines = classes?.length ? classes : ['1', '2', '3', '4', '5', '6', '7'];
+        const qs = [`version=1.0.0`, `idExercice=${exercice_id}`, ...racines.map((c) => `classAccount=${encodeURIComponent(c + '%')}`)].join('&');
+        const d = await myu(`/mad/balance?${qs}`, dossier_id);
+        const lignes = (Array.isArray(d) ? d : []).map((l) => ({ compte: l.account?.number, libelle: l.account?.name, solde: l.balance }));
+        const arrondi = (n) => Math.round(n * 100) / 100;
+        const debit = arrondi(lignes.filter((l) => l.solde > 0).reduce((t, l) => t + l.solde, 0));
+        const credit = arrondi(lignes.filter((l) => l.solde < 0).reduce((t, l) => t - l.solde, 0));
+        return txt({ nb_comptes: lignes.length, total_debiteur: debit, total_crediteur: credit, ecart: arrondi(debit - credit), comptes: lignes });
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
   return server;
 }
 
