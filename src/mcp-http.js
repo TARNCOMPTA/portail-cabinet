@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 import { getCleInterne } from './auth.js';
+import { appelMyunisoft } from './myunisoft.js';
 
 const PORT = Number(process.env.PORT || 3003);
 const LOCAL = `http://127.0.0.1:${PORT}`;
@@ -83,6 +84,12 @@ const AVEC_MDP = new Set(['carpimko', 'carmf', 'carcdsf', 'carpv', 'ir']); // so
 const nomFichier = (p) => (p || '').split(/[\\/]/).pop() || '';
 const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv', 'ir']);
 const txt = (o) => ({ content: [{ type: 'text', text: typeof o === 'string' ? o : JSON.stringify(o, null, 2) }] });
+// MyUnisoft : lecture seule. Le jeton reste cote serveur (src/myunisoft.js), jamais expose a Claude.
+async function myu(chemin, societeId) {
+  const r = await appelMyunisoft(chemin, { timeoutMs: 30000, headers: societeId != null ? { 'society-id': String(societeId) } : {} });
+  if (!r.ok) throw new Error(`MyUnisoft : ${r.error}`);
+  return r.data;
+}
 const erreur = (e) => ({ isError: true, content: [{ type: 'text', text: `Erreur : ${e.message}` }] });
 
 function buildServer() {
@@ -314,6 +321,80 @@ function buildServer() {
       return erreur(e);
     }
   });
+
+  server.tool(
+    'myunisoft_lister_dossiers',
+    "Liste les dossiers (sociétés) du cabinet dans MyUnisoft : id (society_id), nom, SIRET, ville. Filtrable par nom/SIRET/ville. L'id sert aux autres outils myunisoft_*. Lecture seule.",
+    { recherche: z.string().optional().describe('Filtre par nom, SIRET ou ville') },
+    async ({ recherche }) => {
+      try {
+        const d = await myu('/society?mode=1&limit=1000');
+        let l = (d?.society_array || []).map((s) => ({ id: s.society_id, nom: s.name, siret: s.siret || null, ville: s.city || null }));
+        if (recherche) {
+          const q = recherche.toLowerCase();
+          l = l.filter((s) => `${s.nom} ${s.siret || ''} ${s.ville || ''}`.toLowerCase().includes(q));
+        }
+        return txt({ total: l.length, dossiers: l.sort((a, b) => a.nom.localeCompare(b.nom, 'fr')) });
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'myunisoft_exercices',
+    "Exercices comptables d'un dossier MyUnisoft (id, dates, clos ou non, CA, résultat). Lecture seule.",
+    { dossier_id: z.number().describe('society_id (voir myunisoft_lister_dossiers)') },
+    async ({ dossier_id }) => {
+      try {
+        const d = await myu('/society/exercice', dossier_id);
+        const l = Array.isArray(d) ? d : d?.array || [];
+        return txt(
+          l.map((e) => ({
+            exercice_id: e.exercice_id,
+            debut: e.start_date,
+            fin: e.end_date,
+            libelle: e.label,
+            clos: e.closed,
+            ca: e.ca,
+            resultat: e.result,
+            logiciel: e.used_software,
+          })),
+        );
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'myunisoft_dossier_fiscal',
+    "Dossier fiscal d'un dossier MyUnisoft (régimes, OG, signataire, déclarations par le cabinet…), tel que renvoyé par l'API. Lecture seule.",
+    { dossier_id: z.number().describe('society_id (voir myunisoft_lister_dossiers)') },
+    async ({ dossier_id }) => {
+      try {
+        return txt(await myu('/society/fiscal_file', dossier_id));
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'myunisoft_documents_en_attente',
+    'Documents déposés en attente de traitement sur un dossier MyUnisoft. Lecture seule.',
+    {
+      dossier_id: z.number().describe('society_id (voir myunisoft_lister_dossiers)'),
+      limite: z.number().int().min(1).max(200).optional().describe('Nombre max (défaut 50)'),
+    },
+    async ({ dossier_id, limite }) => {
+      try {
+        return txt(await myu(`/document/pending?limit=${limite ?? 50}`, dossier_id));
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
 
   return server;
 }

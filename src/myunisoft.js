@@ -39,7 +39,7 @@ export function enregistrerMyunisoft({ base_url, token, secret_tiers, effacer } 
 }
 
 /** Appel authentifie de l'API MyUnisoft (usage interne et test de connexion). */
-export async function appelMyunisoft(chemin, { timeoutMs = 10000 } = {}) {
+export async function appelMyunisoft(chemin, { timeoutMs = 10000, headers = {} } = {}) {
   const token = secret('myunisoft_token_enc');
   if (!token) return { ok: false, error: "Aucun jeton MyUnisoft n'est configuré." };
   const tiers = secret('myunisoft_secret_tiers_enc');
@@ -47,7 +47,7 @@ export async function appelMyunisoft(chemin, { timeoutMs = 10000 } = {}) {
   const t = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const r = await fetch(baseMyunisoft() + chemin, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(tiers ? { 'X-Third-Party-Secret': tiers } : {}) },
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', ...(tiers ? { 'X-Third-Party-Secret': tiers } : {}), ...headers },
       signal: ctrl.signal,
     });
     const texte = await r.text();
@@ -60,7 +60,7 @@ export async function appelMyunisoft(chemin, { timeoutMs = 10000 } = {}) {
     const message = data?.error?.message || data?.message || '';
     return { ok: r.ok, statut: r.status, data, error: r.ok ? undefined : message || `HTTP ${r.status}` };
   } catch (e) {
-    return { ok: false, error: e.name === 'AbortError' ? 'Délai dépassé (10 s).' : e.message };
+    return { ok: false, error: e.name === 'AbortError' ? `Délai dépassé (${timeoutMs / 1000} s).` : e.message };
   } finally {
     clearTimeout(t);
   }
