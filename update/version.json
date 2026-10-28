@@ -1,6 +1,6 @@
 {
-  "version": "1.13.18",
-  "notes": "MCP-outils-MyUnisoft-lecture-seule-dossiers-exercices-balance-grand-livre-FEC",
+  "version": "1.13.19",
+  "notes": "URSSAF-diagnostic-ameliore-compte-sans-employeurs-TNS",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "f43dfb2a31b906db9358a2322156914b6621a5ac1b43c052ad992a8b8ef9825a"
+  "sha256": "7e99cd473eb1a5ab339e99cb6fb0ff2fae31355fa9a6095190c2f68fcc477499"
 }
