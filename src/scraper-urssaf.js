@@ -125,6 +125,13 @@ async function passerActualites(page, log) {
   }
 }
 
+// Bascule renvoyee par la SSO vers une NOUVELLE demande d'authentification (au lieu du
+// tableau de bord attendu) : constate sur un compte dont le portefeuille ne contient que
+// des comptes TNS (travailleurs non salaries, sans compte employeur) — tdbec.urssaf.fr
+// semble reserve aux portefeuilles employeurs (DSN). Un rechargement ne resout rien (la
+// page reboucle sur la meme demande), donc on sort immediatement au lieu des 4 essais.
+export const surDemandeAuthentification = (url) => /login\.urssaf\.fr\/api\/oauth\//i.test(String(url || ''));
+
 // Attend le champ de recherche du tableau de bord tdbec. La page reste parfois
 // bloquee en chargement (« la roue tourne ») apres une navigation automatique :
 // un rafraichissement la debloque (constate manuellement).
@@ -138,6 +145,7 @@ async function attendreTableauBord(page, log) {
         .catch(() => false)
     )
       return true;
+    if (surDemandeAuthentification(page.url())) return false; // reboucle : inutile de reessayer
     log?.(`Tableau de bord pas encore pret — rafraichissement (essai ${essai + 1}/4)...`);
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await fermerCookies(page);
@@ -277,7 +285,9 @@ export async function connecterCabinet(page, cabinet, navTimeout, log) {
             .map((e) => (e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 30)),
         }));
         writeFileSync(resolve(dbg, 'dashboard_diag.json'), JSON.stringify(diag, null, 2), 'utf8');
-        log(`Diag tableau de bord : ${JSON.stringify(diag).slice(0, 600)}`);
+        // url omise ici (deja loguee, en entier, juste apres) : sur une redirection OAuth
+        // elle depasse a elle seule les 600 caracteres et evincait inputs/boutons du log.
+        log(`Diag tableau de bord : ${JSON.stringify({ inputs: diag.inputs, boutons: diag.boutons }).slice(0, 600)}`);
       } catch (e) {
         log(`(diag tableau de bord : ${e.message})`);
       }
@@ -287,6 +297,11 @@ export async function connecterCabinet(page, cabinet, navTimeout, log) {
     } catch {
       /* ignore */
     }
+    if (surDemandeAuthentification(page.url()))
+      throw new Error(
+        "Tableau de bord tiers declarant introuvable : l'URSSAF a renvoye une nouvelle demande d'authentification au lieu du tableau de bord. " +
+          'Hypothese non confirmee : ce compte tiers-mandate ne porterait que des comptes TNS (travailleurs non salaries) — tdbec.urssaf.fr semble reserve aux portefeuilles employeurs (DSN).',
+      );
     throw new Error(`Tableau de bord tiers declarant introuvable apres connexion (${page.url()}).`);
   }
   log('Connecte au tableau de bord cabinet.');
