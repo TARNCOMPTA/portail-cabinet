@@ -1,6 +1,6 @@
 {
-  "version": "1.13.19",
-  "notes": "URSSAF-diagnostic-ameliore-compte-sans-employeurs-TNS",
+  "version": "1.13.20",
+  "notes": "URSSAF-retour-automatique-accueil-apres-deconnexion-et-reprise",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "7e99cd473eb1a5ab339e99cb6fb0ff2fae31355fa9a6095190c2f68fcc477499"
+  "sha256": "d7d3de24284c67501faa4a51fab706d5b730afdc0d5fffb6adf2b10f50113758"
 }

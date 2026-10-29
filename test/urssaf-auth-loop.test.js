@@ -1,7 +1,6 @@
-// Test de la detection d'un rebouclage SSO vers une nouvelle demande d'authentification
-// (src/scraper-urssaf.js), constate sur un compte cabinet dont le portefeuille ne contient
-// que des comptes TNS : au lieu du tableau de bord, mon.urssaf.fr renvoie vers
-// login.urssaf.fr/api/oauth/v1/providerLogin (reboucle qu'un rechargement ne resout pas).
+// Test de la detection d'une « deconnexion » URSSAF (src/scraper-urssaf.js) : au lieu du
+// tableau de bord, la SSO renvoie vers login.urssaf.fr/api/oauth/v1/providerLogin
+// (reboucle qu'un rechargement ne resout pas ; un retour sur tdbec/accueil, si).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { surDemandeAuthentification } from '../src/scraper-urssaf.js';
