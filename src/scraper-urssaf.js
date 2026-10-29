@@ -125,27 +125,48 @@ async function passerActualites(page, log) {
   }
 }
 
-// Bascule renvoyee par la SSO vers une NOUVELLE demande d'authentification (au lieu du
-// tableau de bord attendu) : constate sur un compte dont le portefeuille ne contient que
-// des comptes TNS (travailleurs non salaries, sans compte employeur) — tdbec.urssaf.fr
-// semble reserve aux portefeuilles employeurs (DSN). Un rechargement ne resout rien (la
-// page reboucle sur la meme demande), donc on sort immediatement au lieu des 4 essais.
+// « Deconnexion » intempestive cote URSSAF (probleme interne a leur SSO) : au lieu du
+// tableau de bord, la page part sur une NOUVELLE demande d'authentification
+// (login.urssaf.fr/api/oauth/...). La recharger ne sert a rien (elle reboucle a
+// l'identique) ; revenir sur https://tdbec.urssaf.fr/accueil retablit la session
+// (constate manuellement), puis on reprend la recuperation en cours.
 export const surDemandeAuthentification = (url) => /login\.urssaf\.fr\/api\/oauth\//i.test(String(url || ''));
+const contexteBloque = (context) => context.pages().some((p) => surDemandeAuthentification(p.url()));
+
+// Retour sur l'accueil du tableau de bord (debloque une « deconnexion » URSSAF).
+async function revenirAccueilTdbec(page, log) {
+  await page.goto(TDBEC_ACCUEIL, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  await fermerCookies(page);
+  await passerActualites(page, log);
+}
 
 // Attend le champ de recherche du tableau de bord tdbec. La page reste parfois
 // bloquee en chargement (« la roue tourne ») apres une navigation automatique :
-// un rafraichissement la debloque (constate manuellement).
-async function attendreTableauBord(page, log) {
+// un rafraichissement la debloque (constate manuellement). Sur une « deconnexion »
+// URSSAF (page de nouvelle authentification), on revient sur tdbec/accueil.
+export async function attendreTableauBord(page, log) {
   for (let essai = 0; essai < 4; essai++) {
+    // Deja sur la page d'authentification : inutile d'attendre 12 s le champ de recherche.
+    if (surDemandeAuthentification(page.url())) {
+      log?.(`Deconnexion URSSAF (page d'authentification) — retour sur ${TDBEC_ACCUEIL} (essai ${essai + 1}/4)...`);
+      await revenirAccueilTdbec(page, log);
+    }
     const champ = page.locator('#recherche, input.input-search').first();
-    if (
-      await champ
+    // Champ de recherche visible, OU bascule vers l'authentification (souvent APRES le
+    // chargement de tdbec/accueil) : on n'attend pas 12 s pour rien dans le second cas.
+    const pret = await Promise.race([
+      champ
         .waitFor({ state: 'visible', timeout: 12000 })
         .then(() => true)
-        .catch(() => false)
-    )
-      return true;
-    if (surDemandeAuthentification(page.url())) return false; // reboucle : inutile de reessayer
+        .catch(() => false),
+      page
+        .waitForURL((u) => surDemandeAuthentification(u), { timeout: 12000 })
+        .then(() => false)
+        .catch(() => false),
+    ]);
+    if (pret) return true;
+    // Redirection vers l'authentification : retour sur l'accueil au tour suivant.
+    if (surDemandeAuthentification(page.url())) continue;
     log?.(`Tableau de bord pas encore pret — rafraichissement (essai ${essai + 1}/4)...`);
     await page.reload({ waitUntil: 'domcontentloaded' }).catch(() => {});
     await fermerCookies(page);
@@ -299,8 +320,8 @@ export async function connecterCabinet(page, cabinet, navTimeout, log) {
     }
     if (surDemandeAuthentification(page.url()))
       throw new Error(
-        "Tableau de bord tiers declarant introuvable : l'URSSAF a renvoye une nouvelle demande d'authentification au lieu du tableau de bord. " +
-          'Hypothese non confirmee : ce compte tiers-mandate ne porterait que des comptes TNS (travailleurs non salaries) — tdbec.urssaf.fr semble reserve aux portefeuilles employeurs (DSN).',
+        `Tableau de bord tiers declarant introuvable : l'URSSAF renvoie toujours vers une nouvelle demande d'authentification, malgre 4 retours sur ${TDBEC_ACCUEIL}. ` +
+          'Reessayer plus tard (incident cote URSSAF) ; si cela persiste sur ce compte, verifier qu’il donne bien acces au tableau de bord tiers declarant.',
       );
     throw new Error(`Tableau de bord tiers declarant introuvable apres connexion (${page.url()}).`);
   }
@@ -347,6 +368,21 @@ export async function listerClients(cabinet, opts = {}) {
     const rows = [];
     const vus = new Set();
     let totalPages = 1;
+    let reprises = 0;
+    // Page de la liste en echec : si l'URSSAF a « deconnecte » le navigateur (page
+    // d'authentification) ou refuse le jeton, retour sur tdbec/accueil (le jeton est
+    // recapture au chargement du tableau de bord) et nouvelle demande de la MEME page.
+    // Sans cela, la synchronisation s'arretait sur une liste partielle sans le dire.
+    const reprendre = async (p, motif) => {
+      if (reprises >= REPRISES_MAX) return false;
+      reprises++;
+      log(`(page ${p} : ${motif}) — retour sur ${TDBEC_ACCUEIL} puis reprise (${reprises}/${REPRISES_MAX})...`);
+      token = null;
+      await revenirAccueilTdbec(page, log);
+      if (!(await attendreTableauBord(page, log))) return false;
+      for (let i = 0; i < 20 && !token; i++) await page.waitForTimeout(500);
+      return !!token;
+    };
     for (let p = 0; p < 50; p++) {
       const url = base.replace(/([?&])page=\d+/, '$1page=' + p);
       // Requete faite DANS la page (fetch du navigateur), PAS context.request : l'URSSAF a
@@ -364,12 +400,20 @@ export async function listerClients(cabinet, opts = {}) {
           { u: url, tok: token },
         );
         if (!r.ok) {
-          log(`(page ${p} : HTTP ${r.statut})`);
+          if (await reprendre(p, `HTTP ${r.statut}`)) {
+            p--;
+            continue;
+          }
+          log(`⚠️ Liste interrompue page ${p + 1}/${totalPages} (HTTP ${r.statut}) — synchronisation INCOMPLETE, a relancer.`);
           break;
         }
         j = r.corps;
       } catch (e) {
-        log(`(page ${p} : ${e.message.split('\n')[0]})`);
+        if (await reprendre(p, e.message.split('\n')[0])) {
+          p--;
+          continue;
+        }
+        log(`⚠️ Liste interrompue page ${p + 1}/${totalPages} (${e.message.split('\n')[0]}) — synchronisation INCOMPLETE, a relancer.`);
         break;
       }
       totalPages = j.totalPages ?? totalPages;
@@ -669,6 +713,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     let existants = 0;
     const quarantaines = [];
     let nonVerifiables = 0;
+    let deconnecte = false;
     const utilises = new Set();
     for (const { href, eid, objet, date } of docsTrouves) {
       // Cle unique du document : DOCUMENTID si present, sinon EVENTID, sinon le lien.
@@ -697,6 +742,13 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         utilises.add(dest.toLowerCase());
 
         const resp = await msg.request.get(href, { timeout: navTimeout });
+        // « Deconnexion » URSSAF en plein telechargement : la requete est redirigee vers
+        // l'authentification (l'onglet, lui, ne bouge pas). Les documents suivants
+        // echoueraient tous : on arrete et on fait reprendre ce client.
+        if (surDemandeAuthentification(resp.url())) {
+          deconnecte = true;
+          break;
+        }
         if (!resp.ok()) throw new Error(`HTTP ${resp.status()}`);
         const buf = await resp.body();
         if (buf.length < 100 || buf.subarray(0, 4).toString() !== '%PDF') throw new Error('reponse non-PDF');
@@ -726,6 +778,14 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     }
 
     const total = docsTrouves.length;
+    // Telechargements rediriges vers l'authentification, ou messagerie vide parce que
+    // l'URSSAF a « deconnecte » un onglet : ce n'est ni un succes ni un vrai « aucun
+    // document ». Pas de run enregistre, l'appelant revient sur tdbec/accueil et
+    // recommence ce client (les documents deja recus sont reconnus, pas de doublon).
+    if (deconnecte || (total === 0 && contexteBloque(context))) {
+      log('Deconnexion URSSAF pendant la recuperation (page d’authentification) — reprise a prevoir.');
+      return { ok: false, bloque: true, error: 'Deconnexion URSSAF pendant la recuperation', docs };
+    }
     let message;
     if (total === 0) {
       log('Aucun document (piece jointe) dans la messagerie de ce client.');
@@ -740,6 +800,12 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     if (quarantaines.length > 0) return { ok: false, error: message, docs, sessionSuspecte: true };
     return { ok: true, docs };
   } catch (err) {
+    // Echec cause par une « deconnexion » URSSAF (un onglet sur la page d'authentification) :
+    // pas de run enregistre, l'appelant revient sur tdbec/accueil et recommence ce client.
+    if (contexteBloque(context)) {
+      log(`Deconnexion URSSAF pendant la recuperation (${err.message.split('\n')[0]}) — reprise a prevoir.`);
+      return { ok: false, bloque: true, error: err.message, docs };
+    }
     const shot = resolve(clientDir, `_debug_${Date.now()}.png`);
     await page.screenshot({ path: shot, fullPage: true }).catch(() => {});
     addRunSafe(client.id, { statut: err.kind === 'mdp' ? 'echec_mdp' : 'echec', message: err.message, nb_docs: docs.length });
@@ -770,6 +836,48 @@ async function deconnecterMessagerie(context, log) {
     if (fait) {
       log?.('Deconnexion de la messagerie (fermeture de la session dossier cote URSSAF)...');
       await p.waitForTimeout(1500);
+    }
+  }
+}
+
+// Nombre de reprises d'un client apres une « deconnexion » URSSAF.
+const REPRISES_MAX = 2;
+
+// Recupere UN client ; si l'URSSAF « deconnecte » le navigateur en cours de route (page
+// d'authentification), ferme les onglets secondaires, revient sur tdbec/accueil et
+// recommence ce client depuis le debut. Si le tableau de bord reste inaccessible, le
+// compte cabinet est reconnecte (`reconnecter`). Seule l'issue finale est enregistree.
+async function recupererAvecReprise(context, page, client, opts, reconnecter) {
+  const { log, suiviMessagerie } = opts;
+  // Empreinte de la messagerie du client PRECEDENT : une tentative interrompue a pu
+  // memoriser celle de CE client, qui serait prise a tort pour une session collante.
+  const empreinteAvant = suiviMessagerie?.empreinte ?? null;
+  const recus = []; // documents recus lors des tentatives interrompues
+  for (let reprise = 0; ; reprise++) {
+    const r = await recupererAppelsClient(context, page, client, opts);
+    if (!r.bloque) return recus.length ? { ...r, docs: [...recus, ...(r.docs || [])] } : r;
+    recus.push(...(r.docs || []));
+    if (suiviMessagerie) suiviMessagerie.empreinte = empreinteAvant;
+    if (reprise >= REPRISES_MAX) {
+      const message = `Deconnexion URSSAF a chaque tentative (${REPRISES_MAX + 1} essais) — client incomplet, a relancer plus tard.`;
+      addRunSafe(client.id, { statut: 'echec', message, nb_docs: recus.length });
+      log(`ERREUR : ${message}`);
+      return { ok: false, error: message, docs: recus };
+    }
+    log(`Retour sur ${TDBEC_ACCUEIL} puis reprise du client (${reprise + 1}/${REPRISES_MAX})...`);
+    for (const p of context.pages()) if (p !== page) await p.close().catch(() => {});
+    await revenirAccueilTdbec(page, log);
+    if (!(await attendreTableauBord(page, log))) {
+      log('Tableau de bord toujours inaccessible — reconnexion du compte cabinet...');
+      await context.clearCookies().catch(() => {});
+      try {
+        await reconnecter();
+      } catch (e) {
+        const message = `Deconnexion URSSAF, reconnexion impossible : ${e.message}`;
+        addRunSafe(client.id, { statut: 'echec', message, nb_docs: recus.length });
+        log(`ERREUR : ${message}`);
+        return { ok: false, error: message, docs: recus };
+      }
     }
   }
 }
@@ -820,7 +928,9 @@ export async function scrapeClient(client, opts = {}) {
   try {
     await connecterCabinet(page, cabinet, navTimeout, log);
     await page.waitForTimeout(200);
-    return await recupererAppelsClient(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log });
+    return await recupererAvecReprise(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log }, () =>
+      connecterCabinet(page, cabinet, navTimeout, log),
+    );
   } catch (err) {
     addRunSafe(client.id, { statut: err.kind === 'mdp' ? 'echec_mdp' : 'echec', message: err.message, nb_docs: 0 });
     log(`ERREUR : ${err.message}`);
@@ -910,7 +1020,9 @@ export async function scrapeAll(clients, opts = {}) {
 
       clog(`(${i + 1}/${clients.length})`);
       opts.onClient?.(client.nom);
-      const r = await recupererAppelsClient(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, suiviMessagerie });
+      const r = await recupererAvecReprise(context, page, client, { baseFolder: opts.baseFolder, navTimeout, log: clog, suiviMessagerie }, () =>
+        connecterCabinet(page, cabinet, navTimeout, log),
+      );
       let arretCollage = false;
       if (r.sessionSuspecte) {
         // Documents d'un autre compte : la session dcl est collante. On DETRUIT
