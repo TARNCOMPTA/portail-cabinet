@@ -241,10 +241,13 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
   function addRun(client_id, { statut, message, nb_docs }) {
     db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs) VALUES (?, ?, ?, ?)').run(client_id, statut, message ?? null, nb_docs ?? 0);
   }
-  function listRuns(limit = 300) {
+  // `depuis` (AAAA-MM-JJ[ HH:MM:SS], UTC comme lance_le) : seulement les passages a partir de cette date.
+  function listRuns(limit = 300, depuis = null) {
     return db
-      .prepare('SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ORDER BY r.lance_le DESC, r.id DESC LIMIT ?')
-      .all(limit);
+      .prepare(
+        `SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ${depuis ? 'WHERE r.lance_le >= ?' : ''} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`,
+      )
+      .all(...(depuis ? [depuis, limit] : [limit]));
   }
 
   // Compteurs du tableau de bord. Avant, l'interface telechargeait les listes

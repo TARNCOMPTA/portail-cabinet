@@ -63,7 +63,7 @@ import * as carpv from './src/carpv-db.js';
 import { scrapeClient as scrapeClientCarpv } from './src/scraper-carpv.js';
 import * as ir from './src/ir-db.js';
 import { scrapeClient as scrapeClientIr, lireDiagnostic as lireDiagnosticIr } from './src/scraper-ir.js';
-import { creerRouteurSourceLogin } from './src/routes/source-login.js';
+import { creerRouteurSourceLogin, depuisRequete, RUNS_PERIODE_MAX } from './src/routes/source-login.js';
 import * as urssafDb from './src/urssaf-db.js';
 import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
 import * as fusions from './src/fusions-db.js';
@@ -1282,7 +1282,10 @@ app.get('/api/stats', (req, res) => {
 });
 
 // ---- Historique -----------------------------------------------------------
-app.get('/api/runs', (req, res) => res.json(listRuns(500)));
+app.get('/api/runs', (req, res) => {
+  const depuis = depuisRequete(req.query.depuis);
+  res.json(listRuns(depuis ? RUNS_PERIODE_MAX : 500, depuis));
+});
 // `saisie` : un code est attendu dans le bandeau (captcha impots, code CARCDSF) — l'interface
 // doit alors sonder /api/captcha meme si aucune recuperation n'est listee (test de connexion).
 app.get('/api/status', (req, res) => res.json({ enCours: [...enCours], cabinets: cabinetsConfigure(), saisie: captchaRelais.etat().actif }));
@@ -1590,7 +1593,10 @@ app.get('/api/urssaf/documents/:id/file', (req, res) => {
   if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
   res.download(doc.fichier, basename(doc.fichier));
 });
-app.get('/api/urssaf/runs', (req, res) => res.json(urssafDb.listRuns(300)));
+app.get('/api/urssaf/runs', (req, res) => {
+  const depuis = depuisRequete(req.query.depuis);
+  res.json(urssafDb.listRuns(depuis ? RUNS_PERIODE_MAX : 300, depuis));
+});
 
 app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {
   const id = Number(req.params.id);

@@ -105,7 +105,7 @@ const nombreFec = (v) =>
   ) || 0;
 const erreur = (e) => ({ isError: true, content: [{ type: 'text', text: `Erreur : ${e.message}` }] });
 
-function buildServer() {
+export function buildServer() {
   const server = new McpServer({ name: 'portail-cabinet', version: '1.0.0' });
 
   server.tool(
@@ -253,16 +253,19 @@ function buildServer() {
 
   server.tool(
     'historique_recuperations',
-    "Historique des récupérations d'un organisme (date, client, statut succes/echec/echec_mdp, message d'erreur, nb de documents), du plus récent au plus ancien. Filtrable par client_id. Sert à diagnostiquer un échec.",
+    "Historique des récupérations d'un organisme (date UTC, client, statut succes/echec/echec_mdp, message d'erreur, nb de documents), du plus récent au plus ancien. Filtrable par client, par date (depuis) et par statut (echecs = echec + echec_mdp). Sert à diagnostiquer un échec.",
     {
       source: SRC,
       client_id: z.number().optional().describe('Limiter à un client'),
-      limite: z.number().int().min(1).max(200).optional().describe('Nombre de lignes (défaut 20)'),
+      depuis: DATE.optional().describe('Seulement les récupérations depuis cette date (UTC) — toute la période, pas seulement les derniers passages'),
+      statut: z.enum(['echecs', 'echec', 'echec_mdp', 'succes']).optional().describe('echecs = tous les échecs (echec + echec_mdp)'),
+      limite: z.number().int().min(1).max(500).optional().describe('Nombre de lignes (défaut 20)'),
     },
-    async ({ source, client_id, limite }) => {
+    async ({ source, client_id, depuis, statut, limite }) => {
       try {
-        let runs = await apiFetch(SOURCES[source].runs);
+        let runs = await apiFetch(SOURCES[source].runs + (depuis ? `?depuis=${encodeURIComponent(depuis)}` : ''));
         if (client_id != null) runs = runs.filter((r) => r.client_id === client_id);
+        if (statut) runs = runs.filter((r) => (statut === 'echecs' ? String(r.statut).startsWith('echec') : r.statut === statut));
         return txt(
           runs.slice(0, limite ?? 20).map((r) => ({
             date: r.lance_le,
@@ -300,6 +303,57 @@ function buildServer() {
     async ({ client_id }) => {
       try {
         return txt(await apiFetch(`/api/ir-diagnostic/${client_id}`));
+      } catch (e) {
+        return erreur(e);
+      }
+    },
+  );
+
+  server.tool(
+    'lister_quarantaine',
+    "Documents mis en quarantaine par la vérification d'appartenance (PDF qui ne mentionne ni l'identifiant ni le nom du client) : date de mise en quarantaine, organisme, client, fichier, raison du rejet, verdict du tri automatique s'il a été lancé. Du plus récent au plus ancien. Lecture seule.",
+    {
+      source: SRC.optional().describe('Limiter à un organisme'),
+      recherche: z.string().optional().describe('Texte cherché dans le client, le fichier ou le libellé'),
+      depuis: DATE.optional().describe('Seulement les documents mis en quarantaine depuis cette date (UTC)'),
+      limite: z.number().int().min(1).max(200).optional().describe('Nombre de documents (défaut 50)'),
+    },
+    async ({ source, recherche, depuis, limite }) => {
+      try {
+        const max = limite ?? 50;
+        const q = new URLSearchParams({ taille: '200' });
+        if (source) q.set('source', source);
+        if (recherche) q.set('q', recherche);
+        // Liste triee du plus recent au plus ancien. Avec `depuis`, on parcourt les pages
+        // jusqu'a la premiere qui deborde avant cette date, pour COMPTER toute la periode
+        // (seuls les `limite` plus recents sont detailles) ; sans `depuis`, une page suffit.
+        let r = null;
+        let documents = [];
+        for (let page = 1; page <= 10; page++) {
+          q.set('page', String(page));
+          r = await apiFetch(`/api/quarantaine?${q}`);
+          const elements = r.elements || [];
+          const retenus = depuis ? elements.filter((d) => String(d.date) >= depuis) : elements;
+          documents = documents.concat(retenus);
+          if (!depuis || page >= r.pages || retenus.length < elements.length) break;
+        }
+        return txt({
+          total_en_quarantaine: r.total,
+          par_organisme: r.parSource,
+          // Documents correspondant aux filtres (avec `depuis` : plafonne a 10 pages de 200).
+          trouves: depuis ? documents.length : (r.filtres ?? documents.length),
+          documents: documents.slice(0, max).map((d) => ({
+            date: d.date,
+            organisme: d.source,
+            client_id: d.clientId,
+            client: d.clientNom,
+            fichier: d.fichier,
+            libelle: d.libelle,
+            raison: d.raison,
+            reintegrable: d.reintegrable,
+            tri: d.tri ? { verdict: d.tri.verdict, motif: d.tri.motif || null } : null,
+          })),
+        });
       } catch (e) {
         return erreur(e);
       }
