@@ -15,10 +15,12 @@ import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addDocument, addRun, getDocumentByEventid } from './urssaf-db.js';
+import { addDocument, addRun, getDocumentByEventid, listClients } from './urssaf-db.js';
 import { launchArgs } from './navigateur.js';
 import { sanitize, dateIso, dansPeriode } from './scraper-commun.js';
 import { verifierEtClasser, correspondanceNom } from './validation-pdf.js';
+import { eventidsEnQuarantaine } from './quarantaine.js';
+import { analyserEntree, indexerPortefeuille } from './quarantaine-tri.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads', 'urssaf');
@@ -440,7 +442,11 @@ export async function listerClients(cabinet, opts = {}) {
 // Traite UN client sur une page deja connectee (positionnee sur le tableau de bord tdbec).
 // Recherche -> Acceder -> Messagerie -> telechargement des appels. Enregistre le run.
 // Ne ferme PAS les onglets : c'est l'appelant qui nettoie et revient au tableau de bord.
-async function recupererAppelsClient(context, page, client, { baseFolder, navTimeout, log, suiviMessagerie }) {
+// Au-dela de ce nombre de PDF rejetes (sans identifiant) dans UNE messagerie, ce n'est
+// plus un courrier generique isole : messagerie suspecte (session collante probable).
+const ISOLES_MAX = 3;
+
+export async function recupererAppelsClient(context, page, client, { baseFolder, navTimeout, log, suiviMessagerie }) {
   const docs = [];
   const siret = String(client.siret || '').replace(/\s+/g, '');
   const clientDir = dossierClient(client, baseFolder);
@@ -454,6 +460,9 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     // documents chez ce client (cas reel : 53 PDF BADUEL chez une association).
     // Chaque bouton est valide par le texte de sa ligne : SIRET/SIREN du client,
     // ou correspondance de nom (memes regles que la quarantaine PDF).
+    // Lignes « Acceder » vues a chaque recherche infructueuse : versees dans le message
+    // d'echec (le journal du robot n'est pas consultable apres coup).
+    const vues = [];
     async function rechercher(terme) {
       // ⚠️ DEUX champs de recherche coexistent sur la page : #search (recherche
       // EDITORIALE du site public urssaf.fr — y valider ejecte du tableau de
@@ -506,6 +515,7 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
             .map((l) => `« ${l.slice(0, 100)} »`)
             .join(' | ') || '(aucune ligne avec « Acceder »)';
         log(`(diag : champ="${valeur}" ; ${dernieresLignes.length} ligne(s) affichee(s) : ${apercu})`);
+        vues.push({ terme, lignes: dernieresLignes });
       } catch {
         /* diagnostic best effort */
       }
@@ -517,7 +527,19 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
       log(`Aucun resultat correspondant par identifiant — recherche par nom « ${client.nom} »`);
       acceder = await rechercher(client.nom);
     }
-    if (!acceder) throw new Error(`Aucun resultat correspondant a ${siret} / ${client.nom} — acces refuse pour ne pas melanger les dossiers.`);
+    if (!acceder) {
+      // Distinguer les deux cas pour le diagnostic : AUCUN compte affiche (le compte n'est
+      // plus dans le portefeuille tiers declarant) ou des comptes affiches mais aucun qui
+      // corresponde (fiche du portail a corriger, ou presentation du site modifiee).
+      const affiches = vues.flatMap((v) => v.lignes);
+      const detail = affiches.length
+        ? `${affiches.length} compte(s) affiche(s), aucun ne correspond : ${affiches
+            .slice(0, 3)
+            .map((l) => `« ${l.slice(0, 90)} »`)
+            .join(' | ')}`
+        : 'la recherche ne renvoie AUCUN compte, ni par identifiant ni par nom : compte probablement sorti du portefeuille tiers declarant (mandat termine, compte radie ou etablissement ferme) — a verifier sur tdbec.urssaf.fr';
+      throw new Error(`Aucun resultat correspondant a ${siret} / ${client.nom} — acces refuse pour ne pas melanger les dossiers. (${detail})`);
+    }
 
     // 2. Acceder au dossier client (webti). PAS de networkidle (requetes continues
     // sur ces pages -> il expirait systematiquement en timeout) : on attend
@@ -711,10 +733,17 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
     }
 
     let existants = 0;
-    const quarantaines = [];
+    const quarantaines = []; // PDF d'un AUTRE compte : messagerie suspecte
+    const isoles = []; // courriers sans identifiant de ce client (generiques) : quarantaine seule
+    let dejaQuarantaine = 0;
     let nonVerifiables = 0;
     let deconnecte = false;
     const utilises = new Set();
+    // Documents de ce client deja en quarantaine : on ne les retelecharge pas chaque nuit.
+    const enQuarantaine = eventidsEnQuarantaine('urssaf', client.id);
+    // Index du portefeuille (identifiant -> client), construit au premier PDF rejete.
+    let index = null;
+    const indexPortefeuille = () => (index ??= indexerPortefeuille(listClients()));
     for (const { href, eid, objet, date } of docsTrouves) {
       // Cle unique du document : DOCUMENTID si present, sinon EVENTID, sinon le lien.
       const docId = (href.match(/[?&]DOCUMENTID=([^&]+)/i) || [])[1] || eid || href;
@@ -728,6 +757,11 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         if (deja && deja.fichier && existsSync(deja.fichier)) {
           existants++;
           log(`Deja present : ${deja.fichier.split(/[\\/]/).pop()} (ignore)`);
+          continue;
+        }
+        if (enQuarantaine.has(String(docId))) {
+          dejaQuarantaine++;
+          log(`Deja en quarantaine : ${libelleDoc} (ignore — a traiter dans l’onglet Quarantaine)`);
           continue;
         }
         // Nom de fichier lisible, unique dans le dossier.
@@ -756,13 +790,27 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
         // Verification d'appartenance : le PDF doit mentionner le SIRET/SIREN ou le nom.
         const verif = await verifierEtClasser({ fichier: dest, source: 'urssaf', client, meta: { libelle: libelleDoc, eventid: docId } });
         if (verif.verdict === 'quarantaine') {
-          quarantaines.push(verif.raison);
-          log(`⚠️ QUARANTAINE : ${verif.raison}`);
-          // Un PDF d'un autre compte = toute la messagerie est suspecte (session
-          // dcl restee sur un autre dossier cote URSSAF) : on n'insiste pas, les
-          // documents suivants viendraient de la meme messagerie.
-          log('Telechargements interrompus pour ce client — messagerie d’un autre compte.');
-          break;
+          // Un PDF d'un AUTRE client du portefeuille (son identifiant ET son nom dedans) =
+          // toute la messagerie est suspecte (session dcl restee sur un autre dossier cote
+          // URSSAF) : on n'insiste pas, les documents suivants viendraient de la meme
+          // messagerie. Un courrier GENERIQUE (aucun identifiant, ni de ce client ni d'un
+          // autre) n'est pas un signe de session collante : il part seul en quarantaine.
+          // Le traiter comme tel faisait reconnecter, retenter puis rejeter le client
+          // chaque nuit, sans jamais recuperer ses documents suivants (cas reel).
+          const proprio = await analyserEntree({ chemin: verif.fichier, source: 'urssaf', client, index: indexPortefeuille() }).catch(() => ({
+            verdict: 'erreur',
+          }));
+          if (proprio.verdict === 'autre' || isoles.length + 1 >= ISOLES_MAX) {
+            quarantaines.push(proprio.verdict === 'autre' ? `${verif.raison} (${proprio.motif})` : verif.raison);
+            log(
+              `⚠️ QUARANTAINE : ${verif.raison}${proprio.verdict === 'autre' ? ` — ${proprio.motif}` : ` — ${ISOLES_MAX} PDF rejetes dans cette messagerie`}`,
+            );
+            log('Telechargements interrompus pour ce client — messagerie d’un autre compte.');
+            break;
+          }
+          isoles.push(verif.raison);
+          log(`⚠️ QUARANTAINE (courrier sans identifiant de ce client, isole) : ${verif.raison} — a verifier ; il ne sera plus retelecharge.`);
+          continue;
         }
         if (verif.verdict === 'non_verifiable') nonVerifiables++;
         try {
@@ -792,6 +840,9 @@ async function recupererAppelsClient(context, page, client, { baseFolder, navTim
       message = 'Aucun document disponible';
     } else message = `${docs.length} nouveau(x) document(s), ${existants} deja present(s) sur ${total} piece(s) jointe(s)`;
     if (nonVerifiables > 0) message += ` (${nonVerifiables} non verifiable(s) : PDF sans texte)`;
+    if (dejaQuarantaine > 0) message += ` (${dejaQuarantaine} deja en quarantaine, ignore(s))`;
+    if (isoles.length > 0 && quarantaines.length === 0)
+      message = `⚠️ ${isoles.length} courrier(s) sans identifiant du client mis en quarantaine (a verifier) — ${isoles.join(' ; ').slice(0, 300)}. ${message}`;
     if (quarantaines.length > 0) message = `⚠️ ${quarantaines.length} PDF mis en quarantaine — ${quarantaines.join(' ; ').slice(0, 300)}. ${message}`;
     addRunSafe(client.id, { statut: quarantaines.length > 0 ? 'echec' : 'succes', message, nb_docs: docs.length });
     log(`Termine : ${docs.length} nouveau(x), ${existants} deja present(s) sur ${total} document(s).`);

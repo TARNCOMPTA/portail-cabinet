@@ -7,6 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { creerListeNoire } from './liste-noire.js';
+import { filtreRuns } from './filtre-runs.js';
 import { creerCabinets } from './cabinets-db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -195,12 +196,12 @@ export function addRun(client_id, { statut, message, nb_docs }) {
   db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs) VALUES (?, ?, ?, ?)').run(client_id, statut, message ?? null, nb_docs ?? 0);
 }
 // `depuis` (AAAA-MM-JJ[ HH:MM:SS], UTC comme lance_le) : seulement les passages a partir de cette date.
-export function listRuns(limit = 300, depuis = null) {
+// `clientId` : seulement ce client (tout son historique).
+export function listRuns(limit = 300, depuis = null, clientId = null) {
+  const { where, params } = filtreRuns(depuis, clientId);
   return db
-    .prepare(
-      `SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ${depuis ? 'WHERE r.lance_le >= ?' : ''} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`,
-    )
-    .all(...(depuis ? [depuis, limit] : [limit]));
+    .prepare(`SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ${where} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`)
+    .all(...params, limit);
 }
 
 // Compteurs du tableau de bord (voir src/db.js : trois COUNT(*) au lieu des

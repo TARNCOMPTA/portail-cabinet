@@ -84,3 +84,20 @@ test('listRuns(limite, depuis) : toute la période demandée, rien avant', () =>
   );
   assert.equal(db.listRuns(300).filter((r) => r.client_id === c.id).length, 3, 'sans depuis : comportement inchangé');
 });
+
+test('listRuns(limite, depuis, clientId) : historique d’un seul client', () => {
+  const a = db.createClient({ nom: 'Dr HISTO A', login: 'HISTA', password: 'x' });
+  const b = db.createClient({ nom: 'Dr HISTO B', login: 'HISTB', password: 'x' });
+  const ins = db.db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs, lance_le) VALUES (?, ?, ?, 0, ?)');
+  ins.run(a.id, 'succes', 'A ancien', '2026-09-01 05:00:00');
+  ins.run(b.id, 'echec', 'B', '2026-10-01 05:00:00');
+  ins.run(a.id, 'echec', 'A recent', '2026-11-01 05:00:00');
+  assert.deepEqual(
+    db.listRuns(300, null, a.id).map((r) => r.message),
+    ['A recent', 'A ancien'],
+  );
+  assert.deepEqual(
+    db.listRuns(300, '2026-10-01', a.id).map((r) => r.message),
+    ['A recent'],
+  );
+});

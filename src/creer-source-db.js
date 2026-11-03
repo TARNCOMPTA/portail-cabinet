@@ -7,6 +7,7 @@ import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { encrypt, decrypt } from './crypto.js';
+import { filtreRuns } from './filtre-runs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = resolve(__dirname, '..', 'data');
@@ -242,12 +243,12 @@ export function creerSourceDb(fichier, { profession = false } = {}) {
     db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs) VALUES (?, ?, ?, ?)').run(client_id, statut, message ?? null, nb_docs ?? 0);
   }
   // `depuis` (AAAA-MM-JJ[ HH:MM:SS], UTC comme lance_le) : seulement les passages a partir de cette date.
-  function listRuns(limit = 300, depuis = null) {
+  // `clientId` : seulement ce client (tout son historique).
+  function listRuns(limit = 300, depuis = null, clientId = null) {
+    const { where, params } = filtreRuns(depuis, clientId);
     return db
-      .prepare(
-        `SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ${depuis ? 'WHERE r.lance_le >= ?' : ''} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`,
-      )
-      .all(...(depuis ? [depuis, limit] : [limit]));
+      .prepare(`SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id ${where} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?`)
+      .all(...params, limit);
   }
 
   // Compteurs du tableau de bord. Avant, l'interface telechargeait les listes

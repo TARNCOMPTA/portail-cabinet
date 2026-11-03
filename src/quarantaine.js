@@ -79,6 +79,40 @@ export function listerQuarantaine() {
   return out.sort((a, b) => String(b.date).localeCompare(String(a.date)));
 }
 
+/** Identifiants (eventid) des documents d'un client DÉJÀ en quarantaine, lus dans les
+ *  manifestes. Le robot ne les retélécharge pas : sans cela, un courrier générique
+ *  (sans identifiant du client) repartait en quarantaine chaque nuit, en un nouvel
+ *  exemplaire (cas réel URSSAF : 82 copies du même PDF pour un client). */
+export function eventidsEnQuarantaine(source, clientId) {
+  const ids = new Set();
+  const dir = resolve(QUARANTAINE_DIR, String(source));
+  let dossiers = [];
+  try {
+    dossiers = readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return ids; // aucune quarantaine pour cette source
+  }
+  for (const d of dossiers) {
+    if (!d.isDirectory() || !d.name.startsWith(`${clientId}_`)) continue; // dossier <id>_<nom>
+    let fichiers = [];
+    try {
+      fichiers = readdirSync(resolve(dir, d.name));
+    } catch {
+      continue;
+    }
+    for (const f of fichiers) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const m = JSON.parse(readFileSync(resolve(dir, d.name, f), 'utf8'));
+        if (m.eventid && (m.clientId == null || Number(m.clientId) === Number(clientId))) ids.add(String(m.eventid));
+      } catch {
+        /* manifeste illisible : ignore */
+      }
+    }
+  }
+  return ids;
+}
+
 /** Une entrée précise (ou null). */
 export function trouverQuarantaine(id) {
   return listerQuarantaine().find((q) => q.id === id) || null;
