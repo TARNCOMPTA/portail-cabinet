@@ -263,7 +263,13 @@ export function buildServer() {
     },
     async ({ source, client_id, depuis, statut, limite }) => {
       try {
-        let runs = await apiFetch(SOURCES[source].runs + (depuis ? `?depuis=${encodeURIComponent(depuis)}` : ''));
+        // client_id et depuis filtres EN BASE : l'historique complet d'un client, pas
+        // seulement ses passages parmi les 300 derniers de l'organisme. Le filtre local
+        // reste pour un portail plus ancien qui ignorerait client_id.
+        const q = new URLSearchParams();
+        if (depuis) q.set('depuis', depuis);
+        if (client_id != null) q.set('client_id', String(client_id));
+        let runs = await apiFetch(SOURCES[source].runs + (q.size ? `?${q}` : ''));
         if (client_id != null) runs = runs.filter((r) => r.client_id === client_id);
         if (statut) runs = runs.filter((r) => (statut === 'echecs' ? String(r.statut).startsWith('echec') : r.statut === statut));
         return txt(

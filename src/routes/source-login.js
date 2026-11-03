@@ -24,6 +24,8 @@ export const depuisRequete = (q) => (/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?
 // Avec `depuis`, TOUTE la periode est renvoyee (garde-fou large) : un controle quotidien
 // des echecs ne doit pas les perdre derriere les 300 derniers passages d'une grosse tournee.
 export const RUNS_PERIODE_MAX = 5000;
+// ?client_id=N des routes /runs : historique COMPLET de ce client (null si absent ou invalide).
+export const clientIdRequete = (q) => (/^\d+$/.test(String(q ?? '')) ? Number(q) : null);
 
 export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = false, navigateur = false, ctx, lancerTousPerso }) {
   const r = express.Router();
@@ -66,7 +68,7 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
   });
   r.get('/runs', (req, res) => {
     const depuis = depuisRequete(req.query.depuis);
-    res.json(db.listRuns(depuis ? RUNS_PERIODE_MAX : 300, depuis));
+    res.json(db.listRuns(depuis ? RUNS_PERIODE_MAX : 300, depuis, clientIdRequete(req.query.client_id)));
   });
 
   // ---- Recuperation (un client) ----

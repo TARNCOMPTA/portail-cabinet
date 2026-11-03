@@ -63,7 +63,7 @@ import * as carpv from './src/carpv-db.js';
 import { scrapeClient as scrapeClientCarpv } from './src/scraper-carpv.js';
 import * as ir from './src/ir-db.js';
 import { scrapeClient as scrapeClientIr, lireDiagnostic as lireDiagnosticIr } from './src/scraper-ir.js';
-import { creerRouteurSourceLogin, depuisRequete, RUNS_PERIODE_MAX } from './src/routes/source-login.js';
+import { creerRouteurSourceLogin, depuisRequete, clientIdRequete, RUNS_PERIODE_MAX } from './src/routes/source-login.js';
 import * as urssafDb from './src/urssaf-db.js';
 import { scrapeClient as scrapeClientUrssaf, scrapeAll as scrapeAllUrssaf, listerClients as listerClientsUrssaf } from './src/scraper-urssaf.js';
 import * as fusions from './src/fusions-db.js';
@@ -1284,7 +1284,7 @@ app.get('/api/stats', (req, res) => {
 // ---- Historique -----------------------------------------------------------
 app.get('/api/runs', (req, res) => {
   const depuis = depuisRequete(req.query.depuis);
-  res.json(listRuns(depuis ? RUNS_PERIODE_MAX : 500, depuis));
+  res.json(listRuns(depuis ? RUNS_PERIODE_MAX : 500, depuis, clientIdRequete(req.query.client_id)));
 });
 // `saisie` : un code est attendu dans le bandeau (captcha impots, code CARCDSF) — l'interface
 // doit alors sonder /api/captcha meme si aucune recuperation n'est listee (test de connexion).
@@ -1595,7 +1595,7 @@ app.get('/api/urssaf/documents/:id/file', (req, res) => {
 });
 app.get('/api/urssaf/runs', (req, res) => {
   const depuis = depuisRequete(req.query.depuis);
-  res.json(urssafDb.listRuns(depuis ? RUNS_PERIODE_MAX : 300, depuis));
+  res.json(urssafDb.listRuns(depuis ? RUNS_PERIODE_MAX : 300, depuis, clientIdRequete(req.query.client_id)));
 });
 
 app.post('/api/urssaf/clients/:id/scrape', async (req, res) => {

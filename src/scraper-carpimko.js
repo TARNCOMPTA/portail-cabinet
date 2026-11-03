@@ -65,6 +65,120 @@ async function extraireDocuments(page) {
 }
 
 /**
+ * Connexion a l'espace adherent CARPIMKO avec le numero de dossier et le mot de passe
+ * du client. Leve une erreur `kind: 'mdp'` si le site affiche un refus (verrou
+ * anti-blocage du compte).
+ */
+export async function connecterCarpimko(page, client, { navTimeout, headless, clientDir, log }) {
+  log('Ouverture de la page de connexion');
+  await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
+  await fermerCookies(page);
+
+  // Choix « Affilie » (radio TypeUtilisateur) : retire du site fin octobre 2026, le
+  // formulaire n'a plus que numero de dossier + mot de passe. L'ATTENDRE bloquait 60 s
+  // puis faisait echouer tous les clients : on attend le formulaire (l'un ou l'autre
+  // champ) et on ne coche le radio que s'il existe encore.
+  await page.locator('#Login, input[name="TypeUtilisateur"]').first().waitFor({ state: 'visible' });
+  const radioAffilie = page.locator('input[name="TypeUtilisateur"]').first();
+  if (await radioAffilie.isVisible().catch(() => false))
+    await radioAffilie.check().catch(async () => {
+      const id = await radioAffilie.getAttribute('id');
+      if (id) await page.locator(`label[for="${id}"]`).click();
+    });
+
+  if (!client.password) {
+    const e = new Error('Mot de passe vide pour ce client — re-saisis-le.');
+    e.kind = 'mdp';
+    throw e;
+  }
+  log('Saisie du numero de dossier et du mot de passe');
+  const champUser = page.locator('#Login').first();
+  const champPwd = page.locator('#MotDePasse').first();
+  await champUser.waitFor({ state: 'visible', timeout: navTimeout });
+  await champUser.click().catch(() => {});
+  await champUser.fill(client.login).catch(() => {});
+  await champPwd.waitFor({ state: 'visible', timeout: navTimeout });
+  // Diagnostic : structure reelle du champ mot de passe (pour comprendre pourquoi il ne se remplit pas).
+  try {
+    const diag = await page.evaluate(() => {
+      const f = document.querySelector('#MotDePasse');
+      const cand = [...document.querySelectorAll('input[type="password"]')];
+      return {
+        nbMotDePasse: document.querySelectorAll('#MotDePasse').length,
+        nbInputsPassword: cand.length,
+        iframes: document.querySelectorAll('iframe').length,
+        motDePasse: f
+          ? { type: f.type, name: f.name, disabled: f.disabled, readOnly: f.readOnly, visible: !!f.offsetParent, outer: f.outerHTML.slice(0, 250) }
+          : null,
+        inputsPassword: cand.slice(0, 4).map((e) => ({ id: e.id, name: e.name, disabled: e.disabled, readOnly: e.readOnly, visible: !!e.offsetParent })),
+      };
+    });
+    writeFileSync(resolve(clientDir, '_diag_mdp.json'), JSON.stringify(diag, null, 2), 'utf8');
+    log(`Diag champ mdp : ${JSON.stringify(diag).slice(0, 500)}`);
+  } catch (e) {
+    log(`(diag champ mdp : ${e.message})`);
+  }
+  // Remplissage robuste, avec verification : 1) fill, 2) frappe clavier, 3) injection JS.
+  const pwdRempli = async () => ((await champPwd.inputValue().catch(() => '')) || '').length > 0;
+  await champPwd.click().catch(() => {});
+  await champPwd.fill(client.password).catch(() => {});
+  if (!(await pwdRempli())) {
+    await champPwd.click().catch(() => {});
+    await champPwd.pressSequentially(client.password, { delay: 30 }).catch(() => {});
+  }
+  if (!(await pwdRempli())) {
+    await champPwd
+      .evaluate((el, val) => {
+        el.value = val;
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }, client.password)
+      .catch(() => {});
+  }
+  // Capture AVANT envoi (diagnostic : montre si le mot de passe est bien saisi).
+  try {
+    await page.screenshot({ path: resolve(clientDir, `_avant_envoi_${Date.now()}.png`), fullPage: true });
+  } catch {
+    /* ignore */
+  }
+  // Securite anti-blocage : si le champ est toujours vide, on N'ENVOIE PAS
+  // (eviter de consommer une tentative CARPIMKO pour rien).
+  if (!(await pwdRempli())) {
+    const e = new Error('Impossible de saisir le mot de passe dans le champ CARPIMKO (champ special ?). Envoi annule pour ne pas consommer de tentative.');
+    e.kind = 'mdp';
+    throw e;
+  }
+  await Promise.all([page.waitForLoadState('domcontentloaded'), page.locator('#connexionForm button[type="submit"]').click()]);
+  await page.waitForTimeout(2000);
+
+  if (/Comptes\/Connexion/i.test(page.url())) {
+    // Encore sur la page de connexion : laisser une derniere chance (page lente) avant
+    // de trancher — 2 s de delai fixe ne suffisent pas toujours.
+    await page.waitForURL((u) => !/Comptes\/Connexion/i.test(String(u)), { timeout: 8000 }).catch(() => {});
+  }
+  if (/Comptes\/Connexion/i.test(page.url())) {
+    const erreur = await page
+      .locator('.validation-summary-errors, .field-validation-error, .alert-danger')
+      .first()
+      .innerText()
+      .catch(() => '');
+    const detail = erreur ? erreur.trim().replace(/\s+/g, ' ') : '';
+    // Ne verrouiller le compte que si le site AFFICHE un refus. Sans message, on est
+    // peut-etre simplement sur une page lente ou en erreur : echec reessayable, sinon
+    // le client sort des tournees automatiques avec un mot de passe pourtant valide.
+    const e = new Error(
+      detail
+        ? `Connexion refusee : ${detail}`
+        : 'Connexion CARPIMKO non aboutie (page toujours sur le formulaire, aucun message d’erreur) — nouvelle tentative au prochain passage.',
+    );
+    if (detail) e.kind = 'mdp'; // -> verrou anti-blocage de compte
+    throw e;
+  }
+  log('Connecte.');
+  if (!headless) await page.waitForTimeout(1500); // laisser la main pour une verif email/SMS eventuelle
+}
+
+/**
  * Recupere les documents (appels de cotisations par defaut) d'un client.
  * @param {{id:number, nom:string, login:string, password:string, dossier?:string}} client
  * @param {{onLog?:(m:string)=>void, tousDocuments?:boolean, baseFolder?:string}} [opts]
@@ -94,107 +208,7 @@ export async function scrapeClient(client, opts = {}) {
   const quarantaines = [];
   let nonVerifiables = 0;
   try {
-    log('Ouverture de la page de connexion');
-    await page.goto(LOGIN_URL, { waitUntil: 'domcontentloaded' });
-    await fermerCookies(page);
-
-    const radioAffilie = page.locator('input[name="TypeUtilisateur"]').first();
-    await radioAffilie.waitFor({ state: 'visible' });
-    await radioAffilie.check().catch(async () => {
-      const id = await radioAffilie.getAttribute('id');
-      if (id) await page.locator(`label[for="${id}"]`).click();
-    });
-
-    if (!client.password) {
-      const e = new Error('Mot de passe vide pour ce client — re-saisis-le.');
-      e.kind = 'mdp';
-      throw e;
-    }
-    log('Saisie du numero de dossier et du mot de passe');
-    const champUser = page.locator('#Login').first();
-    const champPwd = page.locator('#MotDePasse').first();
-    await champUser.waitFor({ state: 'visible', timeout: navTimeout });
-    await champUser.click().catch(() => {});
-    await champUser.fill(client.login).catch(() => {});
-    await champPwd.waitFor({ state: 'visible', timeout: navTimeout });
-    // Diagnostic : structure reelle du champ mot de passe (pour comprendre pourquoi il ne se remplit pas).
-    try {
-      const diag = await page.evaluate(() => {
-        const f = document.querySelector('#MotDePasse');
-        const cand = [...document.querySelectorAll('input[type="password"]')];
-        return {
-          nbMotDePasse: document.querySelectorAll('#MotDePasse').length,
-          nbInputsPassword: cand.length,
-          iframes: document.querySelectorAll('iframe').length,
-          motDePasse: f
-            ? { type: f.type, name: f.name, disabled: f.disabled, readOnly: f.readOnly, visible: !!f.offsetParent, outer: f.outerHTML.slice(0, 250) }
-            : null,
-          inputsPassword: cand.slice(0, 4).map((e) => ({ id: e.id, name: e.name, disabled: e.disabled, readOnly: e.readOnly, visible: !!e.offsetParent })),
-        };
-      });
-      writeFileSync(resolve(clientDir, '_diag_mdp.json'), JSON.stringify(diag, null, 2), 'utf8');
-      log(`Diag champ mdp : ${JSON.stringify(diag).slice(0, 500)}`);
-    } catch (e) {
-      log(`(diag champ mdp : ${e.message})`);
-    }
-    // Remplissage robuste, avec verification : 1) fill, 2) frappe clavier, 3) injection JS.
-    const pwdRempli = async () => ((await champPwd.inputValue().catch(() => '')) || '').length > 0;
-    await champPwd.click().catch(() => {});
-    await champPwd.fill(client.password).catch(() => {});
-    if (!(await pwdRempli())) {
-      await champPwd.click().catch(() => {});
-      await champPwd.pressSequentially(client.password, { delay: 30 }).catch(() => {});
-    }
-    if (!(await pwdRempli())) {
-      await champPwd
-        .evaluate((el, val) => {
-          el.value = val;
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }, client.password)
-        .catch(() => {});
-    }
-    // Capture AVANT envoi (diagnostic : montre si le mot de passe est bien saisi).
-    try {
-      await page.screenshot({ path: resolve(clientDir, `_avant_envoi_${Date.now()}.png`), fullPage: true });
-    } catch {
-      /* ignore */
-    }
-    // Securite anti-blocage : si le champ est toujours vide, on N'ENVOIE PAS
-    // (eviter de consommer une tentative CARPIMKO pour rien).
-    if (!(await pwdRempli())) {
-      const e = new Error('Impossible de saisir le mot de passe dans le champ CARPIMKO (champ special ?). Envoi annule pour ne pas consommer de tentative.');
-      e.kind = 'mdp';
-      throw e;
-    }
-    await Promise.all([page.waitForLoadState('domcontentloaded'), page.locator('#connexionForm button[type="submit"]').click()]);
-    await page.waitForTimeout(2000);
-
-    if (/Comptes\/Connexion/i.test(page.url())) {
-      // Encore sur la page de connexion : laisser une derniere chance (page lente) avant
-      // de trancher — 2 s de delai fixe ne suffisent pas toujours.
-      await page.waitForURL((u) => !/Comptes\/Connexion/i.test(String(u)), { timeout: 8000 }).catch(() => {});
-    }
-    if (/Comptes\/Connexion/i.test(page.url())) {
-      const erreur = await page
-        .locator('.validation-summary-errors, .field-validation-error, .alert-danger')
-        .first()
-        .innerText()
-        .catch(() => '');
-      const detail = erreur ? erreur.trim().replace(/\s+/g, ' ') : '';
-      // Ne verrouiller le compte que si le site AFFICHE un refus. Sans message, on est
-      // peut-etre simplement sur une page lente ou en erreur : echec reessayable, sinon
-      // le client sort des tournees automatiques avec un mot de passe pourtant valide.
-      const e = new Error(
-        detail
-          ? `Connexion refusee : ${detail}`
-          : 'Connexion CARPIMKO non aboutie (page toujours sur le formulaire, aucun message d’erreur) — nouvelle tentative au prochain passage.',
-      );
-      if (detail) e.kind = 'mdp'; // -> verrou anti-blocage de compte
-      throw e;
-    }
-    log('Connecte.');
-    if (!headless) await page.waitForTimeout(1500); // laisser la main pour une verif email/SMS eventuelle
+    await connecterCarpimko(page, client, { navTimeout, headless, clientDir, log });
 
     log('Ouverture de « Mes documents & attestations »');
     await page.goto(DOCUMENTS_URL, { waitUntil: 'domcontentloaded' });

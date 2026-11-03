@@ -28,6 +28,7 @@ const RUNS = [
   { lance_le: '2026-11-02 07:00:00', client_id: 1, client_nom: 'A', statut: 'echec', message: 'veille', nb_docs: 0 },
 ];
 const runsDemandes = [];
+const clientsDemandes = [];
 const pagesDemandees = [];
 let srv;
 let client;
@@ -38,9 +39,14 @@ before(async () => {
     if (u.pathname === '/api/urssaf/runs') {
       // Comme le portail : `depuis` renvoie toute la periode, sinon les derniers passages.
       const depuis = u.searchParams.get('depuis');
+      const clientId = u.searchParams.get('client_id');
       runsDemandes.push(depuis);
+      clientsDemandes.push(clientId);
+      let liste = depuis ? RUNS.filter((r) => r.lance_le >= depuis) : RUNS.slice(0, 2);
+      // client_id : tout l'historique du client, y compris hors des derniers passages.
+      if (clientId) liste = RUNS.filter((r) => r.client_id === Number(clientId));
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify(depuis ? RUNS.filter((r) => r.lance_le >= depuis) : RUNS.slice(0, 2)));
+      res.end(JSON.stringify(liste));
       return;
     }
     if (u.pathname !== '/api/quarantaine') {
@@ -127,4 +133,15 @@ test('historique_recuperations : sans filtre, inchangé (derniers passages)', as
   const r = await client.callTool({ name: 'historique_recuperations', arguments: { source: 'urssaf' } });
   assert.equal(runsDemandes.at(-1), null);
   assert.equal(JSON.parse(r.content[0].text).length, 2);
+});
+
+test('historique_recuperations : client_id transmis à l’API (historique complet du client)', async () => {
+  const r = await client.callTool({ name: 'historique_recuperations', arguments: { source: 'urssaf', client_id: 1 } });
+  const lignes = JSON.parse(r.content[0].text);
+  assert.equal(clientsDemandes.at(-1), '1');
+  assert.deepEqual(
+    lignes.map((l) => l.date),
+    ['2026-11-03 07:00:00', '2026-11-02 07:00:00'],
+    'le passage de la veille (hors des 2 derniers passages) est inclus',
+  );
 });

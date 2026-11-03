@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { creerListeNoire } from './liste-noire.js';
 import { creerBannissementIp } from './securite-ip.js';
 import { creerCabinets } from './cabinets-db.js';
+import { filtreRuns } from './filtre-runs.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = resolve(__dirname, '..', 'data');
@@ -277,15 +278,17 @@ export function invaliderRunsDefectueux(depuis) {
     .run(depuis).changes;
 }
 // `depuis` (AAAA-MM-JJ[ HH:MM:SS], UTC comme lance_le) : seulement les passages a partir de cette date.
-export function listRuns(limit = 50, depuis = null) {
+// `clientId` : seulement ce client (tout son historique, pas les derniers passages de la source).
+export function listRuns(limit = 50, depuis = null, clientId = null) {
+  const { where, params } = filtreRuns(depuis, clientId);
   return db
     .prepare(
       `
     SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id
-    ${depuis ? 'WHERE r.lance_le >= ?' : ''} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?
+    ${where} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?
   `,
     )
-    .all(...(depuis ? [depuis, limit] : [limit]));
+    .all(...params, limit);
 }
 
 // Compteurs du tableau de bord. L'interface telechargeait les listes COMPLETES
