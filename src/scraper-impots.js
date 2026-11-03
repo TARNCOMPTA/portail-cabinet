@@ -277,7 +277,7 @@ const LOGIN_PWD_SEL = 'input[name="password"], input[type="password"]';
 const LOGIN_CAPTCHA_SEL = 'input[name="captcha"], #input-captcha';
 
 // Connexion SEMI-AUTO : on pre-remplit e-mail + mot de passe ; il ne reste que la CAPTCHA a saisir.
-async function attendreConnexionManuelle(page, cabinet, log) {
+export async function attendreConnexionManuelle(page, cabinet, log) {
   log('Ouverture de la page de connexion impots...');
   await page.goto(ACCUEIL_URL, { waitUntil: 'domcontentloaded' }).catch(() => {});
   // Deja connecte ? sinon on attend l'accueil "mire" (max 5 min)
@@ -286,36 +286,50 @@ async function attendreConnexionManuelle(page, cabinet, log) {
     return;
   }
 
-  // Pre-remplissage des identifiants (la captcha reste manuelle).
   const champUser = page.locator(LOGIN_USER_SEL).first();
   await champUser.waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
   const login = (cabinet?.login || '').trim();
   const pwd = cabinet?.password || '';
-  if (login && (await champUser.isVisible().catch(() => false))) {
-    try {
+  // Pre-remplit e-mail + mot de passe s'ils sont vides (ou differents), puis remet le
+  // curseur dans la captcha. Rappele a CHAQUE affichage du formulaire : apres une captcha
+  // refusee, le site recharge la page de connexion VIDE, et le second essai partait sans
+  // identifiants. Renvoie le nombre de champs remplis (0 = rien a faire / pas la page).
+  const preRemplir = async () => {
+    if (!login || !(await champUser.isVisible().catch(() => false))) return 0;
+    let remplis = 0;
+    if ((await champUser.inputValue().catch(() => '')) !== login) {
       await champUser.fill(login);
-      if (pwd)
-        await page
-          .locator(LOGIN_PWD_SEL)
-          .first()
-          .fill(pwd)
-          .catch(() => {});
-      if (pwd) {
-        log('E-mail et mot de passe pre-remplis. >>> SAISIS LA CAPTCHA puis clique sur Connexion. <<<');
-        await page
-          .locator(LOGIN_CAPTCHA_SEL)
-          .first()
-          .focus()
-          .catch(() => {});
-      } else {
-        log('E-mail pre-rempli. Saisis ton mot de passe + la captcha (aucun mot de passe enregistre).');
-      }
-    } catch (e) {
-      log(`(pre-remplissage : ${e.message.split('\n')[0]})`);
+      remplis++;
     }
-  } else {
-    log('Connecte-toi dans le navigateur (identifiants + captcha).');
+    const champPwd = page.locator(LOGIN_PWD_SEL).first();
+    if (pwd && (await champPwd.inputValue().catch(() => '')) !== pwd) {
+      await champPwd.fill(pwd).catch(() => {});
+      remplis++;
+    }
+    if (remplis && pwd)
+      await page
+        .locator(LOGIN_CAPTCHA_SEL)
+        .first()
+        .focus()
+        .catch(() => {});
+    return remplis;
+  };
+  try {
+    if (await preRemplir()) {
+      if (pwd) log('E-mail et mot de passe pre-remplis. >>> SAISIS LA CAPTCHA puis clique sur Connexion. <<<');
+      else log('E-mail pre-rempli. Saisis ton mot de passe + la captcha (aucun mot de passe enregistre).');
+    } else log('Connecte-toi dans le navigateur (identifiants + captcha).');
+  } catch (e) {
+    log(`(pre-remplissage : ${e.message.split('\n')[0]})`);
   }
+  // Rechargement du formulaire (captcha refusee, saisie dans le bandeau OU dans noVNC) :
+  // on remet les identifiants.
+  const surRechargement = () => {
+    preRemplir()
+      .then((n) => n && log('Page de connexion rechargee (captcha refusee ?) : identifiants pre-remplis a nouveau.'))
+      .catch(() => {});
+  };
+  if (login) page.on('load', surRechargement);
 
   // Relais captcha : capture l'IMAGE du captcha et la publie dans le portail —
   // l'utilisateur la recopie dans l'interface, sans ouvrir noVNC (qui reste dispo).
@@ -336,6 +350,7 @@ async function attendreConnexionManuelle(page, cabinet, log) {
       image: bufCaptcha,
       // Code tape dans le portail : on le recopie dans la page et on se connecte.
       soumettre: async (code) => {
+        await preRemplir().catch(() => {}); // formulaire vide apres un premier refus
         await page.locator(LOGIN_CAPTCHA_SEL).first().fill(code);
         const btn = page.locator('button[type="submit"], input[type="submit"], #submit, button:has-text("Connexion")').first();
         if (await btn.count().catch(() => 0)) await btn.click().catch(() => {});
@@ -347,7 +362,8 @@ async function attendreConnexionManuelle(page, cabinet, log) {
             .catch(() => {});
         await page.waitForTimeout(3500);
         if (/cfspro\.impots\.gouv\.fr\/mire\//.test(page.url())) return { ok: true, connecte: true };
-        // Toujours sur la page de connexion : code refuse -> nouvelle image.
+        // Toujours sur la page de connexion : code refuse -> identifiants remis, nouvelle image.
+        await preRemplir().catch(() => {});
         const nouvelle = await capturerCaptcha();
         if (nouvelle) captchaRelais.majImage(nouvelle);
         return { ok: false, refuse: true, ...captchaRelais.etat() };
@@ -364,6 +380,7 @@ async function attendreConnexionManuelle(page, cabinet, log) {
   try {
     await page.waitForURL(/cfspro\.impots\.gouv\.fr\/mire\/(accueil|afficherSelectionDossier|afficherChoisirDossier|rechercherDossiers)/, { timeout: 300000 });
   } finally {
+    page.off('load', surRechargement);
     captchaRelais.fermer();
   }
   log('Connexion detectee. Traitement en cours...');
@@ -912,8 +929,7 @@ async function recupererClient(page, client, { baseFolder, navTimeout, log, cont
           tf = await telechargerAvis(page, client, clientDir, 'TF', '[id$="tableauAvisTaxeFonciere_data"]', navTimeout, log);
         }
       } else {
-        if (sel.adelieErreur)
-          throw new Error(`ADELIE répond « Erreur technique » pour ce dossier (SIREN affiché ${sel.affiche || 'inconnu'}) — avis non lus.`);
+        if (sel.adelieErreur) throw new Error(`ADELIE répond « Erreur technique » pour ce dossier (SIREN affiché ${sel.affiche || 'inconnu'}) — avis non lus.`);
         if (sel.contexteIncoherent)
           throw new Error(`Contexte ADELIE incohérent : le site affiche le SIREN ${sel.affiche} au lieu de ${siren} — rien n’a été lu pour ce client.`);
         avisIntrouvable = !!sel.introuvable;
@@ -1055,7 +1071,8 @@ export async function scrapeAll(clients, opts = {}) {
       } else if (r.ok) serieSansAcces.length = 0;
       if (serieSansAcces.length >= SERIE_SANS_ACCES_MAX) {
         const raison = `Série de ${SERIE_SANS_ACCES_MAX}+ dossiers sans accès aux avis (session suspecte) : à refaire`;
-        for (const c of serieSansAcces.length === SERIE_SANS_ACCES_MAX ? serieSansAcces : [client]) addRunSafe(c.id, { statut: 'echec', message: raison, nb_docs: 0 });
+        for (const c of serieSansAcces.length === SERIE_SANS_ACCES_MAX ? serieSansAcces : [client])
+          addRunSafe(c.id, { statut: 'echec', message: raison, nb_docs: 0 });
         r = { ok: false, error: raison, docs: [] };
       }
       resume.traites++;
