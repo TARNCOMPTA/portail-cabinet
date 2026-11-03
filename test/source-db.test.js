@@ -70,3 +70,17 @@ test('getDocument : accès direct par id (indépendant des listes plafonnées)',
   assert.equal(direct.client_nom, c.nom, 'joint le nom du client');
   assert.equal(db.getDocument(999999), undefined, 'id inconnu -> undefined');
 });
+
+test('listRuns(limite, depuis) : toute la période demandée, rien avant', () => {
+  const c = db.createClient({ nom: 'Dr RUNS', login: 'RUNS1', password: 'x' });
+  const ins = db.db.prepare('INSERT INTO runs (client_id, statut, message, nb_docs, lance_le) VALUES (?, ?, ?, 0, ?)');
+  ins.run(c.id, 'succes', 'ancien', '2026-10-30 23:59:59');
+  ins.run(c.id, 'echec', 'du jour 1', '2026-10-31 00:00:00');
+  ins.run(c.id, 'echec_mdp', 'du jour 2', '2026-10-31 08:15:00');
+  const periode = db.listRuns(5000, '2026-10-31').filter((r) => r.client_id === c.id);
+  assert.deepEqual(
+    periode.map((r) => r.message),
+    ['du jour 2', 'du jour 1'],
+  );
+  assert.equal(db.listRuns(300).filter((r) => r.client_id === c.id).length, 3, 'sans depuis : comportement inchangé');
+});

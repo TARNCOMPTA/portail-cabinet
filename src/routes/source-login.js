@@ -19,6 +19,12 @@ import { filtrerReprise, REPRISE_HEURES, creerDisjoncteur, ECHECS_CONSECUTIFS_MA
  *     peut se rabattre sur la tournee par defaut `defaut(extra)`.
  * @returns {{router:import('express').Router, lancerTous:(opts?:object)=>object}}
  */
+// ?depuis=AAAA-MM-JJ[ HH:MM:SS] des routes /runs (UTC, comme lance_le) ; null si absent ou invalide.
+export const depuisRequete = (q) => (/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}(:\d{2})?)?$/.test(String(q || '')) ? String(q) : null);
+// Avec `depuis`, TOUTE la periode est renvoyee (garde-fou large) : un controle quotidien
+// des echecs ne doit pas les perdre derriere les 300 derniers passages d'une grosse tournee.
+export const RUNS_PERIODE_MAX = 5000;
+
 export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = false, navigateur = false, ctx, lancerTousPerso }) {
   const r = express.Router();
   const { enCours, progression, progLog, demarrerSuivi, terminerSuivi } = ctx;
@@ -58,7 +64,10 @@ export function creerRouteurSourceLogin(source, { db, scraper, tousDocuments = f
     if (!doc || !existsSync(doc.fichier)) return res.status(404).json({ error: 'Fichier introuvable.' });
     res.download(doc.fichier, basename(doc.fichier));
   });
-  r.get('/runs', (req, res) => res.json(db.listRuns(300)));
+  r.get('/runs', (req, res) => {
+    const depuis = depuisRequete(req.query.depuis);
+    res.json(db.listRuns(depuis ? RUNS_PERIODE_MAX : 300, depuis));
+  });
 
   // ---- Recuperation (un client) ----
   async function lancerUn(clientId, res, extra = {}) {

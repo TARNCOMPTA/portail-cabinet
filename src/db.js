@@ -276,15 +276,16 @@ export function invaliderRunsDefectueux(depuis) {
     )
     .run(depuis).changes;
 }
-export function listRuns(limit = 50) {
+// `depuis` (AAAA-MM-JJ[ HH:MM:SS], UTC comme lance_le) : seulement les passages a partir de cette date.
+export function listRuns(limit = 50, depuis = null) {
   return db
     .prepare(
       `
     SELECT r.*, c.nom AS client_nom FROM runs r LEFT JOIN clients c ON c.id = r.client_id
-    ORDER BY r.lance_le DESC, r.id DESC LIMIT ?
+    ${depuis ? 'WHERE r.lance_le >= ?' : ''} ORDER BY r.lance_le DESC, r.id DESC LIMIT ?
   `,
     )
-    .all(limit);
+    .all(...(depuis ? [depuis, limit] : [limit]));
 }
 
 // Compteurs du tableau de bord. L'interface telechargeait les listes COMPLETES
