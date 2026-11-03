@@ -1,6 +1,6 @@
 {
-  "version": "1.13.21",
-  "notes": "Connecteur-Claude-quarantaine-et-echecs-du-jour-controle-quotidien",
+  "version": "1.13.22",
+  "notes": "Impots-identifiants-re-remplis-apres-captcha-refusee",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "8a7b2617d8114fccb8bc6fd3ee9d70d152f98c7403a339d998a0e17574c41c64"
+  "sha256": "6807cf56ab01d9fc51afdb092d84d0096cb2fc4eae643650112366608e63250f"
 }
