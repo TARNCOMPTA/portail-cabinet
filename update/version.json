@@ -1,6 +1,6 @@
 {
-  "version": "1.13.22",
-  "notes": "Impots-identifiants-re-remplis-apres-captcha-refusee",
+  "version": "1.13.23",
+  "notes": "CARPIMKO-connexion-nouveau-formulaire-URSSAF-fin-boucle-quarantaine-diagnostics",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "6807cf56ab01d9fc51afdb092d84d0096cb2fc4eae643650112366608e63250f"
+  "sha256": "4a55c759a43613bf723c7eccc275992a8fd3911b38919a98cec0e504e06ae899"
 }
