@@ -12,7 +12,9 @@ const FAQ_GENERIQUE =
   '… résilier votre contrat de mensualisation ? comment signaler un changement de coordonnées bancaires ? ' +
   '… modifier le montant de vos prélèvements mensuels ? … suspendre vos prélèvements mensuels ? vous êtes mensualisé et vous souhaitez ... ' +
   'le prélèvement à l’échéance avantages : – vos impôts sont prélevés automatiquement sur le compte bancaire de votre choix. ' +
-  'quand ? si vous adhérez d’ici le 30 novembre, votre impôt sera payé par prélèvement automatique.';
+  'quand ? si vous adhérez d’ici le 30 novembre, votre impôt sera payé par prélèvement automatique. ' +
+  // Notice des avis 2025-2026 (relevée sur l'avis CFE 2026 de la SARL KAMPA) :
+  "il vous faudra votre numéro fiscal et votre numéro de contrat de prélèvement mensuel ou à l'échéance, tous deux inscrits en 1 re page de votre avis dans le cadre « vos références ».";
 
 test('prélèvement à l’échéance : mention personnalisée « vous avez choisi »', () => {
   assert.equal(
@@ -51,4 +53,16 @@ test('FAQ générique seule (aucune mention personnalisée) : rien de détectabl
   assert.equal(detecterPaiementCfe('Avis de taxe foncière — propriétés bâties.'), null);
   assert.equal(detecterPaiementCfe(''), null);
   assert.equal(detecterPaiementCfe(null), null);
+});
+
+test('avis 2026 sans prélèvement : la notice « numéro de contrat de prélèvement mensuel ou à l’échéance » ne compte pas', () => {
+  // Extrait réel (avis CFE 2026, SARL KAMPA) : affiché « mensualisé » à tort.
+  assert.equal(
+    detecterPaiementCfe(
+      `vos références montant de votre impôt 210,00 € montant à payer 210,00 € au plus tard le 15/12/2026 numéro de rôle : 092 ` +
+        `à ce jour, vous n'avez pas adhéré à un prélèvement automatique. vous pouvez payer le montant de votre impôt par deux moyens : ` +
+        `en optant pour le prélèvement à l'échéance d'ici au 30 novembre 2026 inclus ou en payant en ligne. ${FAQ_GENERIQUE}`,
+    ),
+    'aucun',
+  );
 });

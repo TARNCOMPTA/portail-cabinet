@@ -212,19 +212,24 @@ export function normaliser(texte) {
  *  2021-2025) :
  *    échéance   : « vous avez choisi le prélèvement à l'échéance »
  *    mensualisé : « contrat de mensualisation au nom de », « numéro de
- *                  contrat de prélèvement mensuel » (l'avis à l'échéance a un
- *                  « numéro de contrat de prélèvement » SANS « mensuel »),
- *                  « vous avez choisi/opté pour le prélèvement mensuel »
+ *                  contrat de prélèvement mensuel » SUIVI de la référence du
+ *                  contrat (« : M0 81 … » ; l'avis à l'échéance a un « numéro de
+ *                  contrat de prélèvement » SANS « mensuel »), « vous avez
+ *                  choisi/opté pour le prélèvement mensuel »
+ *  La notice des avis 2025-2026 cite AUSSI « votre numéro de contrat de
+ *  prélèvement mensuel ou à l'échéance, tous deux inscrits en 1re page » :
+ *  phrase générique, d'où l'exigence de la référence (cas réel : SARL KAMPA,
+ *  sans prélèvement, affichée « mensualisée »).
  *    aucun      : « vous n'avez pas adhéré à un prélèvement automatique »
  *  Renvoie 'aucun' | 'mensualise' | 'echeance' | null. */
 // Version des motifs : l'incrémenter relance la retro-analyse de tous les avis
 // au prochain démarrage du serveur (les modes mémorisés sont oubliés).
-export const PAIEMENT_CFE_VERSION = 2;
+export const PAIEMENT_CFE_VERSION = 3;
 export function detecterPaiementCfe(texte) {
   const t = normaliser(texte);
   if (!t) return null;
   if (/avez (choisi|opte pour) le prelevement a l.{0,2}echeance/.test(t)) return 'echeance';
-  if (/contrat de mensualisation au nom de|numero de contrat de prelevement mensuel|avez (choisi|opte pour) le prelevement mensuel/.test(t))
+  if (/contrat de mensualisation au nom de|numero de contrat de prelevement mensuel\s*:?\s*[a-z]?\s?\d|avez (choisi|opte pour) le prelevement mensuel/.test(t))
     return 'mensualise';
   if (/pas adhere a un prelevement/.test(t)) return 'aucun';
   return null;

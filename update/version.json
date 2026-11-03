@@ -1,6 +1,6 @@
 {
-  "version": "1.13.23",
-  "notes": "CARPIMKO-connexion-nouveau-formulaire-URSSAF-fin-boucle-quarantaine-diagnostics",
+  "version": "1.13.24",
+  "notes": "CFE-avis-sans-prelevement-n-est-plus-affiche-mensualise-reanalyse-des-avis",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "4a55c759a43613bf723c7eccc275992a8fd3911b38919a98cec0e504e06ae899"
+  "sha256": "2274abead997659d55f0213b0e2cfbd29889ce66cf09cff4a3d46548fc904952"
 }
