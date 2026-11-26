@@ -204,7 +204,8 @@ function clientsFiltres() {
   // Filtres « paiement CFE » (mode détecté sur le dernier avis CFE du client).
   if (etat.startsWith('cfe-')) liste = liste.filter((c) => c.paiement_cfe === etat.slice(4));
   else if (etat) liste = liste.filter((c) => filtreEtatClient(c, etat));
-  if (q) liste = liste.filter((c) => `${c.nom} ${c.siret} ${c.cabinet_libelle || ''}`.toLowerCase().includes(q));
+  // Sans accents : « wazai » trouve « SAS WAZAÏ ».
+  if (q) liste = liste.filter((c) => norm(`${c.nom} ${c.siret} ${c.cabinet_libelle || ''}`).includes(norm(q)));
   const { col, dir } = clientsTri;
   const val = (c) =>
     ({

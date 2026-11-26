@@ -36,6 +36,16 @@ let client;
 before(async () => {
   srv = createServer((req, res) => {
     const u = new URL(req.url, 'http://localhost');
+    if (u.pathname === '/api/clients') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify([
+          { id: 645, nom: 'SAS WAZAÏ', siret: '988540357' },
+          { id: 271, nom: 'M AZAIS YOLAND', siret: '802591354' },
+        ]),
+      );
+      return;
+    }
     if (u.pathname === '/api/urssaf/runs') {
       // Comme le portail : `depuis` renvoie toute la periode, sinon les derniers passages.
       const depuis = u.searchParams.get('depuis');
@@ -143,5 +153,13 @@ test('historique_recuperations : client_id transmis à l’API (historique compl
     lignes.map((l) => l.date),
     ['2026-11-03 07:00:00', '2026-11-02 07:00:00'],
     'le passage de la veille (hors des 2 derniers passages) est inclus',
+  );
+});
+
+test('lister_clients : recherche sans accents (« wazai » trouve « SAS WAZAÏ »)', async () => {
+  const r = await client.callTool({ name: 'lister_clients', arguments: { source: 'impots', recherche: 'wazai' } });
+  assert.deepEqual(
+    JSON.parse(r.content[0].text).map((c) => c.nom),
+    ['SAS WAZAÏ'],
   );
 });

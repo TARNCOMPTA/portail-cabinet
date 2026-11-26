@@ -32,7 +32,7 @@ function initSourceUI({ prefix: P, source, label, profession = false, tousDocume
   function rendre() {
     const q = filtre.toLowerCase();
     let liste = q
-      ? clients.filter((c) => `${c.nom} ${c.login} ${profession ? PRO[c.profession] || '' : ''} ${c.notes || ''}`.toLowerCase().includes(q))
+      ? clients.filter((c) => norm(`${c.nom} ${c.login} ${profession ? PRO[c.profession] || '' : ''} ${c.notes || ''}`).includes(norm(q))) // sans accents (norm : app.js)
       : clients;
     if (filtreEtat) liste = liste.filter((c) => filtreEtatClient(c, filtreEtat));
     const totalPages = Math.max(1, Math.ceil(liste.length / PAR_PAGE));

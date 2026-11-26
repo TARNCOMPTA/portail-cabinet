@@ -1,6 +1,6 @@
 {
-  "version": "1.13.24",
-  "notes": "CFE-avis-sans-prelevement-n-est-plus-affiche-mensualise-reanalyse-des-avis",
+  "version": "1.13.25",
+  "notes": "Impots-reponse-DGFiP-recuperee-dans-un-echange-deja-connu-attestation-recherche-sans-accents",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "2274abead997659d55f0213b0e2cfbd29889ce66cf09cff4a3d46548fc904952"
+  "sha256": "1a924596750eb779d8c99d24e7f9d297f9bc55f3ba42c38b4fb23911f22fc351"
 }

@@ -15,14 +15,15 @@
 //      (icone PDF colonne "Avis principal") -> clic = telechargement du PDF.
 
 import { chromium } from 'playwright';
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
+import { mkdirSync, writeFileSync, existsSync, readFileSync } from 'node:fs';
+import { resolve, dirname, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { addDocument, addRun, getDocumentByEventid } from './db.js';
+import { addDocument, addRun, getDocumentByEventid, listDocuments } from './db.js';
 import { launchArgs } from './navigateur.js';
 import { sanitize, dansPeriode, anneeMinimale } from './scraper-commun.js';
 import { verifierEtClasser, extraireTextePdf, detecterPaiementCfe } from './validation-pdf.js';
 import * as captchaRelais from './captcha-relais.js';
+import { eventidsEnQuarantaine } from './quarantaine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads');
@@ -53,6 +54,30 @@ const mireBase = () => process.env.IMPOTS_MIRE_URL || 'https://cfspro.impots.gou
 const HAB_AVIS = 'consulter.avis.cfe';
 const HAB_COMPTE_FISCAL = 'consulter.adelie.le_compte_fiscal';
 const HAB_MESSAGERIE = 'messagerie.gaia2.messagerie';
+// Echanges de la messagerie DEJA enregistres mais recents (date de l'echange) : relus a
+// chaque passage. La DGFiP repond DANS le meme echange (meme numero) : une attestation
+// demandee arrive en piece jointe de la reponse, des jours apres la demande. Sans relecture,
+// l'echange enregistre au moment de la demande n'etait jamais rouvert et la reponse jamais
+// recuperee (cas reel : attestation de regularite fiscale de la SAS WAZAÏ).
+const RELIRE_ECHANGES_JOURS = 90;
+const dateEchange = (d) => {
+  const m = String(d || '').match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? Date.UTC(Number(m[3]), Number(m[2]) - 1, Number(m[1])) : null;
+};
+const echangeRecent = (d) => {
+  const t = dateEchange(d);
+  return t != null && Date.now() - t <= RELIRE_ECHANGES_JOURS * 86400000;
+};
+// Corps d'un message deja enregistre (apres l'en-tete N°/Service/Date et le trait).
+const corpsMessage = (fichier) => {
+  try {
+    const txt = readFileSync(fichier, 'utf8');
+    const i = txt.indexOf(`${'-'.repeat(60)}\n\n`);
+    return (i >= 0 ? txt.slice(i + 62) : txt).trim();
+  } catch {
+    return '';
+  }
+};
 
 // Lit les dossiers (nom + SIREN) presents sur une page « Mes dossiers » : un lien par carte,
 // dossierSelect.do?...&idDossier=<SIREN>, dont le texte est le nom du dossier.
@@ -449,7 +474,7 @@ async function telechargerAvis(page, client, clientDir, prefixe, tableSel, navTi
 // Messagerie securisee "Mes echanges" (gaia2) d'un dossier : enregistre le TEXTE de
 // chaque echange (+ pieces jointes si presentes) dans <clientDir>/Messagerie, par ordre
 // chronologique. La liste est une datatable PrimeFaces ; ouvrir un N° deplie le message.
-async function recupererMessagerie(page, context, client, clientDir, navTimeout, log) {
+export async function recupererMessagerie(page, context, client, clientDir, navTimeout, log) {
   const siren = String(client.siret || '')
     .replace(/\D/g, '')
     .slice(0, 9);
@@ -505,10 +530,12 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
       if (popup) await popup.close().catch(() => {});
       return { docs, existants, quarantaines, nonVerifiables };
     }
-    // Comparaison IMMEDIATE des numeros avec la base : si aucun nouveau, on passe
-    // au dossier suivant sans derouler la liste (les connus ne sont jamais rouverts).
-    const nouveauxEchanges = echanges.filter((e) => !getDocumentByEventid(client.id, `MSG_${e.num}`));
-    if (!nouveauxEchanges.length) {
+    // Comparaison IMMEDIATE des numeros avec la base : les echanges connus et anciens ne
+    // sont pas rouverts ; les connus RECENTS sont relus (reponse arrivee depuis ?).
+    const connu = (e) => !!getDocumentByEventid(client.id, `MSG_${e.num}`);
+    const nouveauxEchanges = echanges.filter((e) => !connu(e));
+    const aRelire = echanges.filter((e) => connu(e) && echangeRecent(e.date));
+    if (!nouveauxEchanges.length && !aRelire.length) {
       existants += echanges.length;
       log(`Messagerie : ${echanges.length} échange(s), aucun nouveau — passage au suivant.`);
       if (popup) await popup.close().catch(() => {});
@@ -518,13 +545,19 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
     // ordre chronologique (date de création croissante)
     const cle = (d) => (d || '').split('/').reverse().join('');
     nouveauxEchanges.sort((a, b) => cle(a.date).localeCompare(cle(b.date)));
-    log(`Messagerie : ${echanges.length} échange(s), ${nouveauxEchanges.length} nouveau(x).`);
+    log(
+      `Messagerie : ${echanges.length} échange(s), ${nouveauxEchanges.length} nouveau(x)` +
+        (aRelire.length ? `, ${aRelire.length} récent(s) relu(s) (réponse éventuelle).` : '.'),
+    );
+    // PJ deja en quarantaine (manifestes) : jamais retelechargees.
+    const pjEnQuarantaine = eventidsEnQuarantaine('impots', client.id);
 
-    for (const e of nouveauxEchanges) {
+    for (const e of [...nouveauxEchanges, ...aRelire]) {
+      const relecture = aRelire.includes(e);
       const base = sanitize(`${(e.date || '').replace(/\//g, '-')}_${e.num}_${e.objet}`).slice(0, 110);
-      const dest = resolve(dir, `${base}.txt`);
       const eid = `MSG_${e.num}`;
-      if (existsSync(dest) || getDocumentByEventid(client.id, eid)) {
+      const dest = (relecture && getDocumentByEventid(client.id, eid)?.fichier) || resolve(dir, `${base}.txt`);
+      if (!relecture && (existsSync(dest) || getDocumentByEventid(client.id, eid))) {
         existants++;
         try {
           addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid });
@@ -543,38 +576,41 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
         await gaia.waitForTimeout(1400);
         // Extraction en cascade : 1) bloc "Objet :" + "De :/A :" ; 2) "Objet :" seul ;
         // 3) ligne de detail depliee PrimeFaces (row expansion) ; 4) dialogue visible.
+        // Les lignes depliees des echanges ouverts AVANT dans ce passage restent ouvertes
+        // (PrimeFaces) : on retient en priorite le bloc qui porte le N° de CET echange
+        // (« Ma demande N°… »), sinon le texte d'un autre echange etait enregistre ici.
         const extraireTexte = () =>
           gaia
-            .evaluate(() => {
+            .evaluate((num) => {
               const nettoyer = (t) =>
                 String(t || '')
                   .replace(/[ \t]+\n/g, '\n')
                   .replace(/\n{3,}/g, '\n\n')
                   .trim();
-              let best = null,
-                len = 1e9;
-              for (const el of document.querySelectorAll('td,div,fieldset,section')) {
-                const t = el.innerText || '';
-                if (/Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 40 && t.length < len) {
-                  best = el;
-                  len = t.length;
-                }
-              }
-              if (!best) {
+              const plusPetit = (accepte) => {
+                let best = null,
+                  len = 1e9;
                 for (const el of document.querySelectorAll('td,div,fieldset,section')) {
                   const t = el.innerText || '';
-                  if (/Objet\s*:/.test(t) && t.length > 20 && t.length < len) {
+                  if (accepte(t) && t.length < len) {
                     best = el;
                     len = t.length;
                   }
                 }
-              }
+                return best;
+              };
+              const complet = (t) => /Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 40;
+              const best =
+                plusPetit((t) => complet(t) && t.includes(num)) || plusPetit(complet) || plusPetit((t) => /Objet\s*:/.test(t) && t.length > 20);
               if (best) return nettoyer(best.innerText);
               let detail = '';
+              let detailNum = '';
               for (const tr of document.querySelectorAll('tr.ui-expanded-row-content')) {
                 const t = (tr.innerText || '').trim();
+                if (t.includes(num) && t.length > detailNum.length) detailNum = t;
                 if (t.length > detail.length) detail = t;
               }
+              if (detailNum.length > 10) return nettoyer(detailNum);
               if (detail.length > 10) return nettoyer(detail);
               for (const d of document.querySelectorAll('.ui-dialog')) {
                 if (d.offsetParent !== null) {
@@ -583,7 +619,7 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
                 }
               }
               return '';
-            })
+            }, e.num)
             .catch(() => '');
         let texte = await extraireTexte();
         if (!texte) {
@@ -601,26 +637,46 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
             .filter((l) => l && !connues.has(l));
           if (nouvelles.join('').length > 10) texte = nouvelles.slice(0, 200).join('\n');
         }
-        if (!texte) {
-          // Diagnostic : capture de l'ecran pour comprendre l'affichage de ce type de message.
-          await gaia.screenshot({ path: resolve(dir, `_diag_msg_${e.num}.png`), fullPage: true }).catch(() => {});
+        const ecrire = (corps) =>
+          writeFileSync(dest, `N° ${e.num} — ${e.objet}\nService : ${e.service}\nDate : ${e.date}\n${'-'.repeat(60)}\n\n${corps}\n`, 'utf8');
+        if (relecture) {
+          // Echange deja enregistre : on ne reecrit le message que si son contenu a change
+          // (reponse de la DGFiP ajoutee), jamais avec un texte vide, et seulement si le texte
+          // lu porte bien SON numero (« Ma demande N°… ») : une ligne depliee d'un autre
+          // echange ne doit jamais ecraser ce message.
+          if (texte && texte.includes(e.num) && texte.trim() !== corpsMessage(dest)) {
+            ecrire(texte);
+            docs.push({ libelle: `Message ${e.date} (mis à jour)`, fichier: dest });
+            log(`Message mis à jour (nouveau contenu, réponse ?) : ${basename(dest)}`);
+          }
+        } else {
+          if (!texte) {
+            // Diagnostic : capture de l'ecran pour comprendre l'affichage de ce type de message.
+            await gaia.screenshot({ path: resolve(dir, `_diag_msg_${e.num}.png`), fullPage: true }).catch(() => {});
+          }
+          // Filet de securite : MEME sans texte extrait, on enregistre le message (sinon
+          // il n'apparait pas dans l'onglet Messages alors que ses PJ sont recuperees).
+          ecrire(
+            texte || '(Texte non extrait automatiquement — consulter la messagerie sur impots.gouv.fr. Pièces jointes récupérées ci-dessous le cas échéant.)',
+          );
+          try {
+            addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid });
+          } catch {}
+          docs.push({ libelle: `Message ${e.date}`, fichier: dest });
+          log(texte ? `OK : ${base}.txt` : `OK (texte non extrait, message enregistré quand même) : ${base}.txt`);
         }
-        // Filet de securite : MEME sans texte extrait, on enregistre le message (sinon
-        // il n'apparait pas dans l'onglet Messages alors que ses PJ sont recuperees).
-        const corps =
-          texte || '(Texte non extrait automatiquement — consulter la messagerie sur impots.gouv.fr. Pièces jointes récupérées ci-dessous le cas échéant.)';
-        writeFileSync(dest, `N° ${e.num} — ${e.objet}\nService : ${e.service}\nDate : ${e.date}\n${'-'.repeat(60)}\n\n${corps}\n`, 'utf8');
-        try {
-          addDocument(client.id, { libelle: `Message ${e.date} ${e.objet}`.slice(0, 150), fichier: dest, eventid: eid });
-        } catch {}
-        docs.push({ libelle: `Message ${e.date}`, fichier: dest });
-        log(texte ? `OK : ${base}.txt` : `OK (texte non extrait, message enregistré quand même) : ${base}.txt`);
         // Pieces jointes : liens PrimeFaces (id finissant par ":downloadFile", texte = nom
         // du fichier), limites a la ligne du message ouvert (index de la datatable).
         const idx = (e.id.match(/listeDemandes:(\d+):/) || [])[1];
         const pjSel = idx != null ? `a[id^="listeDemandesForm:listeDemandes:${idx}:"][id$="downloadFile"]` : 'a[id$="downloadFile"]';
         const pjLiens = gaia.locator(pjSel);
         const npj = await pjLiens.count().catch(() => 0);
+        // PJ deja recuperees pour cet echange (noms de fichiers) : une relecture ne
+        // retelecharge que les NOUVELLES (celles de la reponse).
+        const pjConnues = listDocuments(client.id)
+          .filter((d) => String(d.eventid || '').startsWith(`${eid}_PJ`))
+          .map((d) => basename(String(d.fichier || '')));
+        const prefixeDate = `${(e.date || '').replace(/\//g, '-')}_`;
         for (let k = 0; k < npj; k++) {
           try {
             const nomLien = (
@@ -629,30 +685,41 @@ async function recupererMessagerie(page, context, client, clientDir, navTimeout,
                 .innerText()
                 .catch(() => '')
             ).trim();
+            const nomLienSan = nomLien ? sanitize(nomLien) : '';
+            if (nomLienSan && pjConnues.includes(`${prefixeDate}${nomLienSan}`)) continue; // deja recuperee
+            if (relecture && (pjEnQuarantaine.has(`${eid}_PJ${k + 1}`) || (nomLienSan && pjEnQuarantaine.has(`${eid}_PJ_${nomLienSan}`)))) continue;
             const [dl] = await Promise.all([gaia.waitForEvent('download', { timeout: navTimeout }), pjLiens.nth(k).click()]);
             const nomPj = sanitize(dl.suggestedFilename() || nomLien || `${e.num}_pj${k + 1}`);
-            const destPj = resolve(dir, `${(e.date || '').replace(/\//g, '-')}_${nomPj}`);
+            const destPj = resolve(dir, `${prefixeDate}${nomPj}`);
+            if (pjConnues.includes(basename(destPj))) {
+              await dl.cancel().catch(() => {});
+              continue; // nom du lien different du nom de fichier, mais deja recuperee
+            }
             await dl.saveAs(destPj);
+            // Identifiant : rang de la PJ si libre (comportement historique), sinon son nom
+            // (une reponse peut decaler les rangs des PJ deja connues).
+            const eidPj = getDocumentByEventid(client.id, `${eid}_PJ${k + 1}`) ? `${eid}_PJ_${nomPj}` : `${eid}_PJ${k + 1}`;
             // Verification d'appartenance des PJ au format PDF (les scans restent tolerés).
             if (/\.pdf$/i.test(destPj)) {
               const verif = await verifierEtClasser({
                 fichier: destPj,
                 source: 'impots',
                 client,
-                meta: { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), eventid: `${eid}_PJ${k + 1}` },
+                meta: { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), eventid: eidPj },
               });
               if (verif.verdict === 'quarantaine') {
                 quarantaines.push(verif.raison);
                 log(`⚠️ QUARANTAINE : ${verif.raison}`);
-                continue; // pas d'addDocument -> retelechargee et reverifiee au prochain run
+                continue; // pas d'addDocument ; son eventid reste dans le manifeste de quarantaine
               }
               if (verif.verdict === 'non_verifiable') nonVerifiables++;
             }
             try {
-              addDocument(client.id, { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), fichier: destPj, eventid: `${eid}_PJ${k + 1}` });
+              addDocument(client.id, { libelle: `PJ ${e.date} ${nomPj}`.slice(0, 150), fichier: destPj, eventid: eidPj });
             } catch {}
+            pjConnues.push(basename(destPj));
             docs.push({ libelle: `PJ ${e.date}`, fichier: destPj });
-            log(`OK (PJ) : ${nomPj}`);
+            log(`OK (PJ) : ${nomPj}${relecture ? ' (nouvelle pièce jointe d’un échange déjà connu)' : ''}`);
           } catch {
             /* pas de telechargement pour ce lien */
           }

@@ -133,7 +133,7 @@
     let liste = clients;
     if (filtreCab) liste = liste.filter((c) => String(c.cabinet_id) === filtreCab);
     if (filtreEtat) liste = liste.filter((c) => filtreEtatClient(c, filtreEtat));
-    if (q) liste = liste.filter((c) => `${c.nom} ${c.siret} ${c.cabinet_libelle || ''}`.toLowerCase().includes(q));
+    if (q) liste = liste.filter((c) => norm(`${c.nom} ${c.siret} ${c.cabinet_libelle || ''}`).includes(norm(q))); // sans accents (norm : app.js)
     const totalPages = Math.max(1, Math.ceil(liste.length / PAR_PAGE));
     if (page > totalPages) page = totalPages;
     if (page < 1) page = 1;
