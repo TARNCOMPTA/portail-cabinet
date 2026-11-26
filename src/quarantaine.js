@@ -84,13 +84,34 @@ export function listerQuarantaine() {
  *  (sans identifiant du client) repartait en quarantaine chaque nuit, en un nouvel
  *  exemplaire (cas réel URSSAF : 82 copies du même PDF pour un client). */
 export function eventidsEnQuarantaine(source, clientId) {
-  const ids = new Set();
+  return new Set(
+    manifestesClient(source, clientId)
+      .filter((m) => m.eventid)
+      .map((m) => String(m.eventid)),
+  );
+}
+
+/** Noms des fichiers d'origine (chemin avant mise en quarantaine) des documents d'un client
+ *  en quarantaine, limites a ceux dont l'eventid commence par `prefixeEventid` (ex. les PJ
+ *  d'UN echange : « MSG_<num>_PJ »). Pour les pieces jointes, le nom est plus sur que
+ *  l'eventid seul : celui-ci peut porter un RANG, qu'une reponse ajoutee a l'echange decale. */
+export function fichiersEnQuarantaine(source, clientId, prefixeEventid = '') {
+  return new Set(
+    manifestesClient(source, clientId)
+      .filter((m) => m.origine && String(m.eventid || '').startsWith(prefixeEventid))
+      .map((m) => basename(String(m.origine))),
+  );
+}
+
+// Manifestes des documents d'un client en quarantaine (dossiers <id>_<nom> de la source).
+function manifestesClient(source, clientId) {
+  const out = [];
   const dir = resolve(QUARANTAINE_DIR, String(source));
   let dossiers = [];
   try {
     dossiers = readdirSync(dir, { withFileTypes: true });
   } catch {
-    return ids; // aucune quarantaine pour cette source
+    return out; // aucune quarantaine pour cette source
   }
   for (const d of dossiers) {
     if (!d.isDirectory() || !d.name.startsWith(`${clientId}_`)) continue; // dossier <id>_<nom>
@@ -104,13 +125,13 @@ export function eventidsEnQuarantaine(source, clientId) {
       if (!f.endsWith('.json')) continue;
       try {
         const m = JSON.parse(readFileSync(resolve(dir, d.name, f), 'utf8'));
-        if (m.eventid && (m.clientId == null || Number(m.clientId) === Number(clientId))) ids.add(String(m.eventid));
+        if (m.clientId == null || Number(m.clientId) === Number(clientId)) out.push(m);
       } catch {
         /* manifeste illisible : ignore */
       }
     }
   }
-  return ids;
+  return out;
 }
 
 /** Une entrée précise (ou null). */

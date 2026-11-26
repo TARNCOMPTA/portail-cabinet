@@ -1,6 +1,6 @@
 {
-  "version": "1.13.25",
-  "notes": "Impots-reponse-DGFiP-recuperee-dans-un-echange-deja-connu-attestation-recherche-sans-accents",
+  "version": "1.13.26",
+  "notes": "Messagerie-impots-corrections-relecture-automatique-texte-des-echanges-PJ-en-quarantaine",
   "url": "https://raw.githubusercontent.com/TARNCOMPTA/portail-cabinet/main/update/app.zip",
-  "sha256": "1a924596750eb779d8c99d24e7f9d297f9bc55f3ba42c38b4fb23911f22fc351"
+  "sha256": "47cadfc09ede289e3ac4b3cf67f822972c8e3210586b71a39c701062eae0c4a1"
 }

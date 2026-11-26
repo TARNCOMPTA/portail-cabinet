@@ -108,8 +108,14 @@ server.tool(
       const cfg = SOURCES[source];
       let cs = await apiFetch(cfg.clients);
       if (recherche) {
-        const q = recherche.toLowerCase();
-        cs = cs.filter((c) => `${c.nom} ${c[cfg.cle] || ''} ${c.notes || ''}`.toLowerCase().includes(q));
+        // Sans accents ni casse (comme le connecteur distant) : « wazai » trouve « SAS WAZAÏ ».
+        const sansAccent = (t) =>
+          String(t ?? '')
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase();
+        const q = sansAccent(recherche);
+        cs = cs.filter((c) => sansAccent(`${c.nom} ${c[cfg.cle] || ''} ${c.notes || ''}`).includes(q));
       }
       return txt(cs.map((c) => ({ id: c.id, nom: c.nom, [cfg.cle]: c[cfg.cle], documents: c.nb_docs ?? 0, verrouille: c.verrouille || false })));
     } catch (e) {

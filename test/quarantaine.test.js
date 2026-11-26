@@ -8,7 +8,16 @@ import { tmpdir } from 'node:os';
 import { resolve, dirname } from 'node:path';
 import { Buffer } from 'node:buffer';
 import { verifierEtClasser } from '../src/validation-pdf.js';
-import { listerQuarantaine, cheminSur, reintegrer, supprimerQuarantaine, supprimerLot, nettoyerDossiersVides, QUARANTAINE_DIR } from '../src/quarantaine.js';
+import {
+  listerQuarantaine,
+  cheminSur,
+  reintegrer,
+  supprimerQuarantaine,
+  supprimerLot,
+  nettoyerDossiersVides,
+  fichiersEnQuarantaine,
+  QUARANTAINE_DIR,
+} from '../src/quarantaine.js';
 
 // PDF minimal contenant un texte donné (assez d'octets pour passer les garde-fous).
 function pdf(texte) {
@@ -149,4 +158,24 @@ test('cheminSur verrouille l’accès au dossier de quarantaine (anti-traversée
   assert.equal(cheminSur('../../server.js'), null);
   assert.equal(cheminSur('../.env'), null);
   assert.ok(cheminSur('carmf/4242_X/doc.pdf'), 'un chemin interne reste autorisé');
+});
+
+test('fichiersEnQuarantaine : noms d’origine, limités aux PJ d’un échange', () => {
+  // Deux echanges du meme jour, chacun avec une PJ « Attestation.pdf » ; seule celle de
+  // l'echange 111 est en quarantaine : elle ne doit pas masquer celle de l'echange 222.
+  const source = '_test_fiq';
+  const dir = resolve(QUARANTAINE_DIR, source, '4243_ZZTEST');
+  mkdirSync(dir, { recursive: true });
+  try {
+    const manifeste = (nom, eventid) =>
+      writeFileSync(resolve(dir, `${nom}.json`), JSON.stringify({ clientId: 4243, eventid, origine: `/x/Messagerie/26-11-2026_${nom}` }));
+    manifeste('Attestation.pdf', 'MSG_111_PJ1');
+    manifeste('Releve.pdf', 'MSG_111_PJ_Releve.pdf');
+    assert.deepEqual([...fichiersEnQuarantaine(source, 4243, 'MSG_111_PJ')].sort(), ['26-11-2026_Attestation.pdf', '26-11-2026_Releve.pdf']);
+    assert.deepEqual([...fichiersEnQuarantaine(source, 4243, 'MSG_222_PJ')], [], 'l’échange 222 n’est pas concerné');
+    assert.deepEqual([...fichiersEnQuarantaine(source, 4243, 'MSG_11_PJ')], [], 'MSG_11 ne capture pas MSG_111');
+    assert.equal(fichiersEnQuarantaine(source, 9999, '').size, 0, 'autre client');
+  } finally {
+    rmSync(resolve(QUARANTAINE_DIR, source), { recursive: true, force: true });
+  }
 });
