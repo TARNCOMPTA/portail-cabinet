@@ -549,10 +549,6 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
       `Messagerie : ${echanges.length} échange(s), ${nouveauxEchanges.length} nouveau(x)` +
         (aRelire.length ? `, ${aRelire.length} récent(s) relu(s) (réponse éventuelle).` : '.'),
     );
-    // PJ deja en quarantaine, par NOM de fichier (manifestes) : jamais retelechargees. Pas
-    // par rang : une reponse ajoutee a l'echange decale les rangs (l'attestation prenait
-    // le rang d'une PJ en quarantaine et n'etait jamais telechargee).
-    const pjEnQuarantaine = fichiersEnQuarantaine('impots', client.id);
 
     for (const e of [...nouveauxEchanges, ...aRelire]) {
       const relecture = aRelire.includes(e);
@@ -583,52 +579,64 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
         // (« Ma demande N°… »), sinon le texte d'un autre echange etait enregistre ici.
         const extraireTexte = () =>
           gaia
-            .evaluate((num) => {
-              const nettoyer = (t) =>
-                String(t || '')
-                  .replace(/[ \t]+\n/g, '\n')
-                  .replace(/\n{3,}/g, '\n\n')
-                  .trim();
-              const plusPetit = (accepte) => {
-                let best = null,
-                  len = 1e9;
-                for (const el of document.querySelectorAll('td,div,fieldset,section')) {
-                  const t = el.innerText || '';
-                  if (accepte(t, el) && t.length < len) {
-                    best = el;
-                    len = t.length;
+            .evaluate(
+              ({ num, idLien }) => {
+                const nettoyer = (t) =>
+                  String(t || '')
+                    .replace(/[ \t]+\n/g, '\n')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+                const plusPetit = (accepte) => {
+                  let best = null,
+                    len = 1e9;
+                  for (const el of document.querySelectorAll('td,div,fieldset,section')) {
+                    const t = el.innerText || '';
+                    if (accepte(t, el) && t.length < len) {
+                      best = el;
+                      len = t.length;
+                    }
                   }
-                }
-                return best;
-              };
-              const complet = (t) => /Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 40;
-              // Un bloc qui contient une ligne de la LISTE (lien N°) n'est pas un message : c'est
-              // un conteneur du tableau (tout le tableau serait enregistre). Si le message ne
-              // repete pas son N°, on retombe sur le plus petit bloc « Objet : ».
-              const porteSonNumero = (t, el) => complet(t) && t.includes(num) && !el.querySelector('a[id$=":numDemande"]');
-              let detail = '';
-              let detailNum = '';
-              for (const tr of document.querySelectorAll('tr.ui-expanded-row-content')) {
-                const t = (tr.innerText || '').trim();
-                if (t.includes(num) && t.length > detailNum.length) detailNum = t;
-                if (t.length > detail.length) detail = t;
-              }
-              // 1) Tout bloc portant le N° de CET echange, quelle que soit sa forme ; 2) a
-              // defaut, les blocs sans N° (forme « Objet : » d'abord, comme auparavant).
-              const avecNumero = plusPetit(porteSonNumero);
-              if (avecNumero) return nettoyer(avecNumero.innerText);
-              if (detailNum.length > 10) return nettoyer(detailNum);
-              const best = plusPetit(complet) || plusPetit((t) => /Objet\s*:/.test(t) && t.length > 20);
-              if (best) return nettoyer(best.innerText);
-              if (detail.length > 10) return nettoyer(detail);
-              for (const d of document.querySelectorAll('.ui-dialog')) {
-                if (d.offsetParent !== null) {
-                  const t = (d.querySelector('.ui-dialog-content')?.innerText || '').trim();
+                  return best;
+                };
+                // 0) La ligne depliee PROPRE a cet echange (inseree par PrimeFaces juste apres sa
+                //    ligne du tableau) : seule source sans ambiguite, puisque celles des echanges
+                //    ouverts avant dans ce passage restent ouvertes. Les recherches dans toute
+                //    la page ci-dessous ne servent qu'a defaut (autre presentation).
+                const propre = document.getElementById(idLien)?.closest('tr')?.nextElementSibling;
+                if (propre?.classList.contains('ui-expanded-row-content')) {
+                  const t = (propre.innerText || '').trim();
                   if (t.length > 10) return nettoyer(t);
                 }
-              }
-              return '';
-            }, e.num)
+                const complet = (t) => /Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 40;
+                // Un bloc qui contient une ligne de la LISTE (lien N°) n'est pas un message : c'est
+                // un conteneur du tableau (tout le tableau serait enregistre). Si le message ne
+                // repete pas son N°, on retombe sur le plus petit bloc « Objet : ».
+                const porteSonNumero = (t, el) => complet(t) && t.includes(num) && !el.querySelector('a[id$=":numDemande"]');
+                let detail = '';
+                let detailNum = '';
+                for (const tr of document.querySelectorAll('tr.ui-expanded-row-content')) {
+                  const t = (tr.innerText || '').trim();
+                  if (t.includes(num) && t.length > detailNum.length) detailNum = t;
+                  if (t.length > detail.length) detail = t;
+                }
+                // 1) Tout bloc portant le N° de CET echange, quelle que soit sa forme ; 2) a
+                // defaut, les blocs sans N° (forme « Objet : » d'abord, comme auparavant).
+                const avecNumero = plusPetit(porteSonNumero);
+                if (avecNumero) return nettoyer(avecNumero.innerText);
+                if (detailNum.length > 10) return nettoyer(detailNum);
+                const best = plusPetit(complet) || plusPetit((t) => /Objet\s*:/.test(t) && t.length > 20);
+                if (best) return nettoyer(best.innerText);
+                if (detail.length > 10) return nettoyer(detail);
+                for (const d of document.querySelectorAll('.ui-dialog')) {
+                  if (d.offsetParent !== null) {
+                    const t = (d.querySelector('.ui-dialog-content')?.innerText || '').trim();
+                    if (t.length > 10) return nettoyer(t);
+                  }
+                }
+                return '';
+              },
+              { num: e.num, idLien: e.id },
+            )
             .catch(() => '');
         let texte = await extraireTexte();
         if (!texte) {
@@ -686,6 +694,10 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
           .filter((d) => String(d.eventid || '').startsWith(`${eid}_PJ`))
           .map((d) => basename(String(d.fichier || '')));
         const prefixeDate = `${(e.date || '').replace(/\//g, '-')}_`;
+        // PJ de CET echange deja en quarantaine, par NOM de fichier (manifestes) : jamais
+        // retelechargees. Pas par rang : une reponse ajoutee a l'echange decale les rangs
+        // (l'attestation prenait le rang d'une PJ en quarantaine et n'etait jamais telechargee).
+        const pjEnQuarantaine = fichiersEnQuarantaine('impots', client.id, `${eid}_PJ`);
         for (let k = 0; k < npj; k++) {
           try {
             const nomLien = (

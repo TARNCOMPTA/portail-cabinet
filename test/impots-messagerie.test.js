@@ -79,6 +79,9 @@ const ECHANGES = [
     corps: 'Merci de nous transmettre le détail du chiffre d’affaires déclaré.',
     pjs: [],
   },
+  // Meme forme, plus ancien et plus COURT : ouvert juste avant le precedent, son bloc reste
+  // ouvert et ne doit pas etre pris pour le message du suivant.
+  { num: '1230000055', objet: 'Relance', date: jjmmaaaa(25), forme: 'objet', corps: 'Relance.', pjs: [] },
 ];
 const telechargementsPj = [];
 
@@ -180,7 +183,7 @@ const message = (num) => {
 test('1er passage : demandes enregistrées, chaque message avec SON texte', async (t) => {
   if (!navigateurOk) return t.skip('Chromium indisponible');
   const r = await passage();
-  assert.equal(r.docs.length, 3, r.journal.join('\n'));
+  assert.equal(r.docs.length, 4, r.journal.join('\n'));
   assert.equal(r.quarantaines.length, 1, 'le relevé sans identifiant part en quarantaine');
   assert.match(message('1250402904'), /Ma demande N°1250402904/);
   assert.doesNotMatch(message('1250402904'), /1190000001|majoration/, 'pas le texte de l’autre échange (resté déplié)');
@@ -188,6 +191,8 @@ test('1er passage : demandes enregistrées, chaque message avec SON texte', asyn
   // Bloc « Objet : » sans son numéro : son propre bloc, pas tout le tableau des échanges.
   assert.match(message('1240000077'), /Objet : Question de la DGFiP[\s\S]*chiffre d’affaires/);
   assert.doesNotMatch(message('1240000077'), /1250402904|1190000001|En cours/, 'pas le tableau entier');
+  assert.doesNotMatch(message('1240000077'), /Objet : Relance/, 'pas le bloc « Objet : » d’un autre échange resté ouvert');
+  assert.match(message('1230000055'), /Objet : Relance/);
 });
 
 test('la DGFiP répond dans le même échange : réponse et attestation récupérées au passage suivant', async (t) => {
@@ -200,7 +205,7 @@ test('la DGFiP répond dans le même échange : réponse et attestation récupé
   ECHANGES[1].pjs = [attestation('1190000001')];
   const r = await passage();
   assert.ok(
-    r.journal.some((m) => /2 récent\(s\) relu\(s\)/.test(m)),
+    r.journal.some((m) => /3 récent\(s\) relu\(s\)/.test(m)),
     r.journal.join('\n'),
   );
   assert.deepEqual(telechargementsPj, ['ARF_1250402904.pdf'], 'seule l’attestation : ni le relevé en quarantaine, ni l’échange de plus de 90 jours');

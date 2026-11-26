@@ -92,12 +92,13 @@ export function eventidsEnQuarantaine(source, clientId) {
 }
 
 /** Noms des fichiers d'origine (chemin avant mise en quarantaine) des documents d'un client
- *  en quarantaine. Pour les pieces jointes, plus sur que l'eventid : celui-ci peut porter un
- *  RANG, qu'une reponse ajoutee au meme echange decale. */
-export function fichiersEnQuarantaine(source, clientId) {
+ *  en quarantaine, limites a ceux dont l'eventid commence par `prefixeEventid` (ex. les PJ
+ *  d'UN echange : « MSG_<num>_PJ »). Pour les pieces jointes, le nom est plus sur que
+ *  l'eventid seul : celui-ci peut porter un RANG, qu'une reponse ajoutee a l'echange decale. */
+export function fichiersEnQuarantaine(source, clientId, prefixeEventid = '') {
   return new Set(
     manifestesClient(source, clientId)
-      .filter((m) => m.origine)
+      .filter((m) => m.origine && String(m.eventid || '').startsWith(prefixeEventid))
       .map((m) => basename(String(m.origine))),
   );
 }
