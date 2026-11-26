@@ -23,7 +23,7 @@ import { launchArgs } from './navigateur.js';
 import { sanitize, dansPeriode, anneeMinimale } from './scraper-commun.js';
 import { verifierEtClasser, extraireTextePdf, detecterPaiementCfe } from './validation-pdf.js';
 import * as captchaRelais from './captcha-relais.js';
-import { eventidsEnQuarantaine } from './quarantaine.js';
+import { fichiersEnQuarantaine } from './quarantaine.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DOWNLOADS_DIR = resolve(__dirname, '..', 'downloads');
@@ -549,8 +549,10 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
       `Messagerie : ${echanges.length} échange(s), ${nouveauxEchanges.length} nouveau(x)` +
         (aRelire.length ? `, ${aRelire.length} récent(s) relu(s) (réponse éventuelle).` : '.'),
     );
-    // PJ deja en quarantaine (manifestes) : jamais retelechargees.
-    const pjEnQuarantaine = eventidsEnQuarantaine('impots', client.id);
+    // PJ deja en quarantaine, par NOM de fichier (manifestes) : jamais retelechargees. Pas
+    // par rang : une reponse ajoutee a l'echange decale les rangs (l'attestation prenait
+    // le rang d'une PJ en quarantaine et n'etait jamais telechargee).
+    const pjEnQuarantaine = fichiersEnQuarantaine('impots', client.id);
 
     for (const e of [...nouveauxEchanges, ...aRelire]) {
       const relecture = aRelire.includes(e);
@@ -592,7 +594,7 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
                   len = 1e9;
                 for (const el of document.querySelectorAll('td,div,fieldset,section')) {
                   const t = el.innerText || '';
-                  if (accepte(t) && t.length < len) {
+                  if (accepte(t, el) && t.length < len) {
                     best = el;
                     len = t.length;
                   }
@@ -600,9 +602,10 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
                 return best;
               };
               const complet = (t) => /Objet\s*:/.test(t) && /(De|A)\s*:/.test(t) && t.length > 40;
-              const best =
-                plusPetit((t) => complet(t) && t.includes(num)) || plusPetit(complet) || plusPetit((t) => /Objet\s*:/.test(t) && t.length > 20);
-              if (best) return nettoyer(best.innerText);
+              // Un bloc qui contient une ligne de la LISTE (lien N°) n'est pas un message : c'est
+              // un conteneur du tableau (tout le tableau serait enregistre). Si le message ne
+              // repete pas son N°, on retombe sur le plus petit bloc « Objet : ».
+              const porteSonNumero = (t, el) => complet(t) && t.includes(num) && !el.querySelector('a[id$=":numDemande"]');
               let detail = '';
               let detailNum = '';
               for (const tr of document.querySelectorAll('tr.ui-expanded-row-content')) {
@@ -610,7 +613,13 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
                 if (t.includes(num) && t.length > detailNum.length) detailNum = t;
                 if (t.length > detail.length) detail = t;
               }
+              // 1) Tout bloc portant le N° de CET echange, quelle que soit sa forme ; 2) a
+              // defaut, les blocs sans N° (forme « Objet : » d'abord, comme auparavant).
+              const avecNumero = plusPetit(porteSonNumero);
+              if (avecNumero) return nettoyer(avecNumero.innerText);
               if (detailNum.length > 10) return nettoyer(detailNum);
+              const best = plusPetit(complet) || plusPetit((t) => /Objet\s*:/.test(t) && t.length > 20);
+              if (best) return nettoyer(best.innerText);
               if (detail.length > 10) return nettoyer(detail);
               for (const d of document.querySelectorAll('.ui-dialog')) {
                 if (d.offsetParent !== null) {
@@ -686,14 +695,14 @@ export async function recupererMessagerie(page, context, client, clientDir, navT
                 .catch(() => '')
             ).trim();
             const nomLienSan = nomLien ? sanitize(nomLien) : '';
-            if (nomLienSan && pjConnues.includes(`${prefixeDate}${nomLienSan}`)) continue; // deja recuperee
-            if (relecture && (pjEnQuarantaine.has(`${eid}_PJ${k + 1}`) || (nomLienSan && pjEnQuarantaine.has(`${eid}_PJ_${nomLienSan}`)))) continue;
+            // Deja recuperee, ou deja en quarantaine : rien a telecharger.
+            if (nomLienSan && (pjConnues.includes(`${prefixeDate}${nomLienSan}`) || pjEnQuarantaine.has(`${prefixeDate}${nomLienSan}`))) continue;
             const [dl] = await Promise.all([gaia.waitForEvent('download', { timeout: navTimeout }), pjLiens.nth(k).click()]);
             const nomPj = sanitize(dl.suggestedFilename() || nomLien || `${e.num}_pj${k + 1}`);
             const destPj = resolve(dir, `${prefixeDate}${nomPj}`);
-            if (pjConnues.includes(basename(destPj))) {
+            if (pjConnues.includes(basename(destPj)) || pjEnQuarantaine.has(basename(destPj))) {
               await dl.cancel().catch(() => {});
-              continue; // nom du lien different du nom de fichier, mais deja recuperee
+              continue; // nom du lien different du nom de fichier, mais deja recuperee / en quarantaine
             }
             await dl.saveAs(destPj);
             // Identifiant : rang de la PJ si libre (comportement historique), sinon son nom

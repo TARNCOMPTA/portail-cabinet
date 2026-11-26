@@ -9,7 +9,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { Buffer } from 'node:buffer';
@@ -44,17 +44,40 @@ const jjmmaaaa = (joursAvant) => {
   const d = new Date(Date.now() - joursAvant * 86400000);
   return `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
 };
-// Echanges de la messagerie : un recent (demande d'attestation) et un ancien (> 90 jours).
+// Echanges de la messagerie. `forme` : 'deplie' = ligne depliee PrimeFaces commencant par
+// « De : » (forme reelle du message de la SAS WAZAÏ, 20/11/2026) ; 'objet' = bloc « Objet :
+// … De : … A : … » qui ne repete PAS le numero de l'echange. `pjs` : pieces jointes affichees.
+const RELEVE = { nom: 'Releve_bancaire.pdf', texte: 'Releve de compte sans identifiant du titulaire' };
+const attestation = (num) => ({
+  nom: `ARF_${num}.pdf`,
+  texte: `Attestation de regularite fiscale - SAS ZZTEST - SIREN ${SIREN.slice(0, 3)} ${SIREN.slice(3, 6)} ${SIREN.slice(6)}`,
+});
 const ECHANGES = [
-  { num: '1250402904', objet: 'Demande d’attestation de régularité fiscale', date: jjmmaaaa(6), corps: 'Serait-il possible d’avoir une attestation ?' },
+  // Recent, avec une piece jointe sans identifiant (partira en quarantaine).
+  {
+    num: '1250402904',
+    objet: 'Demande d’attestation de régularité fiscale',
+    date: jjmmaaaa(6),
+    corps: 'Serait-il possible d’avoir une attestation ?',
+    pjs: [RELEVE],
+  },
   // Ancien, au texte plus LONG : ouvert en premier (ordre chronologique), sa ligne depliee
-  // reste ouverte quand on ouvre le suivant.
+  // reste ouverte quand on ouvre les suivants.
   {
     num: '1190000001',
     objet: 'Ma réclamation sur la TVA',
     date: jjmmaaaa(200),
     corps:
       'Je conteste la majoration appliquée sur la TVA de juin : la déclaration a été déposée dans les délais, voir l’accusé de réception joint. Merci de bien vouloir annuler la pénalité.',
+    pjs: [],
+  },
+  {
+    num: '1240000077',
+    objet: 'Question de la DGFiP',
+    date: jjmmaaaa(20),
+    forme: 'objet',
+    corps: 'Merci de nous transmettre le détail du chiffre d’affaires déclaré.',
+    pjs: [],
   },
 ];
 const telechargementsPj = [];
@@ -72,27 +95,30 @@ function site() {
       return res.end();
     }
     if (u.pathname === '/gaia2-zu-mapi/pages/pro/portailpro.xhtml') {
-      // Datatable « Mes echanges » ; cliquer un N° deplie le message et ses pieces jointes.
+      // Datatable « Mes echanges » (dans son bloc PrimeFaces) ; cliquer un N° deplie le
+      // message et ses pieces jointes.
       const lignes = ECHANGES.map((e, i) => {
-        // Meme forme que le message reel de la SAS WAZAÏ (20/11/2026) : ligne depliee
-        // PrimeFaces commencant par « De : », sans « Objet : ».
         const message =
-          `De :SAS ZZTEST\nMa demande N°${e.num}\n${e.date}\nA :CENTRE DE CONTACT DES PROS\n\nBonjour,\n\n${e.corps}\n\nAccusé\nRéception` +
-          (e.reponse ? `\n\nDe :CENTRE DE CONTACT DES PROS\nA :SAS ZZTEST\n${e.reponse}` : '');
-        const pj = e.pj ? `<a id="listeDemandesForm:listeDemandes:${i}:pj:0:downloadFile" href="/pj?num=${e.num}">${e.pj}</a>` : '';
+          e.forme === 'objet'
+            ? `Objet : ${e.objet}\nDe : SIE ALBI\nA : SAS ZZTEST\n\n${e.corps}`
+            : `De :SAS ZZTEST\nMa demande N°${e.num}\n${e.date}\nA :CENTRE DE CONTACT DES PROS\n\nBonjour,\n\n${e.corps}\n\nAccusé\nRéception` +
+              (e.reponse ? `\n\nDe :CENTRE DE CONTACT DES PROS\nA :SAS ZZTEST\n${e.reponse}` : '');
+        const pjs = e.pjs
+          .map((pj, k) => `<a id="listeDemandesForm:listeDemandes:${i}:pj:${k}:downloadFile" href="/pj?num=${e.num}&k=${k}">${pj.nom}</a>`)
+          .join(' ');
         return (
           `<tr><td><a id="listeDemandesForm:listeDemandes:${i}:numDemande" href="#" onclick="document.getElementById('d${i}').style.display='';return false;">${e.num}</a></td>` +
           `<td>${e.objet}</td><td>CENTRE DE CONTACT DES PROS</td><td>En cours</td><td></td><td>${e.date}</td></tr>` +
-          `<tr id="d${i}" class="ui-expanded-row-content" style="display:none"><td colspan="6"><div style="white-space:pre-line">${message}</div>${pj}</td></tr>`
+          `<tr id="d${i}" class="ui-expanded-row-content" style="display:none"><td colspan="6"><div style="white-space:pre-line">${message}</div>${pjs}</td></tr>`
         );
       }).join('');
-      return html(`<p>SIREN : ${SIREN}</p><table>${lignes}</table>`);
+      return html(`<p>SIREN : ${SIREN}</p><div class="ui-datatable"><table>${lignes}</table></div>`);
     }
     if (u.pathname === '/pj') {
-      const e = ECHANGES.find((x) => x.num === u.searchParams.get('num'));
-      telechargementsPj.push(e.num);
-      res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="${e.pj}"` });
-      return res.end(pdf(`Attestation de regularite fiscale - SAS ZZTEST - SIREN ${SIREN.slice(0, 3)} ${SIREN.slice(3, 6)} ${SIREN.slice(6)}`));
+      const pj = ECHANGES.find((x) => x.num === u.searchParams.get('num')).pjs[Number(u.searchParams.get('k'))];
+      telechargementsPj.push(pj.nom);
+      res.writeHead(200, { 'content-type': 'application/pdf', 'content-disposition': `attachment; filename="${pj.nom}"` });
+      return res.end(pdf(pj.texte));
     }
     res.writeHead(404).end();
   });
@@ -126,7 +152,12 @@ before(async () => {
 after(async () => {
   await browser?.close();
   srv?.close();
-  if (client) db.deleteClient(client.id);
+  if (client) {
+    db.deleteClient(client.id);
+    const { QUARANTAINE_DIR } = await import('../src/quarantaine.js');
+    const dir = resolve(QUARANTAINE_DIR, 'impots');
+    if (existsSync(dir)) for (const d of readdirSync(dir)) if (d.startsWith(`${client.id}_`)) rmSync(resolve(dir, d), { recursive: true, force: true });
+  }
   if (tmp) rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -146,36 +177,43 @@ const message = (num) => {
   return d ? readFileSync(d.fichier, 'utf8') : null;
 };
 
-test('1er passage : la demande seule est enregistrée (pas encore de réponse)', async (t) => {
+test('1er passage : demandes enregistrées, chaque message avec SON texte', async (t) => {
   if (!navigateurOk) return t.skip('Chromium indisponible');
   const r = await passage();
-  assert.equal(r.docs.length, 2, r.journal.join('\n'));
+  assert.equal(r.docs.length, 3, r.journal.join('\n'));
+  assert.equal(r.quarantaines.length, 1, 'le relevé sans identifiant part en quarantaine');
   assert.match(message('1250402904'), /Ma demande N°1250402904/);
   assert.doesNotMatch(message('1250402904'), /1190000001|majoration/, 'pas le texte de l’autre échange (resté déplié)');
   assert.match(message('1190000001'), /majoration/);
-  assert.doesNotMatch(message('1250402904'), /ci-joint/);
+  // Bloc « Objet : » sans son numéro : son propre bloc, pas tout le tableau des échanges.
+  assert.match(message('1240000077'), /Objet : Question de la DGFiP[\s\S]*chiffre d’affaires/);
+  assert.doesNotMatch(message('1240000077'), /1250402904|1190000001|En cours/, 'pas le tableau entier');
 });
 
 test('la DGFiP répond dans le même échange : réponse et attestation récupérées au passage suivant', async (t) => {
   if (!navigateurOk) return t.skip('Chromium indisponible');
-  for (const e of ECHANGES) {
-    e.reponse = `Réponse à votre demande N°${e.num} : veuillez trouver ci-joint votre attestation.`;
-    e.pj = `ARF_${e.num}.pdf`;
-  }
+  telechargementsPj.length = 0;
+  // Reponse : l'attestation est listee AVANT le releve deja en quarantaine (rangs decales).
+  ECHANGES[0].reponse = 'Réponse à votre demande N°1250402904 : veuillez trouver ci-joint votre attestation.';
+  ECHANGES[0].pjs = [attestation('1250402904'), RELEVE];
+  ECHANGES[1].reponse = 'Réponse à votre demande N°1190000001 : ci-joint.';
+  ECHANGES[1].pjs = [attestation('1190000001')];
   const r = await passage();
   assert.ok(
-    r.journal.some((m) => /1 récent\(s\) relu\(s\)/.test(m)),
+    r.journal.some((m) => /2 récent\(s\) relu\(s\)/.test(m)),
     r.journal.join('\n'),
   );
-  const pj = db.getDocumentByEventid(client.id, 'MSG_1250402904_PJ1');
+  assert.deepEqual(telechargementsPj, ['ARF_1250402904.pdf'], 'seule l’attestation : ni le relevé en quarantaine, ni l’échange de plus de 90 jours');
+  const pj = db.listDocuments(client.id).find((d) => /ARF_1250402904\.pdf$/.test(d.fichier));
   assert.ok(pj && existsSync(pj.fichier), 'attestation enregistrée');
   assert.match(message('1250402904'), /ci-joint votre attestation/, 'message mis à jour avec la réponse');
-  assert.deepEqual(telechargementsPj, ['1250402904'], 'l’échange de plus de 90 jours n’est pas relu');
+  assert.match(message('1240000077'), /^N° 1240000077[\s\S]*Objet : Question/, 'message sans numéro non réécrit');
 });
 
-test('passage suivant : rien n’est retéléchargé', async (t) => {
+test('passage suivant : rien n’est retéléchargé ni réécrit', async (t) => {
   if (!navigateurOk) return t.skip('Chromium indisponible');
+  telechargementsPj.length = 0;
   const r = await passage();
   assert.equal(r.docs.length, 0, r.journal.join('\n'));
-  assert.deepEqual(telechargementsPj, ['1250402904'], 'pas de second téléchargement de l’attestation');
+  assert.deepEqual(telechargementsPj, []);
 });

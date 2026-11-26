@@ -84,6 +84,12 @@ const AVEC_MDP = new Set(['carpimko', 'carmf', 'carcdsf', 'carpv', 'ir']); // so
 const nomFichier = (p) => (p || '').split(/[\\/]/).pop() || '';
 const SRC = z.enum(['impots', 'urssaf', 'carpimko', 'carmf', 'carcdsf', 'carpv', 'ir']);
 const txt = (o) => ({ content: [{ type: 'text', text: typeof o === 'string' ? o : JSON.stringify(o, null, 2) }] });
+// Recherches sans accents ni casse : « wazai » trouve « SAS WAZAÏ ».
+const sansAccent = (t) =>
+  String(t ?? '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 // MyUnisoft : lecture seule. Le jeton reste cote serveur (src/myunisoft.js), jamais expose a Claude.
 async function myu(chemin, societeId) {
   const r = await appelMyunisoft(chemin, { timeoutMs: 30000, headers: societeId != null ? { 'society-id': String(societeId) } : {} });
@@ -117,12 +123,6 @@ export function buildServer() {
         const cfg = SOURCES[source];
         let cs = await apiFetch(cfg.clients);
         if (recherche) {
-          // Sans accents ni casse : « wazai » trouve « SAS WAZAÏ ».
-          const sansAccent = (t) =>
-            String(t ?? '')
-              .normalize('NFD')
-              .replace(/[\u0300-\u036f]/g, '')
-              .toLowerCase();
           const q = sansAccent(recherche);
           cs = cs.filter((c) => sansAccent(`${c.nom} ${c[cfg.cle] || ''} ${c.notes || ''}`).includes(q));
         }
@@ -410,8 +410,8 @@ export function buildServer() {
         const d = await myu('/society?mode=1&limit=1000');
         let l = (d?.society_array || []).map((s) => ({ id: s.society_id, nom: s.name, siret: s.siret || null, ville: s.city || null }));
         if (recherche) {
-          const q = recherche.toLowerCase();
-          l = l.filter((s) => `${s.nom} ${s.siret || ''} ${s.ville || ''}`.toLowerCase().includes(q));
+          const q = sansAccent(recherche);
+          l = l.filter((s) => sansAccent(`${s.nom} ${s.siret || ''} ${s.ville || ''}`).includes(q));
         }
         return txt({ total: l.length, dossiers: l.sort((a, b) => a.nom.localeCompare(b.nom, 'fr')) });
       } catch (e) {
